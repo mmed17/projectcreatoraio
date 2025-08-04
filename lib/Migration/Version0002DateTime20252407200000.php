@@ -7,7 +7,7 @@ use Closure;
 use OCP\DB\ISchemaWrapper;
 use OCP\Migration\SimpleMigrationStep;
 use OCP\Migration\IOutput;
-class Version0002Datetime20252407200000 extends SimpleMigrationStep {
+class Version0002DateTime20252407200000 extends SimpleMigrationStep {
     public function change(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper {
         /** @var ISchemaWrapper $schema */
         $schema = $schemaClosure();

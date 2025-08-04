@@ -7,9 +7,7 @@ use Closure;
 use OCP\DB\ISchemaWrapper;
 use OCP\Migration\SimpleMigrationStep;
 use OCP\Migration\IOutput;
-
 class Version0001DateTime20251906153814 extends SimpleMigrationStep {
-
     /**
      *
      * @param IOutput $output
