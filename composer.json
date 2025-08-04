@@ -5,8 +5,7 @@
 	"authors": [
 		{
 			"name": "med172017",
-			"email": "mmed172017@gmail.com",
-			"homepage": ""
+			"email": "mmed172017@gmail.com"
 		}
 	],
 	"autoload": {
