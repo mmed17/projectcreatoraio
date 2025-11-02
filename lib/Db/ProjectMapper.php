@@ -6,6 +6,7 @@ use OCP\IDBConnection;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use DateTime;
+use OCA\Provisioning_API\Db\Organization;
 use OCP\AppFramework\Db\DoesNotExistException;
 
 class ProjectMapper extends QBMapper {
@@ -18,6 +19,7 @@ class ProjectMapper extends QBMapper {
     }
 
     public function createProject(
+        Organization $organization,
         string $name,
         string $number,
         int    $type,
@@ -43,6 +45,7 @@ class ProjectMapper extends QBMapper {
         $project->setBoardId($boardId);
         $project->setFolderId($folderId);
         $project->setFolderPath($folderPath);
+        $project->setOrganizationId($organization->getId());
 
         $now = new DateTime();
         $project->setCreatedAt($now);

@@ -109,6 +109,7 @@ class ProjectService {
             );
 
             $project = $this->projectMapper->createProject(
+                $organization,
                 $name, 
                 $number, 
                 $type, 
@@ -119,7 +120,7 @@ class ProjectService {
                 $createdBoard->getId(),
                 $createdFolders["shared"]["id"],
                 $createdFolders["shared"]["name"],
-                $createdFolders["private"]
+                $createdFolders["private"],
             );
 
             return $project;

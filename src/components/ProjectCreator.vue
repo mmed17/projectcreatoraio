@@ -1,86 +1,86 @@
 <template>
-    <div id="projectcreatoraio" class="project-creator-container">
-        <div class="project-creator-form">
-            <h1 class="project-creator-title">Create a New Project</h1>
-            <p class="project-creator-subtitle">
-                Fill out the details below to set up your new project environment.
-            </p>
+	<div id="projectcreatoraio" class="project-creator-container">
+		<div class="project-creator-form">
+			<h1 class="project-creator-title">Create a New Project</h1>
+			<p class="project-creator-subtitle">
+				Fill out the details below to set up your new project environment.
+			</p>
 
-            <NcNoteCard v-if="submissionStatus" :type="submissionStatus">
-                {{ statusMessage }}
-            </NcNoteCard>
+			<NcNoteCard v-if="submissionStatus" :type="submissionStatus" class="status-card">
+				<strong>{{ statusMessage }}</strong>
+				<p v-if="statusDescription" class="status-description">{{ statusDescription }}</p>
+			</NcNoteCard>
 
-            <form>
-                <div class="form-row">
-                    <NcTextField v-model="project.name"
-                        label="Project Name*"
-                        class="form-row-item"
-                        placeholder="e.g., Q4 Marketing Campaign"
-                        :show-label="true"
-                        input-label="Project Name"/>
+			<form>
+				<div class="form-row">
+					<NcTextField v-model="project.name"
+						label="Project Name*"
+						class="form-row-item"
+						placeholder="e.g., Q4 Marketing Campaign"
+						:show-label="true"
+						input-label="Project Name" />
 
-                    <NcTextField v-model="project.number"
-                        label="Project Number*"
-                        placeholder="e.g., P-2025-001"
-                        :show-label="true"
-                        input-label="Project Number"
-                        class="form-row-item"/>
-                </div>
+					<NcTextField v-model="project.number"
+						label="Project Number*"
+						placeholder="e.g., P-2025-001"
+						:show-label="true"
+						input-label="Project Number"
+						class="form-row-item" />
+				</div>
 
-                <div class="form-row">
-                    <NcTextArea
-                        v-model="project.description"
-                        class="form-row-item"
-                        label="Project description"
-                        placeholder="Provide some details"
-                        :show-label="true"
-                        input-label="Project Description"
-                        rows="4"/>
-                </div>
+				<div class="form-row">
+					<NcTextArea
+						v-model="project.description"
+						class="form-row-item"
+						label="Project description"
+						placeholder="Provide some details"
+						:show-label="true"
+						input-label="Project Description"
+						rows="4" />
+				</div>
 
-                <div class="form-row">
-                    <NcTextField v-model="project.address"
-                        class="form-row-item"
-                        label="Client Address or Location"
-                        placeholder="e.g., 123 Innovation Drive, Tech City"
-                        :show-label="true"
-                        input-label="Client Address or Location"/>
-                </div>
+				<div class="form-row">
+					<NcTextField v-model="project.address"
+						class="form-row-item"
+						label="Client Address or Location"
+						placeholder="e.g., 123 Innovation Drive, Tech City"
+						:show-label="true"
+						input-label="Client Address or Location" />
+				</div>
 
-                <div class="form-row">
-                    <NcSelect v-model="selectedProjectType"
-                        class="form-row-item"
-                        placeholder="Select project type"
-                        input-label="Project Type*"
-                        :options="PROJECT_TYPES"
-                        :show-label="true"
-                        :multiple="false"
-                        />
-                </div>
+				<div class="form-row">
+					<NcSelect v-model="selectedProjectType"
+						class="form-row-item"
+						placeholder="Select project type"
+						input-label="Project Type*"
+						:options="PROJECT_TYPES"
+						:show-label="true"
+						:multiple="false" />
+				</div>
 
-                <div class="form-row">
-                    <UsersFetcher 
-                        class="form-row-item"
-                        input-label="Project Team Members*"
-                        placeholder="Select team members"
-                        :model-value="project.members"
-                        @update:modelValue="project.members = $event">
-                    </UsersFetcher>
-                </div>
-                <NcButton 
-                        :disabled="isCreatingProject || !project.name || !project.number || isNaN(project.type) || project.members.length === 0"
-                        type="primary"
-                        :wide="true"
-                        @click="createProject"
-                        class="submit-button">
-                    <template #icon>
-                        <Plus :size="20" />
-                    </template>
-                    {{ isCreatingProject ? 'Creating Project...' : 'Create Project' }}
-                </NcButton>
-            </form>
-        </div>
-    </div>
+				<div class="form-row">
+					<UsersFetcher
+						class="form-row-item"
+						input-label="Project Team Members*"
+						placeholder="Select team members"
+						:model-value="project.members"
+						@update:modelValue="project.members = $event">
+					</UsersFetcher>
+				</div>
+				<NcButton
+					:disabled="isCreatingProject || !project.name || !project.number || isNaN(project.type) || project.members.length === 0"
+					type="primary"
+					:wide="true"
+					@click="createProject"
+					class="submit-button">
+					<template #icon>
+						<Plus :size="20" />
+					</template>
+					{{ isCreatingProject ? 'Creating Project...' : 'Create Project' }}
+				</NcButton>
+			</form>
+		</div>
+	</div>
 </template>
 
 <script>
@@ -117,7 +117,8 @@ export default {
 			isCreatingProject: false,
 			submissionStatus: '',
 			statusMessage: '',
-			PROJECT_TYPES
+			statusDescription: '', // NEW: To hold the detailed error message
+			PROJECT_TYPES,
 		};
 	},
 	computed: {
@@ -127,14 +128,15 @@ export default {
 			},
 			set(option) {
 				this.project.type = option ? option.id : null;
-			}
-		}
+			},
+		},
 	},
 	methods: {
 		async createProject() {
 			this.isCreatingProject = true;
 			this.submissionStatus = '';
 			this.statusMessage = '';
+			this.statusDescription = ''; // UPDATED: Reset description
 
 			try {
 				await projectsService.create(this.project);
@@ -164,12 +166,32 @@ export default {
 		 */
 		showProjectCreationErrorMessage(error) {
 			this.submissionStatus = 'error';
-			this.statusMessage = error.message || 'An unknown error occurred.';
+			
+			// UPDATED: Get the message from the correct location
+			// The server's JSON payload is usually in 'error.response.data'
+			let fullMessage = 'An unknown error occurred.';
+			if (error.response && error.response.data && error.response.data.message) {
+				fullMessage = error.response.data.message;
+			} else if (error.message) {
+				fullMessage = error.message;
+			}
+
+			// This regex will now check the correct 'fullMessage'
+			// I've also made it match 'Exception: ' OR 'OCSException: '
+			// And I've added [\s\S]*? to make sure it works even if the message has newlines
+			const ocsMatch = fullMessage.match(/(?:Exception|OCSException): ([\s\S]*?) in \/var\/www\/nextcloud\//);
+
+			if (ocsMatch && ocsMatch[1]) {
+				// We found a specific message
+				this.statusMessage = 'Project creation failed'; // Generic title
+				this.statusDescription = ocsMatch[1].trim(); // The user-friendly description
+			} else {
+				// Fallback: Show the main part of the message, but cut off the stack trace if possible
+				const stackTraceSplit = fullMessage.split('\nStack trace:');
+				this.statusMessage = stackTraceSplit[0];
+				this.statusDescription = ''; // No separate description
+			}
 		},
-		resetProjectCreationMessage() {
-			this.submissionStatus = '';
-			this.statusMessage = '';
-		}
 	}
 }
 </script>
@@ -224,5 +246,12 @@ export default {
 
 .status-card {
 	margin-bottom: -8px;
+}
+
+.status-description {
+	margin-top: 8px;
+	margin-bottom: 0;
+	font-size: 0.9em;
+	word-break: break-word;
 }
 </style>
