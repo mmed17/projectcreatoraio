@@ -12,7 +12,6 @@ use OCP\Share;
 use OCP\Constants;
 use OCP\IUserSession;
 use OCP\Files\Folder;
-use OCP\Files\Node;
 use OCP\IUser;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\Deck\Db\Board;
@@ -20,8 +19,6 @@ use OCA\Circles\Model\Circle;
 use OCA\Circles\Model\Member;
 use Throwable;
 use Exception;
-use OC\Core\Command\App\GetPath;
-use OC\Files\Filesystem as FilesFilesystem;
 use OCA\Provisioning_API\Db\OrganizationMapper;
 use OCA\Provisioning_API\Db\PlanMapper;
 use OCA\Provisioning_API\Db\SubscriptionMapper;
@@ -30,10 +27,8 @@ use OCP\IGroup;
 use OCP\IGroupManager;
 use OCA\GroupFolders\Folder\FolderManager;
 use OCA\Provisioning_API\Db\Plan;
-use OCP\Files\Filesystem;
 use OCP\IDBConnection;
-
-use function Amp\Iterator\concat;
+use OCP\IUserManager;
 
 class ProjectService {
     public function __construct(
@@ -51,6 +46,7 @@ class ProjectService {
         protected IGroupManager $groupManager,
         protected FolderManager $folderManager,
         protected IDBConnection $db,
+        protected IUserManager $userManager,
     ) {}
 
     /**
@@ -71,20 +67,19 @@ class ProjectService {
         
         try {
             $owner = $this->userSession->getUser();
-            $organization = $this->organizationMapper->findByUserId($owner->getUID());
-            $group = $this->groupManager->get($organization->getNextcloudGroupId());
 
+            $organization = $this->organizationMapper->findByUserId($owner->getUID());
             $subscription = $this->subscriptionMapper->findByOrganizationId($organization->getId());
 
-            $plan = $this->planMapper->find($subscription->getPlanId());
-            $projectsCount = $this->organizationMapper->getProjectsCount($organization->getId());
+            $plan  = $this->planMapper->find($subscription->getPlanId());
+            $count = $this->organizationMapper->getProjectsCount($organization->getId());
 
-            if ($projectsCount >= $plan->getMaxProjects()) {
+            if ($count >= $plan->getMaxProjects()) {
                 throw new OCSException(sprintf(
                     "The maximum number of projects allowed for this plan (%d) has been reached. " .
                     "You currently have %d projects. Please upgrade your plan to create additional projects.",
                     $plan->getMaxProjects(),
-                    $projectsCount
+                    $count
                 ));
             }
             
@@ -98,6 +93,11 @@ class ProjectService {
                 $name, 
                 $owner, 
                 $createdCircle->getSingleId()
+            );
+
+            $group = $this->createGroupForMembers(
+                array_merge($members, [$owner->getUID()]),
+                $name
             );
 
             $createdFolders = $this->createFoldersForProject(
@@ -157,6 +157,37 @@ class ProjectService {
         return $circle;
     }
 
+    private function createGroupForMembers(array $members, string $projectName): IGroup {
+        $projectGroupName = "{$projectName} - Project Group";
+        $searchResult = $this->groupManager->search($projectGroupName);
+
+        $counter = 2;
+        // Loop WHILE the name is taken
+        while (!empty($searchResult)) {
+            $projectGroupName = "{$projectName} ({$counter}) - Project Group";
+            $searchResult = $this->groupManager->search($projectGroupName);
+            $counter++;
+        }
+
+        // At this point, $projectGroupName is guaranteed to be unique
+        $createdGroup = $this->groupManager->createGroup($projectGroupName);
+
+        if ($createdGroup === null) {
+            // This could happen if creation fails for other reasons (e.g., invalid chars)
+            throw new Exception("Failed to create project group '$projectGroupName'.");
+        }
+
+        // Add all members to the newly created group
+        foreach($members as $memberId) {
+            $memberUser = $this->userManager->get($memberId);
+            if ($memberUser !== null) {
+                $createdGroup->addUser($memberUser);
+            }
+        }
+
+        return $createdGroup;
+    }
+
     /**
      * Creates and shares a Deck board for the project.
      */
@@ -214,7 +245,7 @@ class ProjectService {
                 "Private Files",
                 $memberFolder
             );
-            
+
             $privateFolder = $memberFolder->newFolder($privateFolderName);
             
             $allCreatedFolders[] = $privateFolder;
