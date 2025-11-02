@@ -6,6 +6,7 @@ use OCP\IDBConnection;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use DateTime;
+use OCP\AppFramework\Db\DoesNotExistException;
 
 class ProjectMapper extends QBMapper {
     public const TABLE_NAME = "custom_projects";

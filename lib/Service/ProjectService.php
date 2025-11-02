@@ -20,7 +20,21 @@ use OCA\Circles\Model\Circle;
 use OCA\Circles\Model\Member;
 use Throwable;
 use Exception;
- 
+use OC\Core\Command\App\GetPath;
+use OC\Files\Filesystem as FilesFilesystem;
+use OCA\Provisioning_API\Db\OrganizationMapper;
+use OCA\Provisioning_API\Db\PlanMapper;
+use OCA\Provisioning_API\Db\SubscriptionMapper;
+use OCP\AppFramework\OCS\OCSException;
+use OCP\IGroup;
+use OCP\IGroupManager;
+use OCA\GroupFolders\Folder\FolderManager;
+use OCA\Provisioning_API\Db\Plan;
+use OCP\Files\Filesystem;
+use OCP\IDBConnection;
+
+use function Amp\Iterator\concat;
+
 class ProjectService {
     public function __construct(
         protected IUserSession $userSession,
@@ -30,7 +44,13 @@ class ProjectService {
         protected IRootFolder $rootFolder,
         protected FederatedUserService $federatedUserService,
         protected ProjectMapper $projectMapper,
-        protected FileTreeService $fileTreeService
+        protected FileTreeService $fileTreeService,
+        protected OrganizationMapper $organizationMapper,
+        protected SubscriptionMapper $subscriptionMapper,
+        protected PlanMapper $planMapper,
+        protected IGroupManager $groupManager,
+        protected FolderManager $folderManager,
+        protected IDBConnection $db,
     ) {}
 
     /**
@@ -48,13 +68,29 @@ class ProjectService {
         $createdCircle = null;
         $createdBoard  = null;
         $createdFolders = [];
-
+        
         try {
             $owner = $this->userSession->getUser();
+            $organization = $this->organizationMapper->findByUserId($owner->getUID());
+            $group = $this->groupManager->get($organization->getNextcloudGroupId());
+
+            $subscription = $this->subscriptionMapper->findByOrganizationId($organization->getId());
+
+            $plan = $this->planMapper->find($subscription->getPlanId());
+            $projectsCount = $this->organizationMapper->getProjectsCount($organization->getId());
+
+            if ($projectsCount >= $plan->getMaxProjects()) {
+                throw new OCSException(sprintf(
+                    "The maximum number of projects allowed for this plan (%d) has been reached. " .
+                    "You currently have %d projects. Please upgrade your plan to create additional projects.",
+                    $plan->getMaxProjects(),
+                    $projectsCount
+                ));
+            }
             
             $createdCircle = $this->createCircleForProject(
-                $name, 
-                $members, 
+                $name,
+                $members,
                 $owner
             );
 
@@ -65,10 +101,11 @@ class ProjectService {
             );
 
             $createdFolders = $this->createFoldersForProject(
-                $name, 
-                $members, 
-                $owner, 
-                $createdCircle->getSingleId()
+                $name,
+                $members,
+                $owner,
+                $group,
+                $plan
             );
 
             $project = $this->projectMapper->createProject(
@@ -80,9 +117,9 @@ class ProjectService {
                 $owner->getUID(),
                 $createdCircle->getSingleId(),
                 $createdBoard->getId(),
-                $createdFolders['shared']->getId(),
-                $createdFolders['shared']->getPath(),
-                $createdFolders['private']
+                $createdFolders["shared"]["id"],
+                $createdFolders["shared"]["name"],
+                $createdFolders["private"]
             );
 
             return $project;
@@ -144,10 +181,9 @@ class ProjectService {
      * @return array{'shared': Folder, 'private': Folder[], 'all': Folder[]}
      */
     private function createFoldersForProject(
-        string $projectName, array $members, IUser $owner, string $circleId
+        string $projectName, array $members, IUser $owner, IGroup $group, Plan $plan
     ): array {
         $ownerFolder = $this->rootFolder->getUserFolder($owner->getUID());
-        $allCreatedFolders = [];
         
         // Create shared folders 
         $sharedFolderName = $this->getUniqueFolderName(
@@ -156,26 +192,30 @@ class ProjectService {
             $ownerFolder
         );
         
-        $sharedFolder = $ownerFolder->newFolder($sharedFolderName);
-        $allCreatedFolders[] = $sharedFolder;
+        $groupFolderId = $this->folderManager->createFolder($sharedFolderName);
 
-        $this->shareFolderWithCircle(
-            $sharedFolder, 
-            $circleId, 
-            $owner->getUID()
+        $this->folderManager->addApplicableGroup($groupFolderId, $group->getGID());
+        $this->folderManager->setFolderQuota($groupFolderId, $plan->getSharedStoragePerProject());
+        $this->folderManager->setGroupPermissions(
+            $groupFolderId, 
+            $group->getGID(), 
+            Constants::PERMISSION_ALL
         );
 
         // Create private folders for each member
         $privateFolders = [];
-        foreach ($members as $memberId) {
+        $allMembers = array_merge($members, [$owner->getUID()]);
 
+        foreach ($allMembers as $memberId) {
+            // Get the specific member's root folder
+            $memberFolder = $this->rootFolder->getUserFolder($memberId);
             $privateFolderName = $this->getUniqueFolderName(
                 $projectName, 
-                "Private Files ($memberId)" ,
-                $ownerFolder
+                "Private Files",
+                $memberFolder
             );
-
-            $privateFolder = $ownerFolder->newFolder($privateFolderName);
+            
+            $privateFolder = $memberFolder->newFolder($privateFolderName);
             
             $allCreatedFolders[] = $privateFolder;
             $privateFolders[] = [
@@ -183,48 +223,15 @@ class ProjectService {
                 'folderId' => $privateFolder->getId(),
                 'path' => $privateFolder->getPath(),
             ];
-
-            $this->shareFolderWithUser($privateFolder, $memberId, $owner->getUID());
         }
 
         return [
-            'shared' => $sharedFolder, 
+            'shared' => [
+                'id' => $groupFolderId,
+                'name' => $sharedFolderName
+            ],
             'private' => $privateFolders, 
-            'all' => $allCreatedFolders
         ];
-    }
-
-    private function shareFolderWithCircle(Node $folder, string $circleId, string $userId): void {
-        $share = $this->shareManager->newShare();
-        $share->setNode($folder);
-        $share->setShareType(Share::SHARE_TYPE_CIRCLE);
-        $share->setSharedWith($circleId);
-        $share->setPermissions(
-            Constants::PERMISSION_READ   | 
-            Constants::PERMISSION_CREATE | 
-            Constants::PERMISSION_UPDATE | 
-            Constants::PERMISSION_SHARE
-        );
-
-        $share->setSharedBy($userId);
-        $this->shareManager->createShare($share);
-    }
-
-    private function shareFolderWithUser(Node $folder, string $userId, string $ownerId): void {
-        $share = $this->shareManager->newShare();
-        $share->setNode($folder);
-        $share->setShareType(Share::SHARE_TYPE_USER);
-        $share->setSharedWith($userId);
-        $share->setPermissions(
-            Constants::PERMISSION_READ   | 
-            Constants::PERMISSION_CREATE | 
-            Constants::PERMISSION_UPDATE | 
-            Constants::PERMISSION_DELETE | 
-            Constants::PERMISSION_SHARE
-        );
-
-        $share->setSharedBy($ownerId);
-        $this->shareManager->createShare($share);
     }
 
     private function getUniqueFolderName(string $projectName, string $suffix, Folder $folder): string {
@@ -332,10 +339,4 @@ class ProjectService {
         return $this->projectMapper->findByBoardId($boardId);
     }
 
-     /**
-     * @return PrivateFolderLink[]
-     */
-    public function findAllPrivateFoldersByProject(int $projectId): array {
-        return $this->linkMapper->findByProject($projectId);
-    }
 }

@@ -9,20 +9,21 @@ use JsonSerializable;
 class Project extends Entity implements JsonSerializable {
     public $id;
 
-    protected ?string $name        = null;
-    protected ?string $label       = null;
-    protected ?string $number      = null;
-    protected ?int    $type        = null;
-    protected ?string $address     = null;
-    protected ?string $description = null;
-    protected ?string $ownerId     = null;
-    protected ?string $circleId    = null;
-    protected ?string $boardId     = null;
-    protected ?int    $folderId    = null;
-    public    ?string $folderPath = null;
-    protected ?int    $status      = null;
-    protected ?DateTime $createdAt = null;
-    protected ?DateTime $updatedAt = null;
+    protected string|null $name        = null;
+    protected string|null $label       = null;
+    protected string|null $number      = null;
+    protected int|null    $type        = null;
+    protected string|null $address     = null;
+    protected string|null $description = null;
+    protected string|null $ownerId     = null;
+    protected string|null $circleId    = null;
+    protected string|null $boardId     = null;
+    protected int|null    $folderId    = null;
+    public    string|null $folderPath  = null;
+    protected int|null    $status      = null;
+    protected int|null    $organizationId = null;
+    protected DateTime|null $createdAt = null;
+    protected DateTime|null $updatedAt = null;
 
     public function __construct() {
         $this->addType('name',        Types::STRING);
@@ -37,6 +38,7 @@ class Project extends Entity implements JsonSerializable {
         $this->addType('folderId',    Types::INTEGER);
         $this->addType('folderPath',  Types::STRING);
         $this->addType('status',      Types::INTEGER);
+        $this->addType('organization_id', Types::INTEGER);
         $this->addType('createdAt',   Types::DATETIME);
         $this->addType('updatedAt',   Types::DATETIME);
     }
@@ -56,6 +58,7 @@ class Project extends Entity implements JsonSerializable {
             'folderId'    => $this->folderId,
             'folderPath'  => $this->folderPath,
             'status'      => $this->status,
+            'organization_id' => $this->organizationId,
             'createdAt'   => $this->createdAt,
             'updatedAt'   => $this->updatedAt
         ];

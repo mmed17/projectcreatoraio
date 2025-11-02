@@ -71,6 +71,10 @@ class Version0001DateTime20251906153814 extends SimpleMigrationStep {
             'notnull' => true,
             'default' => 1,
         ]);
+        $table->addColumn('organization_id', 'integer', [
+            'notnull' => true,
+            'unsigned' => true,
+        ]);
         $table->addColumn('created_at', 'datetime', ['notnull' => true]);
         $table->addColumn('updated_at', 'datetime', ['notnull' => true]);
 
@@ -83,33 +87,42 @@ class Version0001DateTime20251906153814 extends SimpleMigrationStep {
             $schema->getTable('users'), 
             ['owner_id'], 
             ['uid'], 
-            ['onDelete' => 'CASCADE'], 
+            ['onDelete' => 'RESTRICT'], 
             'fk_projects_owner'
         );
         $table->addForeignKeyConstraint(
             $schema->getTable('circles_circles'), 
             ['circle_id'], 
             ['circle_id'], 
-            ['onDelete' => 'CASCADE'], 
+            ['onDelete' => 'RESTRICT'], 
             'fk_projects_circle'
         );
         $table->addForeignKeyConstraint(
             $schema->getTable('deck_boards'), 
             ['board_id'], 
             ['id'], 
-            ['onDelete' => 'CASCADE'], 
+            ['onDelete' => 'RESTRICT'], 
             'fk_projects_board'
         );
         $table->addForeignKeyConstraint(
             $schema->getTable('filecache'), 
             ['folder_id'],
             ['fileid'],
-            ['onDelete' => 'CASCADE'],
+            ['onDelete' => 'RESTRICT'],
             'fk_projects_folder'
+        );
+        $table->addForeignKeyConstraint(
+            $schema->getTable('organizations'),
+            ['organization_id'],
+            ['id'],
+            ['onDelete' => 'RESTRICT'],
+            'fk_projects_organization'
         );
 
         return $schema;
     }
+    
     public function postSchemaChange(IOutput $output, Closure $schemaClosure, array $options) {}
+
     public function preSchemaChange(IOutput $output, Closure $schemaClosure, array $options) {}
 }
