@@ -100,7 +100,9 @@ class ProjectMapper extends QBMapper {
                 'm',
                 'p.circle_id = m.circle_id'
             )
-            ->where($qb->expr()->eq('m.user_id', $qb->createNamedParameter($userId)))
+            ->where(
+                $qb->expr()->eq('m.user_id', $qb->createNamedParameter($userId))
+            )
             ->orderBy('p.created_at', 'DESC');
 
         return $this->findEntities($qb);

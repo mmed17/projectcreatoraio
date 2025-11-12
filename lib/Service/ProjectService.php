@@ -323,48 +323,43 @@ class ProjectService {
         if ($project === null) {
             throw new Exception("Project with ID $projectId not found.");
         }
-
-        try {
-            $ownerFolder = $this->rootFolder->getUserFolder($project->getOwnerId());
-            $sharedFiles  = $ownerFolder->getById($project->getFolderId());
-
-            if (empty($sharedFiles)) {
-                throw new NotFoundException("Project folder node not found on the filesystem.");
-            }
-
-            $sharedFilesTree = $this->fileTreeService->buildTree($sharedFiles[0]);
-            
-            $privateFolderLinks = [];
-            if ($project->getOwnerId() === $currentUser->getUID()) {
-                $privateFolderLinks = $this->projectMapper->findAllPrivateFoldersByProject($projectId);
-            } else {
-                $link = $this->projectMapper->findPrivateFolderForUser(
-                    $projectId, 
-                    $currentUser->getUID()
-                );
-                if ($link !== null) {
-                    $privateFolderLinks[] = $link;
-                }
-            }
-
-            $privateFilesTrees = [];
-            foreach ($privateFolderLinks as $link) {
-                try {
-                    $privateFolderNode = $ownerFolder->getById($link->getFolderId())[0];
-                    $privateFilesTrees[] = $this->fileTreeService->buildTree($privateFolderNode);
-                } catch (NotFoundException $e) {
-                    continue;
-                }
-            }
-
-            return [
-                'shared' => [$sharedFilesTree], 
-                'private' => $privateFilesTrees
-            ];
-            
-        } catch (NotFoundException $e) {
-            throw new Exception("Project folder is not found or has been deleted.");
+        
+        $userFolder = $this->rootFolder->getUserFolder($currentUser->getUID());
+        $sharedFiles = $userFolder->get($project->getFolderPath());
+        
+        if (empty($sharedFiles)) {
+            throw new NotFoundException("Project folder node not found on the filesystem.");
         }
+
+        $sharedFilesTree = $this->fileTreeService->buildTree($sharedFiles);
+
+        $privateFolderLinks = [];
+        $privateFilesTrees = [];
+
+        $link = $this->projectMapper->findPrivateFolderForUser(
+            $projectId, 
+            $currentUser->getUID()
+        );
+        if ($link !== null) {
+            $privateFolderLinks[] = $link;
+        }
+        
+        error_log("privateFolderLinks  : " . print_r($privateFolderLinks, true));
+
+        foreach ($privateFolderLinks as $link) {
+            try {
+                $path = basename($link->getFolderPath());
+                $privateFolderNode = $userFolder->get($path);
+                $privateFilesTrees[] = $this->fileTreeService->buildTree($privateFolderNode);
+            } catch (NotFoundException $e) {
+                continue;
+            }
+        }
+
+        return [
+            'shared' => [$sharedFilesTree],
+            'private' => $privateFilesTrees
+        ];
     }
     
     public function findProjectByBoard(int $boardId) {
