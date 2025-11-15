@@ -21,17 +21,17 @@ export class UsersService {
     /**
      * Search users, either globally or within a specific group.
      * @param {string} query The search term
-     * @param {string|null} organizationId The group ID to search in (if any)
+     * @param {string|null} groupId The group ID to search in (if any)
      * @returns {Promise<any[]>}
      */
-    async search(query, organizationId = null) {
+    async search(query, groupId = null) {
         if (!query.trim()) {
             return [];
         }
 
         // If an organization is selected, use the new group-specific endpoint
-        if (organizationId) {
-            return this.searchInGroup(query, organizationId);
+        if (groupId) {
+            return this.searchInGroup(query, groupId);
         } 
         
         // Otherwise, use the old global search
@@ -111,8 +111,8 @@ export class UsersService {
         }
     }
 
-    async searchInGroup(query, organizationId) {
-        const url = generateOcsUrl(`cloud/groups/${organizationId}/users/details`, 2);
+    async searchInGroup(query, groupId) {
+        const url = generateOcsUrl(`cloud/groups/${groupId}/users/details`, 2);
         
         try {
             const response = await axios.get(url, {
@@ -139,7 +139,7 @@ export class UsersService {
             }));
 
         } catch (error) {
-            console.error(`Error searching users in group ${organizationId}:`, error);
+            console.error(`Error searching users in group ${groupId}:`, error);
             return [];
         }
     }

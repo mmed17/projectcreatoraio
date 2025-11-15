@@ -40,7 +40,7 @@ export default {
 			type: Boolean,
 			default: () => true,
 		},
-		organizationId: {
+		groupId: {
             type: String,
             default: null,
         },
@@ -54,7 +54,7 @@ export default {
         }
     },
 	watch: {
-        organizationId(newId, oldId) {
+        groupId(newId, oldId) {
             if (newId !== oldId) {
                 this.clearSelection();
             }
@@ -75,7 +75,7 @@ export default {
 
 			this.isFetching = true;
 			this.searchTimeout = setTimeout(async () => {
-				this.users = await usersService.search(query, this.organizationId);
+				this.users = await usersService.search(query, this.groupId);
 				this.isFetching = false;
 			}, 300);
 		},

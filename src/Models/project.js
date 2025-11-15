@@ -31,7 +31,7 @@ export class Project {
     /**
      * @type {string}
      */
-    organizationId = null;
+    groupId = null;
 
     /**
      * @type {string[]}
@@ -47,14 +47,14 @@ export class Project {
      * @param {string} address 
      * @param {string[]} members 
      */
-    constructor(name='', number='', description='', type=undefined, address='', members=[], organizationId = '') {
+    constructor(name='', number='', description='', type=undefined, address='', members=[], groupId = '') {
         this.name = name.trim();
         this.number = number.trim();
         this.description = description.trim();
         this.type = type;
         this.address = address.trim();
         this.members = members;
-        this.organizationId = organizationId.trim();
+        this.groupId = groupId.trim();
     }
 
     get isValid() {
@@ -68,7 +68,7 @@ export class Project {
             description: this.description,
             type: this.type,
             address: this.address,
-            organizationId: this.organizationId,
+            groupId: this.groupId,
             members: this.members,
         };
     }

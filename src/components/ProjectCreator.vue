@@ -62,8 +62,8 @@
                         class="form-row-item"
                         input-label="Organization*"
                         placeholder="Search for an organization..."
-                        :model-value="project.organizationId"
-                        @update:modelValue="project.organizationId = $event" />
+                        :model-value="project.groupId"
+                        @update:modelValue="project.groupId = $event" />
                 </div>
 				<div class="form-row">
 					<UsersFetcher
@@ -71,7 +71,7 @@
 						input-label="Project Team Members*"
 						placeholder="Select team members"
 						:model-value="project.members"
-						:organization-id="project.organizationId"
+						:group-id="project.groupId"
 						@update:modelValue="project.members = $event">
 					</UsersFetcher>
 				</div>

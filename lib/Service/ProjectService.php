@@ -59,7 +59,8 @@ class ProjectService {
         int    $type,
         array  $members,
         string $address,
-        string $description
+        string $description,
+        string $groupId,
     ): Project {
         $createdCircle = null;
         $createdBoard  = null;
@@ -67,8 +68,19 @@ class ProjectService {
         
         try {
             $owner = $this->userSession->getUser();
+            // check if the owner is an admin
+            $isAdmin = $this->groupManager->isInGroup($owner->getUID(), 'admin');
+            
+            if($isAdmin) {
+                $organization = $this->organizationMapper->findByGroupId($groupId);
+            } else {
+                $organization = $this->organizationMapper->findByUserId($owner->getUID());
+            }
 
-            $organization = $this->organizationMapper->findByUserId($owner->getUID());
+            if(!$organization) {
+                throw new OCSException('An organization must be found to create a project.');
+            }
+
             $subscription = $this->subscriptionMapper->findByOrganizationId($organization->getId());
 
             $plan  = $this->planMapper->find($subscription->getPlanId());

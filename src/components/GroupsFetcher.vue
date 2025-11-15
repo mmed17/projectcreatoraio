@@ -35,7 +35,7 @@ export default {
     name: 'GroupsFetcher',
     components: { NcSelect },
     props: {
-        modelValue: { // This will be the organizationId (string)
+        modelValue: { // This will be the groupId (string)
             type: String,
             default: null,
         },

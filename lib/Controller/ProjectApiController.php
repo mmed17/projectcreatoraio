@@ -45,6 +45,7 @@ class ProjectApiController extends Controller {
         string $number,
         int    $type,
         array  $members,
+        string $groupId = '',
         string $address = '',
         string $description = '',
     ): DataResponse {
@@ -56,7 +57,8 @@ class ProjectApiController extends Controller {
                 $type, 
                 $members, 
                 $address, 
-                $description
+                $description,
+                $groupId
             );
             
             return new DataResponse([
