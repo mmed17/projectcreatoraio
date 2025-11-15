@@ -57,13 +57,21 @@
 						:show-label="true"
 						:multiple="false" />
 				</div>
-
+				<div v-if="isAdmin" class="form-row"> 
+					<GroupsFetcher
+                        class="form-row-item"
+                        input-label="Organization*"
+                        placeholder="Search for an organization..."
+                        :model-value="project.organizationId"
+                        @update:modelValue="project.organizationId = $event" />
+                </div>
 				<div class="form-row">
 					<UsersFetcher
 						class="form-row-item"
 						input-label="Project Team Members*"
 						placeholder="Select team members"
 						:model-value="project.members"
+						:organization-id="project.organizationId"
 						@update:modelValue="project.members = $event">
 					</UsersFetcher>
 				</div>
@@ -89,14 +97,15 @@ import NcNoteCard from '@nextcloud/vue/components/NcNoteCard';
 import NcTextArea from '@nextcloud/vue/components/NcTextArea';
 import NcButton from '@nextcloud/vue/components/NcButton';
 import NcSelect from '@nextcloud/vue/components/NcSelect';
-
 import Plus from 'vue-material-design-icons/Plus.vue';
 
+import { getCurrentUser } from '@nextcloud/auth';
 import { PROJECT_TYPES } from '../macros/project-types';
 import { ProjectsService } from '../Services/projects';
 import { Project } from '../Models/project';
 
-import UsersFetcher from '../components/UsersFetcher.vue';
+import UsersFetcher from './UsersFetcher.vue';
+import GroupsFetcher from './GroupsFetcher.vue'
 
 const projectsService = ProjectsService.getInstance();
 
@@ -108,6 +117,7 @@ export default {
 		NcSelect,
 		NcNoteCard,
 		UsersFetcher,
+		GroupsFetcher,
 		NcTextArea,
 		Plus,
 	},
@@ -129,6 +139,9 @@ export default {
 			set(option) {
 				this.project.type = option ? option.id : null;
 			},
+		},
+		isAdmin() {
+			return !!getCurrentUser()?.isAdmin;
 		},
 	},
 	methods: {

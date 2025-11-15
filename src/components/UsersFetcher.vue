@@ -14,9 +14,9 @@
 
 <script>
 import NcSelectUsers from '@nextcloud/vue/components/NcSelectUsers'
-import { UsersSerice } from '../Services/users';
+import { UsersService } from '../Services/users';
 
-const usersService = UsersSerice.getInstance();
+const usersService = UsersService.getInstance();
 
 export default {
 	name: 'UsersFetcher',
@@ -39,7 +39,11 @@ export default {
 		multiple: {
 			type: Boolean,
 			default: () => true,
-		}
+		},
+		organizationId: {
+            type: String,
+            default: null,
+        },
     },
     data() {
         return {
@@ -47,6 +51,13 @@ export default {
 			searchTimeout: null,
 			isFetching: false,
 			trackedUsers: [],
+        }
+    },
+	watch: {
+        organizationId(newId, oldId) {
+            if (newId !== oldId) {
+                this.clearSelection();
+            }
         }
     },
 	computed: {
@@ -64,7 +75,7 @@ export default {
 
 			this.isFetching = true;
 			this.searchTimeout = setTimeout(async () => {
-				this.users = await usersService.search(query);
+				this.users = await usersService.search(query, this.organizationId);
 				this.isFetching = false;
 			}, 300);
 		},
@@ -81,7 +92,12 @@ export default {
 			}, []);
 
 			this.$emit('update:modelValue', usersId);
-		}
+		},
+		clearSelection() {
+            this.users = []; // Clear dropdown options
+            this.trackedUsers = [];
+            this.$emit('update:modelValue', []); // Clear parent v-model
+        }
     }
 }
 </script>

@@ -121,12 +121,12 @@ import { getCurrentUser } from '@nextcloud/auth'
 import folderSvg from '@mdi/svg/svg/folder.svg?raw'
 import UsersFetcher from './UsersFetcher.vue'
 import { PROJECT_TYPES } from '../macros/project-types';
-import { UsersSerice } from '../Services/users'
+import { UsersService } from '../Services/users'
 import { ProjectsService } from '../Services/projects'
 import { generateUrl, generateRemoteUrl } from '@nextcloud/router';
 import { createClient } from 'webdav';
 
-const usersService = UsersSerice.getInstance();
+const usersService = UsersService.getInstance();
 const projectsService = ProjectsService.getInstance();
 const client = createClient(generateRemoteUrl('dav'));
 

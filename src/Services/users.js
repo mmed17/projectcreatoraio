@@ -1,6 +1,7 @@
 import axios from "axios";
+import { generateOcsUrl } from '@nextcloud/router';
 
-export class UsersSerice {
+export class UsersService {
 
     instance = null;
 
@@ -14,7 +15,27 @@ export class UsersSerice {
             return this.instance;
         }
 
-        return new UsersSerice();
+        return new UsersService();
+    }
+
+    /**
+     * Search users, either globally or within a specific group.
+     * @param {string} query The search term
+     * @param {string|null} organizationId The group ID to search in (if any)
+     * @returns {Promise<any[]>}
+     */
+    async search(query, organizationId = null) {
+        if (!query.trim()) {
+            return [];
+        }
+
+        // If an organization is selected, use the new group-specific endpoint
+        if (organizationId) {
+            return this.searchInGroup(query, organizationId);
+        } 
+        
+        // Otherwise, use the old global search
+        return this.searchGlobal(query);
     }
 
     /**
@@ -22,7 +43,7 @@ export class UsersSerice {
      * @param {string} query 
      * @returns {Promise<any[]>}
      */
-    async search(query) {
+    async searchGlobal(query) {
         if (!query.trim()) {
             return [];
         }
@@ -87,6 +108,39 @@ export class UsersSerice {
             };
         } catch (error) {
             console.error(`Error getting details for user ${userId}:`, error);
+        }
+    }
+
+    async searchInGroup(query, organizationId) {
+        const url = generateOcsUrl(`cloud/groups/${organizationId}/users/details`, 2);
+        
+        try {
+            const response = await axios.get(url, {
+                params: {
+                    search: query,
+                    limit: 25,
+                    offset: 0,
+                },
+                headers: { 
+                    'OCS-APIRequest': 'true',
+                }
+            });
+
+            // This endpoint should return full user objects
+            const users = response.data.ocs.data.users;
+
+            // Format for NcSelectUsers
+            return Object.entries(users).map(([id, user]) => ({
+                id: user.id,
+                user: user.id,
+                label: user.displayName,
+                displayName: user.displayName,
+                subname: user.email,
+            }));
+
+        } catch (error) {
+            console.error(`Error searching users in group ${organizationId}:`, error);
+            return [];
         }
     }
 }
