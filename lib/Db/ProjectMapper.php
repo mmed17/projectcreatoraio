@@ -89,6 +89,19 @@ class ProjectMapper extends QBMapper {
         return $this->findEntities($qb);
     }
 
+    public function list(int $limit = null, int $offset = null) {
+        $qb = $this->db->getQueryBuilder();
+        
+        $qb->select('*')
+            ->from(self::TABLE_NAME)
+            ->orderBy('created_at', 'DESC')
+            ->setMaxResults($limit)
+            ->setFirstResult($offset);
+        
+        return $this->findEntities($qb);
+    }
+
+
     public function findByUserId(string $userId): array {
         $qb = $this->db->getQueryBuilder();
 

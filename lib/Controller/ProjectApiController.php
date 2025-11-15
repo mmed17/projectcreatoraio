@@ -7,7 +7,8 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\NoCSRFRequired;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCP\AppFramework\OCS\OCSNotFoundException;
-use OCP\AppFramework\Http\OCS\OCSForbiddenException; 
+use OCP\AppFramework\Http\OCS\OCSForbiddenException;
+use OCP\IGroupManager;
 use OCP\IUserSession;
 use OCP\IRequest;
 use Throwable;
@@ -21,6 +22,7 @@ class ProjectApiController extends Controller {
         protected IUserSession   $userSession,
         protected ProjectMapper  $projectMapper,
         protected ProjectService $projectService,
+        private IGroupManager $iGroupManager
     ) {
         parent::__construct($appName, $request);
         $this->request = $request;
@@ -81,7 +83,12 @@ class ProjectApiController extends Controller {
      */
     public function list(): DataResponse {
         $currentUser = $this->userSession->getUser();
-        $results = $this->projectMapper->findByUserId($currentUser->getUID());
+        $isAdmin = $this->iGroupManager->isInGroup($currentUser->getUID(), 'admin');
+        if($isAdmin) {
+            $results = $this->projectMapper->list();
+        } else {
+            $results = $this->projectMapper->findByUserId($currentUser->getUID());
+        }
         return new DataResponse($results);
     }
 
