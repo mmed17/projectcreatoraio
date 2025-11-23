@@ -107,16 +107,6 @@ class ProjectApiController extends Controller {
      * @NoCSRFRequired
      * @NoAdminRequired
      *
-     *  @return bool
-     */
-    public function updateProjectStatus(int $projectId, int $status): void {
-        $this->projectMapper->updateProjectStatus($projectId, $status);
-    }
-    
-    /**
-     * @NoCSRFRequired
-     * @NoAdminRequired
-     *
      *  @return DataResponse
      */
     public function getProjectByCircleId(string $circleId): DataResponse {
@@ -140,5 +130,75 @@ class ProjectApiController extends Controller {
     public function listByUser(string $userId): DataResponse {
         $projects = $this->projectMapper->findByUserId($userId);
         return new DataResponse($projects);
+    }
+
+    /**
+     * Update project details
+     *
+     * @NoCSRFRequired
+     * @AdminRequired
+     *
+     * @param int $id The Project ID (from route)
+     * * // Project Details
+     * @param string|null $name
+     * @param string|null $number
+     * @param int|null $type
+     * @param string|null $description
+     * * // Client Info
+     * @param string|null $client_name
+     * @param string|null $client_role
+     * @param string|null $client_phone
+     * @param string|null $client_email
+     * @param string|null $client_address
+     * * // Location Info
+     * @param string|null $loc_street
+     * @param string|null $loc_city
+     * @param string|null $loc_zip
+     * @param string|null $external_ref
+     * * // Timeline
+     * @param string|null $date_start
+     * @param string|null $date_end
+     * @param int|null $status
+     * * @return DataResponse
+     */
+    public function update(
+        int $id,
+        ?string $name = null,
+        ?string $number = null,
+        ?int $type = null,
+        ?string $description = null,
+        ?string $client_name = null,
+        ?string $client_role = null,
+        ?string $client_phone = null,
+        ?string $client_email = null,
+        ?string $client_address = null,
+        ?string $loc_street = null,
+        ?string $loc_city = null,
+        ?string $loc_zip = null,
+        ?string $external_ref = null,
+        ?string $date_start = null,
+        ?string $date_end = null,
+        ?int $status = null
+    ): DataResponse {
+        $updatedProject = $this->projectService->updateProjectDetails(
+            $id,
+            $name,
+            $number,
+            $type,
+            $description,
+            $client_name,
+            $client_role,
+            $client_phone,
+            $client_email,
+            $client_address,
+            $loc_street,
+            $loc_city,
+            $loc_zip,
+            $external_ref,
+            $date_start,
+            $date_end,
+            $status,
+        );
+        return new DataResponse($updatedProject);
     }
 }

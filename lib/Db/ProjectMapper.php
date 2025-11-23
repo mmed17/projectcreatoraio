@@ -130,20 +130,6 @@ class ProjectMapper extends QBMapper {
     }
 
     /**
-     * Updates the status of a given project.
-     *
-     * @param int $projectId The ID of the project to update.
-     * @param int $status The new status to set.
-     */
-    public function updateProjectStatus(int $projectId, int $status): void {
-        $qb = $this->db->getQueryBuilder();
-        $qb->update(self::TABLE_NAME)
-            ->set('status', $qb->createNamedParameter($status, IQueryBuilder::PARAM_INT))
-            ->where($qb->expr()->eq('id', $qb->createNamedParameter($projectId, IQueryBuilder::PARAM_INT)));
-        $qb->execute();
-    }
-
-    /**
      * Finds a project by its associated board_id.
      *
      * @param int $boardId The ID of the board.
@@ -157,7 +143,7 @@ class ProjectMapper extends QBMapper {
                $qb->expr()->eq('board_id', $qb->createNamedParameter($boardId, IQueryBuilder::PARAM_INT))
            );
         try {
-            $row = $qb->execute()->fetch();
+            $row = $qb->executeQuery()->fetch();
             return ($row === false) 
                 ? null 
                 : Project::fromRow($row);
@@ -190,5 +176,15 @@ class ProjectMapper extends QBMapper {
      */
     public function findAllPrivateFoldersByProject(int $projectId): array {
         return $this->linkMapper->findByProject($projectId);
+    }
+
+    /**
+     * Updates project details using the Project Entity.
+     * @param Project $project The project entity with updated values
+     * @return Project The updated entity
+     */
+    public function updateProjectDetails(Project $project): Project {
+        $project->setUpdatedAt(new DateTime());
+        return $this->update($project);
     }
 }

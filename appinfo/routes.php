@@ -33,8 +33,8 @@ return [
             "verb" => "GET",
         ],
         [
-            "name" => "project_api#updateProjectStatus",
-            "url" => "/api/v1/projects/{projectId}/status",
+            "name" => "project_api#update",
+            "url" => "/api/v1/projects/{id}", 
             "verb" => "PUT",
         ],
         [

@@ -378,4 +378,62 @@ class ProjectService {
         return $this->projectMapper->findByBoardId($boardId);
     }
 
+    public function updateProjectDetails(
+        int $id,
+        ?string $name = null,
+        ?string $number = null,
+        ?int $type = null,
+        ?string $description = null,
+        ?string $client_name = null,
+        ?string $client_role = null,
+        ?string $client_phone = null,
+        ?string $client_email = null,
+        ?string $client_address = null,
+        ?string $loc_street = null,
+        ?string $loc_city = null,
+        ?string $loc_zip = null,
+        ?string $external_ref = null,
+        ?string $date_start = null,
+        ?string $date_end = null,
+        ?int $status = null
+    ) {
+        // 1. Fetch the existing project
+        $project = $this->projectMapper->find($id);
+        if ($project === null) {
+            throw new OCSException("Project Not Found", 404);
+        }
+        
+        // 2. Update Fields (Only if sent in request)
+        if ($name !== null) $project->setName($name);
+        if ($number !== null) $project->setNumber($number);
+        if ($type !== null) $project->setType($type);
+        if ($description !== null) $project->setDescription($description);
+
+        // Client
+        if ($client_name !== null) $project->setClientName($client_name);
+        if ($client_role !== null) $project->setClientRole($client_role);
+        if ($client_phone !== null) $project->setClientPhone($client_phone);
+        if ($client_email !== null) $project->setClientEmail($client_email);
+        if ($client_address !== null) $project->setClientAddress($client_address);
+
+        // Location
+        if ($loc_street !== null) $project->setLocStreet($loc_street);
+        if ($loc_city !== null) $project->setLocCity($loc_city);
+        if ($loc_zip !== null) $project->setLocZip($loc_zip);
+        if ($external_ref !== null) $project->setExternalRef($external_ref);
+
+        // Timeline (Convert string dates to DateTime objects)
+        if ($date_start !== null) {
+            $project->setDateStart(empty($date_start) ? null : new \DateTime($date_start));
+        }
+        if ($date_end !== null) {
+            $project->setDateEnd(empty($date_end) ? null : new \DateTime($date_end));
+        }
+        if ($status !== null) $project->setStatus($status);
+
+        // 3. Save via Mapper
+        $updatedProject = $this->projectMapper->updateProjectDetails($project);
+        return $updatedProject;
+
+    }
 }
