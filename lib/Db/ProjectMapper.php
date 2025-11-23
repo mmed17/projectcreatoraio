@@ -23,7 +23,6 @@ class ProjectMapper extends QBMapper {
         string $name,
         string $number,
         int    $type,
-        string $address,
         string $description,
         string $ownerId,
         string $circleId,
@@ -32,13 +31,11 @@ class ProjectMapper extends QBMapper {
         string $folderPath,
         array  $privateFolders,
     ) {
-
 		$project = new Project();
         
         $project->setName($name);
         $project->setNumber($number);
         $project->setType($type);
-        $project->setAddress($address);
         $project->setDescription($description);
         $project->setOwnerId($ownerId);
         $project->setCircleId($circleId);

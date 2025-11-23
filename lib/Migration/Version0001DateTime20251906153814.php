@@ -42,9 +42,6 @@ class Version0001DateTime20251906153814 extends SimpleMigrationStep {
         $table->addColumn('type', 'integer', [
             'notnull' => true,
         ]);
-        $table->addColumn('address', 'string', [
-            'notnull' => true,
-        ]);
         $table->addColumn('description', 'text', [
             'notnull' => true,
         ]);

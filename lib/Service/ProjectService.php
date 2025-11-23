@@ -26,6 +26,7 @@ use OCP\AppFramework\OCS\OCSException;
 use OCP\IGroup;
 use OCP\IGroupManager;
 use OCA\GroupFolders\Folder\FolderManager;
+use OCA\GroupFolders\Mount\FolderStorageManager;
 use OCA\Provisioning_API\Db\Plan;
 use OCP\IDBConnection;
 use OCP\IUserManager;
@@ -47,6 +48,8 @@ class ProjectService {
         protected FolderManager $folderManager,
         protected IDBConnection $db,
         protected IUserManager $userManager,
+        private readonly FolderStorageManager $folderStorageManager,
+
     ) {}
 
     /**
@@ -58,7 +61,6 @@ class ProjectService {
         string $number,
         int    $type,
         array  $members,
-        string $address,
         string $description,
         string $groupId,
     ): Project {
@@ -125,7 +127,6 @@ class ProjectService {
                 $name, 
                 $number, 
                 $type, 
-                $address, 
                 $description,
                 $owner->getUID(),
                 $createdCircle->getSingleId(),
@@ -237,6 +238,9 @@ class ProjectService {
         );
         
         $groupFolderId = $this->folderManager->createFolder($sharedFolderName);
+        ['storage_id' => $storageId, 'root_id' => $rootId] = $this->folderStorageManager->getRootAndStorageIdForFolder(
+            $groupFolderId
+        );
 
         $this->folderManager->addApplicableGroup($groupFolderId, $group->getGID());
         $this->folderManager->setFolderQuota($groupFolderId, $plan->getSharedStoragePerProject());
@@ -270,10 +274,7 @@ class ProjectService {
         }
 
         return [
-            'shared' => [
-                'id' => $groupFolderId,
-                'name' => $sharedFolderName
-            ],
+            'shared' => ['id' => $rootId, 'name' => $sharedFolderName],
             'private' => $privateFolders, 
         ];
     }
@@ -402,7 +403,7 @@ class ProjectService {
         if ($project === null) {
             throw new OCSException("Project Not Found", 404);
         }
-        
+
         // 2. Update Fields (Only if sent in request)
         if ($name !== null) $project->setName($name);
         if ($number !== null) $project->setNumber($number);

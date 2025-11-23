@@ -26,11 +26,6 @@ export class Project {
     /**
      * @type {string}
      */
-    address = null;
-
-    /**
-     * @type {string}
-     */
     groupId = null;
 
     /**
@@ -44,15 +39,13 @@ export class Project {
      * @param {string} number 
      * @param {string} description 
      * @param {number} type 
-     * @param {string} address 
      * @param {string[]} members 
      */
-    constructor(name='', number='', description='', type=undefined, address='', members=[], groupId = '') {
+    constructor(name='', number='', description='', type=undefined, members=[], groupId = '') {
         this.name = name.trim();
         this.number = number.trim();
         this.description = description.trim();
         this.type = type;
-        this.address = address.trim();
         this.members = members;
         this.groupId = groupId.trim();
     }
@@ -67,7 +60,6 @@ export class Project {
             number: this.number,
             description: this.description,
             type: this.type,
-            address: this.address,
             groupId: this.groupId,
             members: this.members,
         };

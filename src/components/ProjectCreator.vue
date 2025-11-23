@@ -40,15 +40,6 @@
 				</div>
 
 				<div class="form-row">
-					<NcTextField v-model="project.address"
-						class="form-row-item"
-						label="Client Address or Location"
-						placeholder="e.g., 123 Innovation Drive, Tech City"
-						:show-label="true"
-						input-label="Client Address or Location" />
-				</div>
-
-				<div class="form-row">
 					<NcSelect v-model="selectedProjectType"
 						class="form-row-item"
 						placeholder="Select project type"
