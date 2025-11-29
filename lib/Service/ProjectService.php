@@ -30,6 +30,7 @@ use OCA\GroupFolders\Mount\FolderStorageManager;
 use OCA\Provisioning_API\Db\Plan;
 use OCP\IDBConnection;
 use OCP\IUserManager;
+use OCA\Excalidraw\Service\ExcalidrawAPIService;
 
 class ProjectService {
     public function __construct(
@@ -49,7 +50,7 @@ class ProjectService {
         protected IDBConnection $db,
         protected IUserManager $userManager,
         private readonly FolderStorageManager $folderStorageManager,
-
+        private ExcalidrawAPIService $excalidrawApiService,
     ) {}
 
     /**
@@ -109,6 +110,11 @@ class ProjectService {
                 $createdCircle->getSingleId()
             );
 
+            $createdWhiteBoardId = $this->createWhiteBoard(
+                $owner->getUID(),
+                $name
+            );
+
             $group = $this->createGroupForMembers(
                 array_merge($members, [$owner->getUID()]),
                 $name
@@ -134,6 +140,7 @@ class ProjectService {
                 $createdFolders["shared"]["id"],
                 $createdFolders["shared"]["name"],
                 $createdFolders["private"],
+                $createdWhiteBoardId,
             );
 
             return $project;
@@ -219,6 +226,14 @@ class ProjectService {
         );
 
         return $board;
+    }
+
+    /**
+     * Creates a white board
+     */
+    private function createWhiteBoard(string $userId, string $name) {
+        $board = $this->excalidrawApiService->newBoard($userId, $name);
+        return $board['id'];
     }
 
     /**

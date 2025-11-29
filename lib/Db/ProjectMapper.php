@@ -30,6 +30,7 @@ class ProjectMapper extends QBMapper {
         int    $folderId,
         string $folderPath,
         array  $privateFolders,
+        string $whiteBoardId,
     ) {
 		$project = new Project();
         
@@ -43,7 +44,8 @@ class ProjectMapper extends QBMapper {
         $project->setFolderId($folderId);
         $project->setFolderPath($folderPath);
         $project->setOrganizationId($organization->getId());
-
+        $project->setWhiteBoardId($whiteBoardId);
+        
         $now = new DateTime();
         $project->setCreatedAt($now);
         $project->setUpdatedAt($now);

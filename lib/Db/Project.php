@@ -41,6 +41,7 @@ class Project extends Entity implements JsonSerializable {
     public    string|null $folderPath  = null;
     protected int|null    $status      = null;
     protected int|null    $organizationId = null;
+    protected string|null    $whiteBoardId = null;
     protected DateTime|null $createdAt = null;
     protected DateTime|null $updatedAt = null;
 
@@ -76,6 +77,7 @@ class Project extends Entity implements JsonSerializable {
         $this->addType('folderPath',  Types::STRING);
         $this->addType('status',      Types::INTEGER);
         $this->addType('organization_id', Types::INTEGER);
+        $this->addType('white_board_id', Types::STRING);
         $this->addType('createdAt',   Types::DATETIME);
         $this->addType('updatedAt',   Types::DATETIME);
     }
@@ -113,6 +115,7 @@ class Project extends Entity implements JsonSerializable {
             'folderPath' => $this->folderPath,
             'status'     => $this->status,
             'organization_id' => $this->organizationId,
+            'white_board_id' => $this->whiteBoardId,
             'createdAt'  => $this->createdAt,
             'updatedAt'  => $this->updatedAt
         ];
