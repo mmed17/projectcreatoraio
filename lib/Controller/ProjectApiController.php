@@ -13,54 +13,60 @@ use OCP\IUserSession;
 use OCP\IRequest;
 use Throwable;
 
-class ProjectApiController extends Controller {
+class ProjectApiController extends Controller
+{
     public const APP_ID = 'projectcreatoraio';
 
     public function __construct(
         string $appName,
         IRequest $request,
-        protected IUserSession   $userSession,
-        protected ProjectMapper  $projectMapper,
+        protected IUserSession $userSession,
+        protected ProjectMapper $projectMapper,
         protected ProjectService $projectService,
         private IGroupManager $iGroupManager
     ) {
         parent::__construct($appName, $request);
         $this->request = $request;
     }
-    
+
     /**
      * @NoCSRFRequired
      * @NoAdminRequired
      *
      *  @return bool
      */
-    public function get(int $projectId) {
+    public function get(int $projectId)
+    {
         return $this->projectMapper->find($projectId);
     }
 
-     /**
+    /**
      * Create a new project
      * @NoCSRFRequired
      */
     public function create(
         string $name,
         string $number,
-        int    $type,
-        array  $members,
+        int $type,
+        array $members,
         string $groupId = '',
         string $description = '',
+        ?string $date_start = null,
+        ?string $date_end = null,
     ): DataResponse {
 
         try {
             $project = $this->projectService->createProject(
-                $name, 
-                $number, 
-                $type, 
-                $members, 
+                $name,
+                $number,
+                $type,
+                $members,
                 $description,
-                $groupId
+                $groupId,
+                $date_start,
+                $date_end
             );
-            
+
             return new DataResponse([
                 'message' => 'Project created successfully',
                 'projectId' => $project->getId(),
@@ -73,16 +79,18 @@ class ProjectApiController extends Controller {
         }
     }
 
+
     /**
      * @NoCSRFRequired
      * @NoAdminRequired
      *
      *  @return DataResponse
      */
-    public function list(): DataResponse {
+    public function list(): DataResponse
+    {
         $currentUser = $this->userSession->getUser();
         $isAdmin = $this->iGroupManager->isInGroup($currentUser->getUID(), 'admin');
-        if($isAdmin) {
+        if ($isAdmin) {
             $results = $this->projectMapper->list();
         } else {
             $results = $this->projectMapper->findByUserId($currentUser->getUID());
@@ -96,22 +104,39 @@ class ProjectApiController extends Controller {
      *
      *  @return DataResponse
      */
-    public function getProjectFiles(int $projectId): DataResponse {
+    public function getProjectFiles(int $projectId): DataResponse
+    {
         $files = $this->projectService->getProjectFiles($projectId);
         return new DataResponse(['files' => $files]);
     }
-    
+
     /**
      * @NoCSRFRequired
      * @NoAdminRequired
      *
      *  @return DataResponse
      */
-    public function getProjectByCircleId(string $circleId): DataResponse {
+    public function getProjectByCircleId(string $circleId): DataResponse
+    {
         $project = $this->projectMapper->findByCircleId($circleId);
         return new DataResponse([
             'project' => $project
         ]);
+    }
+
+    /**
+     * @NoCSRFRequired
+     * @NoAdminRequired
+     *
+     *  @return DataResponse
+     */
+    public function getByBoardId(int $boardId): DataResponse
+    {
+        $project = $this->projectMapper->findByBoardId($boardId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project not found for board $boardId");
+        }
+        return new DataResponse($project);
     }
 
     /**
@@ -125,7 +150,8 @@ class ProjectApiController extends Controller {
      * @throws OCSForbiddenException if the current user is not an admin
      * @throws OCSNotFoundException if the specified user does not exist
      */
-    public function listByUser(string $userId): DataResponse {
+    public function listByUser(string $userId): DataResponse
+    {
         $projects = $this->projectMapper->findByUserId($userId);
         return new DataResponse($projects);
     }

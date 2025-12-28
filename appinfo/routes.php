@@ -28,13 +28,18 @@ return [
             "verb" => "GET",
         ],
         [
+            "name" => "project_api#getByBoardId",
+            "url" => "/api/v1/projects/board/{boardId}",
+            "verb" => "GET",
+        ],
+        [
             "name" => "project_api#getProjectFiles",
             "url" => "/api/v1/projects/{projectId}/files",
             "verb" => "GET",
         ],
         [
             "name" => "project_api#update",
-            "url" => "/api/v1/projects/{id}", 
+            "url" => "/api/v1/projects/{id}",
             "verb" => "PUT",
         ],
         [

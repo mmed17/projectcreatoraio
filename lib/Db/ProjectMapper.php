@@ -9,7 +9,8 @@ use DateTime;
 use OCA\Provisioning_API\Db\Organization;
 use OCP\AppFramework\Db\DoesNotExistException;
 
-class ProjectMapper extends QBMapper {
+class ProjectMapper extends QBMapper
+{
     public const TABLE_NAME = "custom_projects";
     public function __construct(
         IDBConnection $db,
@@ -22,18 +23,20 @@ class ProjectMapper extends QBMapper {
         Organization $organization,
         string $name,
         string $number,
-        int    $type,
+        int $type,
         string $description,
         string $ownerId,
         string $circleId,
         string $boardId,
-        int    $folderId,
+        int $folderId,
         string $folderPath,
-        array  $privateFolders,
+        array $privateFolders,
         string $whiteBoardId,
+        ?string $dateStart = null,
+        ?string $dateEnd = null,
     ) {
-		$project = new Project();
-        
+        $project = new Project();
+
         $project->setName($name);
         $project->setNumber($number);
         $project->setType($type);
@@ -45,12 +48,21 @@ class ProjectMapper extends QBMapper {
         $project->setFolderPath($folderPath);
         $project->setOrganizationId($organization->getId());
         $project->setWhiteBoardId($whiteBoardId);
-        
+
+        // Set dates if provided
+        if ($dateStart !== null) {
+            $project->setDateStart(new DateTime($dateStart));
+        }
+        if ($dateEnd !== null) {
+            $project->setDateEnd(new DateTime($dateEnd));
+        }
+
         $now = new DateTime();
         $project->setCreatedAt($now);
         $project->setUpdatedAt($now);
 
-		$insertedProject = $this->insert($project);
+
+        $insertedProject = $this->insert($project);
 
         foreach ($privateFolders as $privateFolder) {
             $this->linkMapper->createLink(
@@ -62,46 +74,50 @@ class ProjectMapper extends QBMapper {
         }
 
         return $insertedProject;
-	}
+    }
 
-    public function find(int $id) {
-		$qb = $this->db->getQueryBuilder();
-		$qb->select('*')
-			->from($this->getTableName())
-			->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)));
-        
+    public function find(int $id)
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')
+            ->from($this->getTableName())
+            ->where($qb->expr()->eq('id', $qb->createNamedParameter($id, IQueryBuilder::PARAM_INT)));
+
         try {
             return $this->findEntity($qb);
-        } catch(DoesNotExistException $e) {
+        } catch (DoesNotExistException $e) {
             return null;
         }
-	}
+    }
 
-    public function search(string $name, int $limit, int $offset) {
+    public function search(string $name, int $limit, int $offset)
+    {
         $qb = $this->db->getQueryBuilder();
 
         $searchTerm = strtolower($name);
         $qb->select('*')
             ->from(self::TABLE_NAME)
             ->where('LOWER(name) LIKE ' . $qb->createNamedParameter('%' . $searchTerm . '%'));
-        
+
         return $this->findEntities($qb);
     }
 
-    public function list(int $limit = null, int $offset = null) {
+    public function list(int $limit = null, int $offset = null)
+    {
         $qb = $this->db->getQueryBuilder();
-        
+
         $qb->select('*')
             ->from(self::TABLE_NAME)
             ->orderBy('created_at', 'DESC')
             ->setMaxResults($limit)
             ->setFirstResult($offset);
-        
+
         return $this->findEntities($qb);
     }
 
 
-    public function findByUserId(string $userId): array {
+    public function findByUserId(string $userId): array
+    {
         $qb = $this->db->getQueryBuilder();
 
         $qb->select('p.*')
@@ -120,11 +136,12 @@ class ProjectMapper extends QBMapper {
         return $this->findEntities($qb);
     }
 
-    public function findByCircleId(string $circleId) {
+    public function findByCircleId(string $circleId)
+    {
         $qb = $this->db->getQueryBuilder();
         $qb->select('p.*')
-           ->from(self::TABLE_NAME, 'p')
-           ->where($qb->expr()->eq('p.circle_id', $qb->createNamedParameter($circleId)));
+            ->from(self::TABLE_NAME, 'p')
+            ->where($qb->expr()->eq('p.circle_id', $qb->createNamedParameter($circleId)));
         return $this->findEntity($qb);
     }
 
@@ -134,24 +151,26 @@ class ProjectMapper extends QBMapper {
      * @param int $boardId The ID of the board.
      * @return Project|null The found project entity or null if not found.
      */
-    public function findByBoardId($boardId) {        
+    public function findByBoardId($boardId)
+    {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')
-           ->from(self::TABLE_NAME)
-           ->where(
-               $qb->expr()->eq('board_id', $qb->createNamedParameter($boardId, IQueryBuilder::PARAM_INT))
-           );
+            ->from(self::TABLE_NAME)
+            ->where(
+                $qb->expr()->eq('board_id', $qb->createNamedParameter($boardId, IQueryBuilder::PARAM_INT))
+            );
         try {
             $row = $qb->executeQuery()->fetch();
-            return ($row === false) 
-                ? null 
+            return ($row === false)
+                ? null
                 : Project::fromRow($row);
         } catch (DoesNotExistException $e) {
             return null;
         }
     }
 
-    public function findByCardId(int $cardId): ?Project {
+    public function findByCardId(int $cardId): ?Project
+    {
         $qb = $this->db->getQueryBuilder();
         $qb->select('p.*')
             ->from(self::TABLE_NAME, 'p')
@@ -166,14 +185,16 @@ class ProjectMapper extends QBMapper {
         }
     }
 
-    public function findPrivateFolderForUser(int $projectId, string $userId): ?PrivateFolderLink {
+    public function findPrivateFolderForUser(int $projectId, string $userId): ?PrivateFolderLink
+    {
         return $this->linkMapper->findByProjectAndUser($projectId, $userId);
     }
 
     /**
      * @return PrivateFolderLink[]
      */
-    public function findAllPrivateFoldersByProject(int $projectId): array {
+    public function findAllPrivateFoldersByProject(int $projectId): array
+    {
         return $this->linkMapper->findByProject($projectId);
     }
 
@@ -182,7 +203,8 @@ class ProjectMapper extends QBMapper {
      * @param Project $project The project entity with updated values
      * @return Project The updated entity
      */
-    public function updateProjectDetails(Project $project): Project {
+    public function updateProjectDetails(Project $project): Project
+    {
         $project->setUpdatedAt(new DateTime());
         return $this->update($project);
     }

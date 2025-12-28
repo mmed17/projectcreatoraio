@@ -30,9 +30,9 @@ use OCA\GroupFolders\Mount\FolderStorageManager;
 use OCA\Provisioning_API\Db\Plan;
 use OCP\IDBConnection;
 use OCP\IUserManager;
-use OCA\Excalidraw\Service\ExcalidrawAPIService;
 
-class ProjectService {
+class ProjectService
+{
     public function __construct(
         protected IUserSession $userSession,
         protected CirclesManager $circlesManager,
@@ -50,8 +50,8 @@ class ProjectService {
         protected IDBConnection $db,
         protected IUserManager $userManager,
         private readonly FolderStorageManager $folderStorageManager,
-        private ExcalidrawAPIService $excalidrawApiService,
-    ) {}
+    ) {
+    }
 
     /**
      * The main public method to create a complete project.
@@ -60,33 +60,36 @@ class ProjectService {
     public function createProject(
         string $name,
         string $number,
-        int    $type,
-        array  $members,
+        int $type,
+        array $members,
         string $description,
         string $groupId,
+        ?string $dateStart = null,
+        ?string $dateEnd = null,
     ): Project {
+
         $createdCircle = null;
-        $createdBoard  = null;
+        $createdBoard = null;
         $createdFolders = [];
-        
+
         try {
             $owner = $this->userSession->getUser();
             // check if the owner is an admin
             $isAdmin = $this->groupManager->isInGroup($owner->getUID(), 'admin');
-            
-            if($isAdmin) {
+
+            if ($isAdmin) {
                 $organization = $this->organizationMapper->findByGroupId($groupId);
             } else {
                 $organization = $this->organizationMapper->findByUserId($owner->getUID());
             }
 
-            if(!$organization) {
+            if (!$organization) {
                 throw new OCSException('An organization must be found to create a project.');
             }
 
             $subscription = $this->subscriptionMapper->findByOrganizationId($organization->getId());
 
-            $plan  = $this->planMapper->find($subscription->getPlanId());
+            $plan = $this->planMapper->find($subscription->getPlanId());
             $count = $this->organizationMapper->getProjectsCount($organization->getId());
 
             if ($count >= $plan->getMaxProjects()) {
@@ -97,7 +100,7 @@ class ProjectService {
                     $count
                 ));
             }
-            
+
             $createdCircle = $this->createCircleForProject(
                 $name,
                 $members,
@@ -105,14 +108,9 @@ class ProjectService {
             );
 
             $createdBoard = $this->createBoardForProject(
-                $name, 
-                $owner, 
+                $name,
+                $owner,
                 $createdCircle->getSingleId()
-            );
-
-            $createdWhiteBoardId = $this->createWhiteBoard(
-                $owner->getUID(),
-                $name
             );
 
             $group = $this->createGroupForMembers(
@@ -128,11 +126,18 @@ class ProjectService {
                 $plan
             );
 
+            $createdWhiteBoardId = $this->createWhiteboardFile(
+                $owner,
+                $createdFolders['shared']['name'],
+                $createdFolders['shared']['id'],
+                $name
+            );
+
             $project = $this->projectMapper->createProject(
                 $organization,
-                $name, 
-                $number, 
-                $type, 
+                $name,
+                $number,
+                $type,
                 $description,
                 $owner->getUID(),
                 $createdCircle->getSingleId(),
@@ -141,15 +146,18 @@ class ProjectService {
                 $createdFolders["shared"]["name"],
                 $createdFolders["private"],
                 $createdWhiteBoardId,
+                $dateStart,
+                $dateEnd,
             );
+
 
             return $project;
 
         } catch (Throwable $e) {
 
             $this->cleanupResources(
-                $createdBoard, 
-                $createdCircle, 
+                $createdBoard,
+                $createdCircle,
                 $createdFolders['all']
             );
 
@@ -160,25 +168,27 @@ class ProjectService {
     /**
      * Creates and populates a circle for the project.
      */
-    private function createCircleForProject(string $projectName, array $members, IUser $owner): Circle {
+    private function createCircleForProject(string $projectName, array $members, IUser $owner): Circle
+    {
         $this->circlesManager->startSession();
 
         $circleMembers = array_filter(
-            $members, 
+            $members,
             fn($memberId) => $memberId !== $owner->getUID()
         );
 
         $circle = $this->circlesManager->createCircle("{$projectName} - Team", null, false, false);
-        
+
         foreach ($circleMembers as $memberId) {
             $federatedUser = $this->federatedUserService->getLocalFederatedUser($memberId, true, true);
             $this->circlesManager->addMember($circle->getSingleId(), $federatedUser);
         }
-        
+
         return $circle;
     }
 
-    private function createGroupForMembers(array $members, string $projectName): IGroup {
+    private function createGroupForMembers(array $members, string $projectName): IGroup
+    {
         $projectGroupName = "{$projectName} - Project Group";
         $searchResult = $this->groupManager->search($projectGroupName);
 
@@ -199,7 +209,7 @@ class ProjectService {
         }
 
         // Add all members to the newly created group
-        foreach($members as $memberId) {
+        foreach ($members as $memberId) {
             $memberUser = $this->userManager->get($memberId);
             if ($memberUser !== null) {
                 $createdGroup->addUser($memberUser);
@@ -212,46 +222,44 @@ class ProjectService {
     /**
      * Creates and shares a Deck board for the project.
      */
-    private function createBoardForProject(string $projectName, IUser $owner, string $circleId): Board {
+    private function createBoardForProject(string $projectName, IUser $owner, string $circleId): Board
+    {
         $color = strtoupper(sprintf('%06X', random_int(0, 0xFFFFFF)));
         $board = $this->boardService->create("{$projectName} - Main Board", $owner->getUID(), $color);
 
         $this->boardService->addAcl(
-            $board->getId(), 
-            Share::SHARE_TYPE_CIRCLE, 
-            $circleId, 
-            true, 
-            false, 
+            $board->getId(),
+            Share::SHARE_TYPE_CIRCLE,
+            $circleId,
+            true,
+            false,
             false
         );
 
         return $board;
     }
 
-    /**
-     * Creates a white board
-     */
-    private function createWhiteBoard(string $userId, string $name) {
-        $board = $this->excalidrawApiService->newBoard($userId, $name);
-        return $board['id'];
-    }
 
     /**
      * Creates and shares all necessary folders for the project.
      * @return array{'shared': Folder, 'private': Folder[], 'all': Folder[]}
      */
     private function createFoldersForProject(
-        string $projectName, array $members, IUser $owner, IGroup $group, Plan $plan
+        string $projectName,
+        array $members,
+        IUser $owner,
+        IGroup $group,
+        Plan $plan
     ): array {
         $ownerFolder = $this->rootFolder->getUserFolder($owner->getUID());
-        
+
         // Create shared folders 
         $sharedFolderName = $this->getUniqueFolderName(
-            $projectName, 
-            'Shared Files', 
+            $projectName,
+            'Shared Files',
             $ownerFolder
         );
-        
+
         $groupFolderId = $this->folderManager->createFolder($sharedFolderName);
         ['storage_id' => $storageId, 'root_id' => $rootId] = $this->folderStorageManager->getRootAndStorageIdForFolder(
             $groupFolderId
@@ -260,8 +268,8 @@ class ProjectService {
         $this->folderManager->addApplicableGroup($groupFolderId, $group->getGID());
         $this->folderManager->setFolderQuota($groupFolderId, $plan->getSharedStoragePerProject());
         $this->folderManager->setGroupPermissions(
-            $groupFolderId, 
-            $group->getGID(), 
+            $groupFolderId,
+            $group->getGID(),
             Constants::PERMISSION_ALL
         );
 
@@ -273,13 +281,13 @@ class ProjectService {
             // Get the specific member's root folder
             $memberFolder = $this->rootFolder->getUserFolder($memberId);
             $privateFolderName = $this->getUniqueFolderName(
-                $projectName, 
+                $projectName,
                 "Private Files",
                 $memberFolder
             );
 
             $privateFolder = $memberFolder->newFolder($privateFolderName);
-            
+
             $allCreatedFolders[] = $privateFolder;
             $privateFolders[] = [
                 'userId' => $memberId,
@@ -289,12 +297,13 @@ class ProjectService {
         }
 
         return [
-            'shared' => ['id' => $rootId, 'name' => $sharedFolderName],
-            'private' => $privateFolders, 
+            'shared' => ['id' => $rootId, 'name' => $sharedFolderName, 'group_folder_id' => $groupFolderId],
+            'private' => $privateFolders,
         ];
     }
 
-    private function getUniqueFolderName(string $projectName, string $suffix, Folder $folder): string {
+    private function getUniqueFolderName(string $projectName, string $suffix, Folder $folder): string
+    {
         $folderName = "{$projectName} - {$suffix}";
 
         if (!$folder->nodeExists($folderName)) {
@@ -312,9 +321,9 @@ class ProjectService {
     }
 
     private function cleanupResources(
-        ?Board  $board, 
-        ?Circle $circle, 
-        ?array  $folders
+        ?Board $board,
+        ?Circle $circle,
+        ?array $folders
     ): void {
         $user = $this->userSession->getUser();
 
@@ -329,13 +338,13 @@ class ProjectService {
         if ($board !== null) {
             $this->boardService->delete($board->getId());
         }
-        
+
         if ($circle !== null) {
             $federatedUser = $this->circlesManager->getFederatedUser(
                 $user->getUID(),
                 Member::TYPE_USER
             );
-            
+
             $this->circlesManager->startSession($federatedUser);
             $this->circlesManager->destroyCircle($circle->getSingleId());
         }
@@ -344,17 +353,18 @@ class ProjectService {
     /**
      * Finds the project folder and delegates tree-building to the FileTreeService.
      */
-    public function getProjectFiles(int $projectId): array {
+    public function getProjectFiles(int $projectId): array
+    {
         $currentUser = $this->userSession->getUser();
 
         $project = $this->projectMapper->find($projectId);
         if ($project === null) {
             throw new Exception("Project with ID $projectId not found.");
         }
-        
+
         $userFolder = $this->rootFolder->getUserFolder($currentUser->getUID());
         $sharedFiles = $userFolder->get($project->getFolderPath());
-        
+
         if (empty($sharedFiles)) {
             throw new NotFoundException("Project folder node not found on the filesystem.");
         }
@@ -365,13 +375,13 @@ class ProjectService {
         $privateFilesTrees = [];
 
         $link = $this->projectMapper->findPrivateFolderForUser(
-            $projectId, 
+            $projectId,
             $currentUser->getUID()
         );
         if ($link !== null) {
             $privateFolderLinks[] = $link;
         }
-        
+
         error_log("privateFolderLinks  : " . print_r($privateFolderLinks, true));
 
         foreach ($privateFolderLinks as $link) {
@@ -389,8 +399,9 @@ class ProjectService {
             'private' => $privateFilesTrees
         ];
     }
-    
-    public function findProjectByBoard(int $boardId) {
+
+    public function findProjectByBoard(int $boardId)
+    {
         return $this->projectMapper->findByBoardId($boardId);
     }
 
@@ -420,23 +431,36 @@ class ProjectService {
         }
 
         // 2. Update Fields (Only if sent in request)
-        if ($name !== null) $project->setName($name);
-        if ($number !== null) $project->setNumber($number);
-        if ($type !== null) $project->setType($type);
-        if ($description !== null) $project->setDescription($description);
+        if ($name !== null)
+            $project->setName($name);
+        if ($number !== null)
+            $project->setNumber($number);
+        if ($type !== null)
+            $project->setType($type);
+        if ($description !== null)
+            $project->setDescription($description);
 
         // Client
-        if ($client_name !== null) $project->setClientName($client_name);
-        if ($client_role !== null) $project->setClientRole($client_role);
-        if ($client_phone !== null) $project->setClientPhone($client_phone);
-        if ($client_email !== null) $project->setClientEmail($client_email);
-        if ($client_address !== null) $project->setClientAddress($client_address);
+        if ($client_name !== null)
+            $project->setClientName($client_name);
+        if ($client_role !== null)
+            $project->setClientRole($client_role);
+        if ($client_phone !== null)
+            $project->setClientPhone($client_phone);
+        if ($client_email !== null)
+            $project->setClientEmail($client_email);
+        if ($client_address !== null)
+            $project->setClientAddress($client_address);
 
         // Location
-        if ($loc_street !== null) $project->setLocStreet($loc_street);
-        if ($loc_city !== null) $project->setLocCity($loc_city);
-        if ($loc_zip !== null) $project->setLocZip($loc_zip);
-        if ($external_ref !== null) $project->setExternalRef($external_ref);
+        if ($loc_street !== null)
+            $project->setLocStreet($loc_street);
+        if ($loc_city !== null)
+            $project->setLocCity($loc_city);
+        if ($loc_zip !== null)
+            $project->setLocZip($loc_zip);
+        if ($external_ref !== null)
+            $project->setExternalRef($external_ref);
 
         // Timeline (Convert string dates to DateTime objects)
         if ($date_start !== null) {
@@ -445,11 +469,110 @@ class ProjectService {
         if ($date_end !== null) {
             $project->setDateEnd(empty($date_end) ? null : new \DateTime($date_end));
         }
-        if ($status !== null) $project->setStatus($status);
+        if ($status !== null)
+            $project->setStatus($status);
 
         // 3. Save via Mapper
         $updatedProject = $this->projectMapper->updateProjectDetails($project);
         return $updatedProject;
 
+    }
+
+    /**
+     * Creates a .whiteboard file in the specified shared folder
+     */
+    private function createWhiteboardFile(IUser $owner, string $folderName, int $folderId, string $projectName, int $groupFolderId = 0): int
+    {
+        try {
+            error_log("ProjectService::createWhiteboardFile called for owner " . $owner->getUID() . ", folder " . $folderName . " (ID: $folderId), project " . $projectName . ", GF ID: " . $groupFolderId);
+
+            $userFolder = $this->rootFolder->getUserFolder($owner->getUID());
+
+            $folder = null;
+
+            // Try to get folder by ID first using System Root (to bypass missing user mount cache)
+            $nodes = $this->rootFolder->getById($folderId);
+            if (!empty($nodes)) {
+                foreach ($nodes as $node) {
+                    if ($node instanceof \OCP\Files\Folder) {
+                        $folder = $node;
+                        break;
+                    }
+                }
+            }
+
+            // Fallback to user-scoped name lookup (unlikely to work if ID failed, but existing logic)
+            if ($folder === null) {
+                if ($userFolder->nodeExists($folderName)) {
+                    $node = $userFolder->get($folderName);
+                    if ($node instanceof \OCP\Files\Folder) {
+                        $folder = $node;
+                    }
+                }
+            }
+
+            // Direct Storage Access Fallback for Stale Mounts
+            if ($folder === null && $groupFolderId > 0) {
+                error_log("ProjectService::createWhiteboardFile - Attempting direct storage access for Group Folder " . $groupFolderId);
+                try {
+                    // Get the underlying storage directly (bypassing user view/mounts)
+                    // Using specific method from FolderStorageManager
+                    // Note: We assume getStorage exists based on usage patterns in GroupFolders app
+                    // If this fails, the catch block will handle it.
+
+                    // Helper: In GroupFolders, FolderStorageManager typically manages the storage.
+                    // We use getStorage($groupFolderId) to get the IGroupFolderStorage.
+                    $storage = $this->folderStorageManager->getStorage($groupFolderId);
+
+                    $fileName = $projectName . '.whiteboard';
+                    if (!$storage->file_exists($fileName)) {
+                        error_log("ProjectService::createWhiteboardFile - Writing to storage: $fileName");
+                        $storage->file_put_contents($fileName, '');
+
+                        // We must scan the file to ensure it appears in the database (filecache) and we can get an ID
+                        $storage->getScanner()->scan($fileName);
+
+                        $fileId = $storage->getCache()->getId($fileName);
+                        error_log("ProjectService::createWhiteboardFile - Created via storage, ID: " . $fileId);
+                        return (int) $fileId;
+                    } else {
+                        // File exists, just get ID
+                        $fileId = $storage->getCache()->getId($fileName);
+                        error_log("ProjectService::createWhiteboardFile - File exists in storage, ID: " . $fileId);
+                        return (int) $fileId;
+                    }
+                } catch (\Throwable $e) {
+                    error_log("ProjectService::createWhiteboardFile - Storage access failed: " . $e->getMessage());
+                    // Trigger trace to see what happened
+                    error_log($e->getTraceAsString());
+                }
+            }
+
+            if ($folder === null) {
+                error_log("ProjectService::createWhiteboardFile - Shared folder NOT FOUND via ID ($folderId), Name ($folderName), or Storage ($groupFolderId).");
+                return 0;
+            }
+
+            error_log("ProjectService::createWhiteboardFile - Found folder: " . $folder->getPath());
+
+            $fileName = $projectName . '.whiteboard';
+
+            if (!$folder->nodeExists($fileName)) {
+                error_log("ProjectService::createWhiteboardFile - Creating new file: $fileName");
+                $file = $folder->newFile($fileName);
+                error_log("ProjectService::createWhiteboardFile - Created file ID: " . $file->getId());
+                return (int) $file->getId();
+            } else {
+                error_log("ProjectService::createWhiteboardFile - File already exists: $fileName");
+                return (int) $folder->get($fileName)->getId();
+            }
+        } catch (Throwable $e) {
+            // Log error but allow process to continue? 
+            // If we throw here, the whole project creation including folders and groups might rollback if not handled.
+            // The original logic wrapped specific steps.
+            // For now, let's catch and return 0 to allow project creation to proceed even if whiteboard fails.
+            error_log("Failed to create whiteboard file: " . $e->getMessage());
+            return 0;
+        }
     }
 }

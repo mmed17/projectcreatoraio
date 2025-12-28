@@ -66,6 +66,23 @@
 						@update:modelValue="project.members = $event">
 					</UsersFetcher>
 				</div>
+
+				<div class="form-row">
+					<NcTextField v-model="project.dateStart"
+						label="Request Date (Start)"
+						class="form-row-item"
+						type="date"
+						:show-label="true"
+						input-label="Request Date" />
+
+					<NcTextField v-model="project.dateEnd"
+						label="Desired Execution Date (End)"
+						class="form-row-item"
+						type="date"
+						:show-label="true"
+						input-label="Desired Execution Date" />
+				</div>
+
 				<NcButton
 					:disabled="isCreatingProject || !project.name || !project.number || isNaN(project.type) || project.members.length === 0"
 					type="primary"
