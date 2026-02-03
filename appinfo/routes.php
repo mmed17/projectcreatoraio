@@ -42,6 +42,27 @@ return [
             "url" => "/api/v1/projects/{id}",
             "verb" => "PUT",
         ],
+        // Timeline API routes
+        [
+            "name" => "timeline_api#index",
+            "url" => "/api/v1/projects/{projectId}/timeline",
+            "verb" => "GET",
+        ],
+        [
+            "name" => "timeline_api#create",
+            "url" => "/api/v1/projects/{projectId}/timeline",
+            "verb" => "POST",
+        ],
+        [
+            "name" => "timeline_api#update",
+            "url" => "/api/v1/projects/{projectId}/timeline/{id}",
+            "verb" => "PUT",
+        ],
+        [
+            "name" => "timeline_api#destroy",
+            "url" => "/api/v1/projects/{projectId}/timeline/{id}",
+            "verb" => "DELETE",
+        ],
         [
             "name" => "page#index",
             "url" => "/",
