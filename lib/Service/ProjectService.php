@@ -479,100 +479,167 @@ class ProjectService
     }
 
     /**
-     * Creates a .whiteboard file in the specified shared folder
+     * Creates a .whiteboard file in the specified shared folder.
+     * Optimized to avoid slow file scanning by using direct filecache insertion.
      */
     private function createWhiteboardFile(IUser $owner, string $folderName, int $folderId, string $projectName, int $groupFolderId = 0): int
     {
         try {
-            error_log("ProjectService::createWhiteboardFile called for owner " . $owner->getUID() . ", folder " . $folderName . " (ID: $folderId), project " . $projectName . ", GF ID: " . $groupFolderId);
-
-            $userFolder = $this->rootFolder->getUserFolder($owner->getUID());
-
-            $folder = null;
-
-            // Try to get folder by ID first using System Root (to bypass missing user mount cache)
-            $nodes = $this->rootFolder->getById($folderId);
-            if (!empty($nodes)) {
-                foreach ($nodes as $node) {
-                    if ($node instanceof \OCP\Files\Folder) {
-                        $folder = $node;
-                        break;
-                    }
-                }
-            }
-
-            // Fallback to user-scoped name lookup (unlikely to work if ID failed, but existing logic)
-            if ($folder === null) {
-                if ($userFolder->nodeExists($folderName)) {
-                    $node = $userFolder->get($folderName);
-                    if ($node instanceof \OCP\Files\Folder) {
-                        $folder = $node;
-                    }
-                }
-            }
-
-            // Direct Storage Access Fallback for Stale Mounts
-            if ($folder === null && $groupFolderId > 0) {
-                error_log("ProjectService::createWhiteboardFile - Attempting direct storage access for Group Folder " . $groupFolderId);
-                try {
-                    // Get the underlying storage directly (bypassing user view/mounts)
-                    // Using specific method from FolderStorageManager
-                    // Note: We assume getStorage exists based on usage patterns in GroupFolders app
-                    // If this fails, the catch block will handle it.
-
-                    // Helper: In GroupFolders, FolderStorageManager typically manages the storage.
-                    // We use getStorage($groupFolderId) to get the IGroupFolderStorage.
-                    $storage = $this->folderStorageManager->getStorage($groupFolderId);
-
-                    $fileName = $projectName . '.whiteboard';
-                    if (!$storage->file_exists($fileName)) {
-                        error_log("ProjectService::createWhiteboardFile - Writing to storage: $fileName");
-                        $storage->file_put_contents($fileName, '');
-
-                        // We must scan the file to ensure it appears in the database (filecache) and we can get an ID
-                        $storage->getScanner()->scan($fileName);
-
-                        $fileId = $storage->getCache()->getId($fileName);
-                        error_log("ProjectService::createWhiteboardFile - Created via storage, ID: " . $fileId);
-                        return (int) $fileId;
-                    } else {
-                        // File exists, just get ID
-                        $fileId = $storage->getCache()->getId($fileName);
-                        error_log("ProjectService::createWhiteboardFile - File exists in storage, ID: " . $fileId);
-                        return (int) $fileId;
-                    }
-                } catch (\Throwable $e) {
-                    error_log("ProjectService::createWhiteboardFile - Storage access failed: " . $e->getMessage());
-                    // Trigger trace to see what happened
-                    error_log($e->getTraceAsString());
-                }
-            }
-
-            if ($folder === null) {
-                error_log("ProjectService::createWhiteboardFile - Shared folder NOT FOUND via ID ($folderId), Name ($folderName), or Storage ($groupFolderId).");
-                return 0;
-            }
-
-            error_log("ProjectService::createWhiteboardFile - Found folder: " . $folder->getPath());
-
             $fileName = $projectName . '.whiteboard';
 
-            if (!$folder->nodeExists($fileName)) {
-                error_log("ProjectService::createWhiteboardFile - Creating new file: $fileName");
-                $file = $folder->newFile($fileName);
-                error_log("ProjectService::createWhiteboardFile - Created file ID: " . $file->getId());
-                return (int) $file->getId();
-            } else {
-                error_log("ProjectService::createWhiteboardFile - File already exists: $fileName");
-                return (int) $folder->get($fileName)->getId();
+            // Method 1: Try using Nextcloud Files API (fastest, auto-registers in filecache)
+            $userFolder = $this->rootFolder->getUserFolder($owner->getUID());
+
+            // Try to get folder by ID first
+            $folder = null;
+            $nodes = $this->rootFolder->getById($folderId);
+            foreach ($nodes as $node) {
+                if ($node instanceof \OCP\Files\Folder) {
+                    $folder = $node;
+                    break;
+                }
             }
+
+            // Fallback to name lookup
+            if ($folder === null && $userFolder->nodeExists($folderName)) {
+                $node = $userFolder->get($folderName);
+                if ($node instanceof \OCP\Files\Folder) {
+                    $folder = $node;
+                }
+            }
+
+            // If we found the folder via Files API, use it (this auto-registers, no scanning needed)
+            if ($folder !== null) {
+                if ($folder->nodeExists($fileName)) {
+                    return (int) $folder->get($fileName)->getId();
+                }
+                $file = $folder->newFile($fileName);
+                return (int) $file->getId();
+            }
+
+            // Method 2: Direct storage + direct filecache insertion (no scanning!)
+            if ($groupFolderId > 0) {
+                $storage = $this->folderStorageManager->getStorage($groupFolderId);
+                $cache = $storage->getCache();
+
+                // Check if file already exists in cache
+                $existingId = $cache->getId($fileName);
+                if ($existingId !== -1) {
+                    return (int) $existingId;
+                }
+
+                // Write the file to storage
+                $storage->file_put_contents($fileName, '');
+
+                // Get file metadata for direct cache insertion (INSTEAD of scanning)
+                $mtime = time();
+                $stat = $storage->stat($fileName);
+                $size = $stat['size'] ?? 0;
+                $mimetype = 'application/octet-stream';
+
+                // Get parent folder ID from cache
+                $parentId = $cache->getId('');
+                if ($parentId === -1) {
+                    $parentId = $folderId;
+                }
+
+                // Direct insert into filecache (much faster than scanning!)
+                $this->db->beginTransaction();
+                try {
+                    $query = $this->db->getQueryBuilder();
+                    $query->insert('filecache')
+                        ->values([
+                            'path' => $query->createNamedParameter($fileName),
+                            'path_hash' => $query->createNamedParameter(md5($fileName)),
+                            'parent' => $query->createNamedParameter($parentId, \PDO::PARAM_INT),
+                            'name' => $query->createNamedParameter($fileName),
+                            'mimetype' => $query->createNamedParameter(
+                                $this->getMimetypeId($mimetype)
+                            ),
+                            'mimepart' => $query->createNamedParameter(
+                                $this->getMimetypeId('application')
+                            ),
+                            'size' => $query->createNamedParameter($size, \PDO::PARAM_INT),
+                            'mtime' => $query->createNamedParameter($mtime, \PDO::PARAM_INT),
+                            'storage_mtime' => $query->createNamedParameter($mtime, \PDO::PARAM_INT),
+                            'storage' => $query->createNamedParameter(
+                                $this->getStorageNumericId($storage),
+                                \PDO::PARAM_INT
+                            ),
+                            'permissions' => $query->createNamedParameter(27, \PDO::PARAM_INT), // PERMISSION_ALL
+                            'etag' => $query->createNamedParameter(md5($mtime . $size)),
+                        ]);
+                    $query->executeStatement();
+
+                    $fileId = $this->db->lastInsertId('*PREFIX*filecache');
+                    $this->db->commit();
+
+                    return (int) $fileId;
+                } catch (\Throwable $e) {
+                    $this->db->rollBack();
+                    error_log("Direct filecache insert failed: " . $e->getMessage());
+
+                    // Fallback: try to get ID from cache (might have been created by race condition)
+                    $existingId = $cache->getId($fileName);
+                    if ($existingId !== -1) {
+                        return (int) $existingId;
+                    }
+                }
+            }
+
+            // If all methods fail, return 0 (project can still be created without whiteboard)
+            error_log("ProjectService::createWhiteboardFile - All methods failed for folder $folderName");
+            return 0;
+
         } catch (Throwable $e) {
-            // Log error but allow process to continue? 
-            // If we throw here, the whole project creation including folders and groups might rollback if not handled.
-            // The original logic wrapped specific steps.
-            // For now, let's catch and return 0 to allow project creation to proceed even if whiteboard fails.
             error_log("Failed to create whiteboard file: " . $e->getMessage());
             return 0;
         }
+    }
+
+    /**
+     * Get mimetype ID from mimetypes table, create if not exists
+     */
+    private function getMimetypeId(string $mimetype): int
+    {
+        $query = $this->db->getQueryBuilder();
+        $query->select('id')
+            ->from('mimetypes')
+            ->where($query->expr()->eq('mimetype', $query->createNamedParameter($mimetype)));
+
+        $result = $query->executeQuery();
+        $row = $result->fetch();
+        $result->closeCursor();
+
+        if ($row) {
+            return (int) $row['id'];
+        }
+
+        // Insert new mimetype
+        $insert = $this->db->getQueryBuilder();
+        $insert->insert('mimetypes')
+            ->values(['mimetype' => $insert->createNamedParameter($mimetype)]);
+        $insert->executeStatement();
+
+        return (int) $this->db->lastInsertId('*PREFIX*mimetypes');
+    }
+
+    /**
+     * Get numeric storage ID for filecache
+     */
+    private function getStorageNumericId($storage): int
+    {
+        $storageId = $storage->getId();
+
+        $query = $this->db->getQueryBuilder();
+        $query->select('numeric_id')
+            ->from('storages')
+            ->where($query->expr()->eq('id', $query->createNamedParameter($storageId)));
+
+        $result = $query->executeQuery();
+        $row = $result->fetch();
+        $result->closeCursor();
+
+        return $row ? (int) $row['numeric_id'] : 0;
     }
 }
