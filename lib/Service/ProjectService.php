@@ -8,7 +8,7 @@ use OCA\Circles\CirclesManager;
 use OCA\Circles\Service\FederatedUserService;
 use OCA\Deck\Service\BoardService;
 use OCP\Share\IManager as IShareManager;
-use OCP\Share;
+use OCP\Share\IShare;
 use OCP\Constants;
 use OCP\IUserSession;
 use OCP\Files\Folder;
@@ -229,7 +229,7 @@ class ProjectService
 
         $this->boardService->addAcl(
             $board->getId(),
-            Share::SHARE_TYPE_CIRCLE,
+            IShare::TYPE_CIRCLE,
             $circleId,
             true,
             false,
