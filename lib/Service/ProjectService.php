@@ -118,20 +118,22 @@ class ProjectService
                 $name
             );
 
-            $createdFolders = $this->createFoldersForProject(
-                $name,
-                $members,
-                $owner,
-                $group,
-                $plan
-            );
+            // TODO: Folder creation commented out for now - causes timeout with many members
+            // $createdFolders = $this->createFoldersForProject(
+            //     $name,
+            //     $members,
+            //     $owner,
+            //     $group,
+            //     $plan
+            // );
 
-            $createdWhiteBoardId = $this->createWhiteboardFile(
-                $owner,
-                $createdFolders['shared']['name'],
-                $createdFolders['shared']['id'],
-                $name
-            );
+            // TODO: Whiteboard creation commented out - depends on folders
+            // $createdWhiteBoardId = $this->createWhiteboardFile(
+            //     $owner,
+            //     $createdFolders['shared']['name'],
+            //     $createdFolders['shared']['id'],
+            //     $name
+            // );
 
             $project = $this->projectMapper->createProject(
                 $organization,
@@ -142,10 +144,10 @@ class ProjectService
                 $owner->getUID(),
                 $createdCircle->getSingleId(),
                 $createdBoard->getId(),
-                $createdFolders["shared"]["id"],
-                $createdFolders["shared"]["name"],
-                $createdFolders["private"],
-                $createdWhiteBoardId,
+                null,  // folderId - skipped for now
+                null,  // folderName - skipped for now
+                [],    // privateFolders - skipped for now
+                0,     // whiteboardId - skipped for now
                 $dateStart,
                 $dateEnd,
             );
@@ -158,7 +160,7 @@ class ProjectService
             $this->cleanupResources(
                 $createdBoard,
                 $createdCircle,
-                $createdFolders['all']
+                []  // No folders to clean up
             );
 
             throw new Exception($e, 500);
