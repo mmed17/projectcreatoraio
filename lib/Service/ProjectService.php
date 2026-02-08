@@ -118,22 +118,21 @@ class ProjectService
                 $name
             );
 
-            // TODO: Folder creation commented out for now - causes timeout with many members
-            // $createdFolders = $this->createFoldersForProject(
-            //     $name,
-            //     $members,
-            //     $owner,
-            //     $group,
-            //     $plan
-            // );
+            $createdFolders = $this->createFoldersForProject(
+                $name,
+                $members,
+                $owner,
+                $group,
+                $plan
+            );
 
-            // TODO: Whiteboard creation commented out - depends on folders
-            // $createdWhiteBoardId = $this->createWhiteboardFile(
-            //     $owner,
-            //     $createdFolders['shared']['name'],
-            //     $createdFolders['shared']['id'],
-            //     $name
-            // );
+            $createdWhiteBoardId = $this->createWhiteboardFile(
+                $owner,
+                $createdFolders['shared']['name'],
+                $createdFolders['shared']['id'],
+                $name,
+                $createdFolders['shared']['group_folder_id']
+            );
 
             $project = $this->projectMapper->createProject(
                 $organization,
@@ -144,10 +143,10 @@ class ProjectService
                 $owner->getUID(),
                 $createdCircle->getSingleId(),
                 $createdBoard->getId(),
-                null,  // folderId - skipped for now
-                null,  // folderName - skipped for now
-                [],    // privateFolders - skipped for now
-                0,     // whiteboardId - skipped for now
+                $createdFolders['shared']['group_folder_id'],
+                $createdFolders['shared']['name'],
+                $createdFolders['private'],
+                $createdWhiteBoardId,
                 $dateStart,
                 $dateEnd,
             );
@@ -160,7 +159,7 @@ class ProjectService
             $this->cleanupResources(
                 $createdBoard,
                 $createdCircle,
-                []  // No folders to clean up
+                $createdFolders ?? []
             );
 
             throw new Exception($e, 500);
@@ -270,7 +269,7 @@ class ProjectService
 
     /**
      * Creates and shares all necessary folders for the project.
-     * @return array{'shared': Folder, 'private': Folder[], 'all': Folder[]}
+     * @return array{shared: array{id: int, name: string, group_folder_id: int}, private: array<array{userId: string, folderId: int, path: string}>}
      */
     private function createFoldersForProject(
         string $projectName,
