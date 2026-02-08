@@ -113,11 +113,10 @@ class ProjectService
                 $createdCircle->getSingleId()
             );
 
-            // TODO: Group creation commented out for debugging timeout
-            // $group = $this->createGroupForMembers(
-            //     array_merge($members, [$owner->getUID()]),
-            //     $name
-            // );
+            $group = $this->createGroupForMembers(
+                array_merge($members, [$owner->getUID()]),
+                $name
+            );
 
             // TODO: Folder creation commented out for now - causes timeout with many members
             // $createdFolders = $this->createFoldersForProject(
@@ -192,34 +191,60 @@ class ProjectService
 
     private function createGroupForMembers(array $members, string $projectName): IGroup
     {
-        $projectGroupName = "{$projectName} - Project Group";
-        $searchResult = $this->groupManager->search($projectGroupName);
+        // Generate a unique group name using timestamp to avoid slow search loop
+        $timestamp = time();
+        $projectGroupName = "{$projectName} - Project Group - {$timestamp}";
 
-        $counter = 2;
-        // Loop WHILE the name is taken
-        while (!empty($searchResult)) {
-            $projectGroupName = "{$projectName} ({$counter}) - Project Group";
-            $searchResult = $this->groupManager->search($projectGroupName);
-            $counter++;
+        // Ensure uniqueness (fallback, should rarely be needed)
+        if ($this->groupManager->groupExists($projectGroupName)) {
+            $projectGroupName = "{$projectName} - Project Group - {$timestamp}-" . random_int(1000, 9999);
         }
 
-        // At this point, $projectGroupName is guaranteed to be unique
+        // Create the group
         $createdGroup = $this->groupManager->createGroup($projectGroupName);
 
         if ($createdGroup === null) {
-            // This could happen if creation fails for other reasons (e.g., invalid chars)
             throw new Exception("Failed to create project group '$projectGroupName'.");
         }
 
-        // Add all members to the newly created group
-        foreach ($members as $memberId) {
-            $memberUser = $this->userManager->get($memberId);
-            if ($memberUser !== null) {
-                $createdGroup->addUser($memberUser);
-            }
-        }
+        // Batch insert users directly to database (bypasses slow event dispatching)
+        $gid = $createdGroup->getGID();
+        $this->batchAddUsersToGroup($members, $gid);
 
         return $createdGroup;
+    }
+
+    /**
+     * Batch add users to a group using direct database insertion.
+     * This bypasses event dispatching for performance (useful for bulk operations).
+     */
+    private function batchAddUsersToGroup(array $userIds, string $gid): void
+    {
+        foreach ($userIds as $uid) {
+            // Verify user exists
+            if ($this->userManager->get($uid) === null) {
+                continue;
+            }
+
+            // Direct insert - check if already in group first
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('uid')
+                ->from('group_user')
+                ->where($qb->expr()->eq('uid', $qb->createNamedParameter($uid)))
+                ->andWhere($qb->expr()->eq('gid', $qb->createNamedParameter($gid)));
+
+            $result = $qb->executeQuery();
+            $exists = $result->fetch();
+            $result->closeCursor();
+
+            if (!$exists) {
+                $insert = $this->db->getQueryBuilder();
+                $insert->insert('group_user')
+                    ->setValue('uid', $insert->createNamedParameter($uid))
+                    ->setValue('gid', $insert->createNamedParameter($gid))
+                    ->executeStatement();
+            }
+        }
     }
 
     /**
