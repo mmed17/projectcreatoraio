@@ -113,10 +113,11 @@ class ProjectService
                 $createdCircle->getSingleId()
             );
 
-            $group = $this->createGroupForMembers(
-                array_merge($members, [$owner->getUID()]),
-                $name
-            );
+            // TODO: Group creation commented out for debugging timeout
+            // $group = $this->createGroupForMembers(
+            //     array_merge($members, [$owner->getUID()]),
+            //     $name
+            // );
 
             // TODO: Folder creation commented out for now - causes timeout with many members
             // $createdFolders = $this->createFoldersForProject(
