@@ -37,7 +37,7 @@ class ProjectService
         protected IUserSession $userSession,
         protected CirclesManager $circlesManager,
         protected IShareManager $shareManager,
-        // protected BoardService $boardService,
+        protected BoardService $boardService,
         protected IRootFolder $rootFolder,
         protected FederatedUserService $federatedUserService,
         protected ProjectMapper $projectMapper,
