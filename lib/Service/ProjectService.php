@@ -6,7 +6,7 @@ use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCA\Circles\CirclesManager;
 use OCA\Circles\Service\FederatedUserService;
-// use OCA\Deck\Service\BoardService;
+use OCA\Deck\Service\BoardService;
 use OCP\Share\IManager as IShareManager;
 use OCP\Share\IShare;
 use OCP\Constants;
