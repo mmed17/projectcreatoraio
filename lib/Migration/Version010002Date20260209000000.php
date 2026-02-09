@@ -71,34 +71,30 @@ class Version010002Date20260209000000 extends SimpleMigrationStep
             $table->addIndex(['owner_id'], 'custom_projects_owner_idx');
             $table->addIndex(['organization_id'], 'custom_projects_org_idx');
             $table->addIndex(['circle_id'], 'custom_projects_circle_idx');
+        }
 
-        } else {
-            // Table exists, add missing columns
-            $table = $schema->getTable('custom_projects');
+        // Create proj_private_folders table
+        if (!$schema->hasTable('proj_private_folders')) {
+            $table = $schema->createTable('proj_private_folders');
 
-            $columnsToAdd = [
-                'number' => [Types::STRING, ['notnull' => false, 'length' => 255]],
-                'label' => [Types::STRING, ['notnull' => false, 'length' => 255]],
-                'type' => [Types::INTEGER, ['notnull' => false]],
-                'client_name' => [Types::STRING, ['notnull' => false, 'length' => 255]],
-                'client_role' => [Types::STRING, ['notnull' => false, 'length' => 255]],
-                'client_phone' => [Types::STRING, ['notnull' => false, 'length' => 50]],
-                'client_email' => [Types::STRING, ['notnull' => false, 'length' => 255]],
-                'client_address' => [Types::TEXT, ['notnull' => false]],
-                'loc_street' => [Types::STRING, ['notnull' => false, 'length' => 255]],
-                'loc_city' => [Types::STRING, ['notnull' => false, 'length' => 255]],
-                'loc_zip' => [Types::STRING, ['notnull' => false, 'length' => 20]],
-                'external_ref' => [Types::STRING, ['notnull' => false, 'length' => 255]],
-                'date_start' => [Types::DATE, ['notnull' => false]],
-                'date_end' => [Types::DATE, ['notnull' => false]],
-                'white_board_id' => [Types::STRING, ['notnull' => false, 'length' => 64]],
-            ];
+            $table->addColumn('id', Types::BIGINT, [
+                'autoincrement' => true,
+                'notnull' => true,
+            ]);
+            $table->addColumn('project_id', Types::BIGINT, [
+                'notnull' => true,
+            ]);
+            $table->addColumn('user_id', Types::STRING, [
+                'notnull' => true,
+                'length' => 64,
+            ]);
+            $table->addColumn('folder_id', Types::BIGINT, [
+                'notnull' => true,
+            ]);
 
-            foreach ($columnsToAdd as $columnName => $config) {
-                if (!$table->hasColumn($columnName)) {
-                    $table->addColumn($columnName, $config[0], $config[1]);
-                }
-            }
+            $table->setPrimaryKey(['id']);
+            $table->addIndex(['project_id'], 'privfld_proj_id_idx');
+            $table->addUniqueIndex(['project_id', 'user_id'], 'privfld_proj_user_idx');
         }
 
         return $schema;
