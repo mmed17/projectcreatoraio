@@ -6,7 +6,7 @@ use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCA\Circles\CirclesManager;
 use OCA\Circles\Service\FederatedUserService;
-use OCA\Deck\Service\BoardService;
+// use OCA\Deck\Service\BoardService;
 use OCP\Share\IManager as IShareManager;
 use OCP\Share\IShare;
 use OCP\Constants;
@@ -37,7 +37,7 @@ class ProjectService
         protected IUserSession $userSession,
         protected CirclesManager $circlesManager,
         protected IShareManager $shareManager,
-        protected BoardService $boardService,
+        // protected BoardService $boardService,
         protected IRootFolder $rootFolder,
         protected FederatedUserService $federatedUserService,
         protected ProjectMapper $projectMapper,
@@ -107,17 +107,19 @@ class ProjectService
                 $owner
             );
 
-            $createdBoard = $this->createBoardForProject(
-                $name,
-                $owner,
-                $createdCircle->getSingleId()
-            );
+            // $createdBoard = $this->createBoardForProject(
+            //     $name,
+            //     $owner,
+            //     $createdCircle->getSingleId()
+            // );
+            $createdBoard = null;
 
             $group = $this->createGroupForMembers(
                 array_merge($members, [$owner->getUID()]),
                 $name
             );
 
+            // TODO: Folder creation commented out for now - causes timeout with many members
             $createdFolders = $this->createFoldersForProject(
                 $name,
                 $members,
@@ -126,12 +128,13 @@ class ProjectService
                 $plan
             );
 
-            $createdWhiteBoardId = $this->createWhiteboardFile(
-                $owner,
-                $createdFolders['shared']['name'],
-                $createdFolders['shared']['id'],
-                $name
-            );
+            // TODO: Whiteboard creation commented out - depends on folders
+            // $createdWhiteBoardId = $this->createWhiteboardFile(
+            //     $owner,
+            //     $createdFolders['shared']['name'],
+            //     $createdFolders['shared']['id'],
+            //     $name
+            // );
 
             $project = $this->projectMapper->createProject(
                 $organization,
@@ -141,11 +144,11 @@ class ProjectService
                 $description,
                 $owner->getUID(),
                 $createdCircle->getSingleId(),
-                $createdBoard->getId(),
+                null,
                 $createdFolders['shared']['id'],
                 $createdFolders['shared']['name'],
                 $createdFolders['private'],
-                $createdWhiteBoardId,
+                null,
                 $dateStart,
                 $dateEnd,
             );
@@ -222,22 +225,22 @@ class ProjectService
     /**
      * Creates and shares a Deck board for the project.
      */
-    private function createBoardForProject(string $projectName, IUser $owner, string $circleId): Board
-    {
-        $color = strtoupper(sprintf('%06X', random_int(0, 0xFFFFFF)));
-        $board = $this->boardService->create("{$projectName} - Main Board", $owner->getUID(), $color);
-
-        $this->boardService->addAcl(
-            $board->getId(),
-            IShare::TYPE_CIRCLE,
-            $circleId,
-            true,
-            false,
-            false
-        );
-
-        return $board;
-    }
+    // private function createBoardForProject(string $projectName, IUser $owner, string $circleId): Board
+    // {
+    //     $color = strtoupper(sprintf('%06X', random_int(0, 0xFFFFFF)));
+    //     $board = $this->boardService->create("{$projectName} - Main Board", $owner->getUID(), $color);
+    //
+    //     $this->boardService->addAcl(
+    //         $board->getId(),
+    //         IShare::TYPE_CIRCLE,
+    //         $circleId,
+    //         true,
+    //         false,
+    //         false
+    //     );
+    //
+    //     return $board;
+    // }
 
 
     /**
