@@ -6,7 +6,7 @@ use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCA\Circles\CirclesManager;
 use OCA\Circles\Service\FederatedUserService;
-// use OCA\Deck\Service\BoardService;
+use OCA\Deck\Service\BoardService;
 use OCP\Share\IManager as IShareManager;
 use OCP\Share\IShare;
 use OCP\Constants;
@@ -37,7 +37,7 @@ class ProjectService
         protected IUserSession $userSession,
         protected CirclesManager $circlesManager,
         protected IShareManager $shareManager,
-        // protected BoardService $boardService,
+        protected BoardService $boardService,
         protected IRootFolder $rootFolder,
         protected FederatedUserService $federatedUserService,
         protected ProjectMapper $projectMapper,
@@ -107,19 +107,17 @@ class ProjectService
                 $owner
             );
 
-            // $createdBoard = $this->createBoardForProject(
-            //     $name,
-            //     $owner,
-            //     $createdCircle->getSingleId()
-            // );
-            $createdBoard = null;
+            $createdBoard = $this->createBoardForProject(
+                $name,
+                $owner,
+                $createdCircle->getSingleId()
+            );
 
             $group = $this->createGroupForMembers(
                 array_merge($members, [$owner->getUID()]),
                 $name
             );
 
-            // TODO: Folder creation commented out for now - causes timeout with many members
             $createdFolders = $this->createFoldersForProject(
                 $name,
                 $members,
@@ -128,13 +126,12 @@ class ProjectService
                 $plan
             );
 
-            // TODO: Whiteboard creation commented out - depends on folders
-            // $createdWhiteBoardId = $this->createWhiteboardFile(
-            //     $owner,
-            //     $createdFolders['shared']['name'],
-            //     $createdFolders['shared']['id'],
-            //     $name
-            // );
+            $createdWhiteBoardId = $this->createWhiteboardFile(
+                $owner,
+                $createdFolders['shared']['name'],
+                $createdFolders['shared']['id'],
+                $name
+            );
 
             $project = $this->projectMapper->createProject(
                 $organization,
@@ -144,11 +141,11 @@ class ProjectService
                 $description,
                 $owner->getUID(),
                 $createdCircle->getSingleId(),
-                null,
+                $createdBoard->getId(),
                 $createdFolders['shared']['id'],
                 $createdFolders['shared']['name'],
                 $createdFolders['private'],
-                null,
+                $createdWhiteBoardId,
                 $dateStart,
                 $dateEnd,
             );
@@ -192,55 +189,81 @@ class ProjectService
 
     private function createGroupForMembers(array $members, string $projectName): IGroup
     {
-        $projectGroupName = "{$projectName} - Project Group";
-        $searchResult = $this->groupManager->search($projectGroupName);
+        // Generate a unique group name using timestamp to avoid slow search loop
+        $timestamp = time();
+        $projectGroupName = "{$projectName} - Project Group - {$timestamp}";
 
-        $counter = 2;
-        // Loop WHILE the name is taken
-        while (!empty($searchResult)) {
-            $projectGroupName = "{$projectName} ({$counter}) - Project Group";
-            $searchResult = $this->groupManager->search($projectGroupName);
-            $counter++;
+        // Ensure uniqueness (fallback, should rarely be needed)
+        if ($this->groupManager->groupExists($projectGroupName)) {
+            $projectGroupName = "{$projectName} - Project Group - {$timestamp}-" . random_int(1000, 9999);
         }
 
-        // At this point, $projectGroupName is guaranteed to be unique
+        // Create the group
         $createdGroup = $this->groupManager->createGroup($projectGroupName);
 
         if ($createdGroup === null) {
-            // This could happen if creation fails for other reasons (e.g., invalid chars)
             throw new Exception("Failed to create project group '$projectGroupName'.");
         }
 
-        // Add all members to the newly created group
-        foreach ($members as $memberId) {
-            $memberUser = $this->userManager->get($memberId);
-            if ($memberUser !== null) {
-                $createdGroup->addUser($memberUser);
-            }
-        }
+        // Batch insert users directly to database (bypasses slow event dispatching)
+        $gid = $createdGroup->getGID();
+        $this->batchAddUsersToGroup($members, $gid);
 
         return $createdGroup;
     }
 
     /**
+     * Batch add users to a group using direct database insertion.
+     * This bypasses event dispatching for performance (useful for bulk operations).
+     */
+    private function batchAddUsersToGroup(array $userIds, string $gid): void
+    {
+        foreach ($userIds as $uid) {
+            // Verify user exists
+            if ($this->userManager->get($uid) === null) {
+                continue;
+            }
+
+            // Direct insert - check if already in group first
+            $qb = $this->db->getQueryBuilder();
+            $qb->select('uid')
+                ->from('group_user')
+                ->where($qb->expr()->eq('uid', $qb->createNamedParameter($uid)))
+                ->andWhere($qb->expr()->eq('gid', $qb->createNamedParameter($gid)));
+
+            $result = $qb->executeQuery();
+            $exists = $result->fetch();
+            $result->closeCursor();
+
+            if (!$exists) {
+                $insert = $this->db->getQueryBuilder();
+                $insert->insert('group_user')
+                    ->setValue('uid', $insert->createNamedParameter($uid))
+                    ->setValue('gid', $insert->createNamedParameter($gid))
+                    ->executeStatement();
+            }
+        }
+    }
+
+    /**
      * Creates and shares a Deck board for the project.
      */
-    // private function createBoardForProject(string $projectName, IUser $owner, string $circleId): Board
-    // {
-    //     $color = strtoupper(sprintf('%06X', random_int(0, 0xFFFFFF)));
-    //     $board = $this->boardService->create("{$projectName} - Main Board", $owner->getUID(), $color);
-    //
-    //     $this->boardService->addAcl(
-    //         $board->getId(),
-    //         IShare::TYPE_CIRCLE,
-    //         $circleId,
-    //         true,
-    //         false,
-    //         false
-    //     );
-    //
-    //     return $board;
-    // }
+    private function createBoardForProject(string $projectName, IUser $owner, string $circleId): Board
+    {
+        $color = strtoupper(sprintf('%06X', random_int(0, 0xFFFFFF)));
+        $board = $this->boardService->create("{$projectName} - Main Board", $owner->getUID(), $color);
+
+        $this->boardService->addAcl(
+            $board->getId(),
+            IShare::TYPE_CIRCLE,
+            $circleId,
+            true,
+            false,
+            false
+        );
+
+        return $board;
+    }
 
 
     /**
