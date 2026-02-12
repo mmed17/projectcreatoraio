@@ -20,6 +20,7 @@ use OCA\Circles\Model\Member;
 use Throwable;
 use Exception;
 use OCA\Organization\Db\OrganizationMapper;
+use OCA\Organization\Db\Organization;
 use OCA\Organization\Db\PlanMapper;
 use OCA\Organization\Db\SubscriptionMapper;
 use OCP\AppFramework\OCS\OCSException;
@@ -63,7 +64,7 @@ class ProjectService
         int $type,
         array $members,
         string $description,
-        string $groupId,
+        ?int $organizationId = null,
         ?string $dateStart = null,
         ?string $dateEnd = null,
     ): Project {
@@ -74,18 +75,11 @@ class ProjectService
 
         try {
             $owner = $this->userSession->getUser();
-            // check if the owner is an admin
-            $isAdmin = $this->groupManager->isInGroup($owner->getUID(), 'admin');
-
-            if ($isAdmin) {
-                $organization = $this->organizationMapper->findByGroupId($groupId);
-            } else {
-                $organization = $this->organizationMapper->findByUserId($owner->getUID());
+            if ($owner === null) {
+                throw new OCSException('You must be logged in to create a project.');
             }
 
-            if (!$organization) {
-                throw new OCSException('An organization must be found to create a project.');
-            }
+            $organization = $this->resolveOrganizationForCurrentUser($owner->getUID(), $organizationId);
 
             $subscription = $this->subscriptionMapper->findByOrganizationId($organization->getId());
 
@@ -163,6 +157,99 @@ class ProjectService
 
             throw new Exception($e, 500);
         }
+    }
+
+    /**
+     * Search users constrained to one organization.
+     * Admins can specify any organization ID, non-admins are restricted to their own organization.
+     *
+     * @return array<int, array{id: string, user: string, label: string, displayName: string, subname: string}>
+     */
+    public function searchUsers(
+        string $search,
+        ?int $organizationId = null,
+        int $limit = 25,
+        int $offset = 0,
+    ): array {
+        $search = trim($search);
+        if ($search == '') {
+            return [];
+        }
+
+        $user = $this->userSession->getUser();
+        if ($user === null) {
+            throw new OCSException('You must be logged in to search users.');
+        }
+
+        $organization = $this->resolveOrganizationForCurrentUser($user->getUID(), $organizationId);
+
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('uid')
+            ->from('users')
+            ->where(
+                $qb->expr()->eq('organization_id', $qb->createNamedParameter($organization->getId(), \PDO::PARAM_INT))
+            )
+            ->andWhere(
+                $qb->expr()->iLike('uid', $qb->createNamedParameter('%' . $search . '%'))
+            )
+            ->orderBy('uid', 'ASC')
+            ->setMaxResults(max(1, $limit))
+            ->setFirstResult(max(0, $offset));
+
+        $result = $qb->executeQuery();
+        $rows = $result->fetchAll();
+        $result->closeCursor();
+
+        $users = [];
+        foreach ($rows as $row) {
+            $uid = (string) ($row['uid'] ?? '');
+            if ($uid === '') {
+                continue;
+            }
+
+            $nextcloudUser = $this->userManager->get($uid);
+            if ($nextcloudUser === null) {
+                continue;
+            }
+
+            $displayName = $nextcloudUser->getDisplayName() ?: $uid;
+            $email = $nextcloudUser->getEMailAddress() ?: '';
+
+            $users[] = [
+                'id' => $uid,
+                'user' => $uid,
+                'label' => $displayName,
+                'displayName' => $displayName,
+                'subname' => $email,
+            ];
+        }
+
+        return $users;
+    }
+
+    private function resolveOrganizationForCurrentUser(string $userId, ?int $organizationId = null): Organization
+    {
+        $isAdmin = $this->groupManager->isInGroup($userId, 'admin');
+
+        if ($isAdmin) {
+            if ($organizationId === null) {
+                throw new OCSException('An organization ID is required for admins.');
+            }
+
+            $organization = $this->organizationMapper->find($organizationId);
+            if ($organization === null) {
+                throw new OCSException('The selected organization does not exist.');
+            }
+
+            return $organization;
+        }
+
+        $organization = $this->organizationMapper->findByUserId($userId);
+        if ($organization === null) {
+            throw new OCSException('No organization is assigned to your user account.');
+        }
+
+        return $organization;
     }
 
     /**

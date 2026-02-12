@@ -50,10 +50,15 @@ class ProjectApiController extends Controller
         int $type,
         array $members,
         string $groupId = '',
+        ?int $organizationId = null,
         string $description = '',
         ?string $date_start = null,
         ?string $date_end = null,
     ): DataResponse {
+
+        if ($organizationId === null && $groupId !== '' && ctype_digit($groupId)) {
+            $organizationId = (int) $groupId;
+        }
 
         try {
             $project = $this->projectService->createProject(
@@ -62,7 +67,7 @@ class ProjectApiController extends Controller
                 $type,
                 $members,
                 $description,
-                $groupId,
+                $organizationId,
                 $date_start,
                 $date_end
             );
@@ -77,6 +82,22 @@ class ProjectApiController extends Controller
                 'message' => 'Failed to create project: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Search users in one organization.
+     *
+     * @NoCSRFRequired
+     * @NoAdminRequired
+     */
+    public function searchUsers(
+        string $search = '',
+        ?int $organizationId = null,
+        int $limit = 25,
+        int $offset = 0,
+    ): DataResponse {
+        $users = $this->projectService->searchUsers($search, $organizationId, $limit, $offset);
+        return new DataResponse(['users' => $users]);
     }
 
 

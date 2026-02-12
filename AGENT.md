@@ -72,3 +72,35 @@ Links users to specific private folders within a project context.
 - **Deck**: For task tracking and boards.
 - **Files/Group Folders**: For shared storage.
 - **Contacts**: Project members are often linked via Circles to the Contacts app.
+
+## Current Refactor Notes (Organization vs Group)
+
+### Why this change was needed
+- The `organization` app removed the `nextcloud_group_id` column and dropped the `findByGroupId(...)` mapper flow.
+- `projectcreatoraio` still depended on that link for admin project creation, which caused runtime failures.
+
+### Backend changes made in `projectcreatoraio`
+- **Project creation now uses organization IDs**:
+  - `ProjectService::createProject(...)` now accepts `?int $organizationId` (instead of group ID lookup).
+  - Admins must provide `organizationId`; non-admin users continue to resolve organization from `users.organization_id`.
+  - A compatibility bridge remains in `ProjectApiController::create(...)`: if legacy `groupId` contains a numeric string, it is treated as `organizationId`.
+- **Group folders are still supported**:
+  - Project-specific Nextcloud groups are still created dynamically in `ProjectService::createGroupForMembers(...)`.
+  - These groups are still used to assign Group Folder permissions.
+  - This keeps Group Folder behavior intact while decoupling organizations from static group IDs.
+- **New backend user search endpoint for organization-scoped selection**:
+  - Route added: `GET /apps/projectcreatoraio/api/v1/users/search`
+  - Controller method: `ProjectApiController::searchUsers(...)`
+  - Service method: `ProjectService::searchUsers(...)`
+  - Behavior:
+    - Admin: can search within a provided `organizationId`
+    - Non-admin: automatically restricted to own organization
+    - Search is executed against `users.organization_id` + `uid ILIKE %search%`
+
+### Files updated
+- `lib/Service/ProjectService.php`
+- `lib/Controller/ProjectApiController.php`
+- `appinfo/routes.php`
+
+### Frontend status
+- Frontend refactor (renaming `groupId` to `organizationId`, replacing group-based fetchers, wiring to new users search endpoint) is intentionally deferred for now.

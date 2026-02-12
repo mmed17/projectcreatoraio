@@ -23,6 +23,11 @@ return [
             'verb' => 'GET'
         ],
         [
+            'name' => 'project_api#searchUsers',
+            'url' => '/api/v1/users/search',
+            'verb' => 'GET'
+        ],
+        [
             "name" => "project_api#getProjectByCircleId",
             "url" => "/api/v1/projects/circle/{circleId}",
             "verb" => "GET",
