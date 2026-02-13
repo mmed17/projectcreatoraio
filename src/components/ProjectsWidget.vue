@@ -46,7 +46,7 @@
         <NcEmptyContent v-else-if="projects.length === 0"
             :name="t('projectcreatoraio', 'No projects found')">
             <template #icon>
-                <NcIconSvgWrapper :svg="folderSvg" />
+                <FolderOutline :size="36" />
             </template>
         </NcEmptyContent>
 
@@ -98,7 +98,6 @@
 import { NcActions, NcActionButton, NcEmptyContent, NcNoteCard, NcTextField } from '@nextcloud/vue'
 import NcListItem from '@nextcloud/vue/components/NcListItem'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
-import NcIconSvgWrapper from '@nextcloud/vue/components/NcIconSvgWrapper'
 import NcUserBubble from '@nextcloud/vue/components/NcUserBubble'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcButton from '@nextcloud/vue/components/NcButton'
@@ -117,8 +116,6 @@ import AccountEdit from "vue-material-design-icons/AccountEdit.vue";
 import NcAvatar from '@nextcloud/vue/components/NcAvatar';
 import NcChip from '@nextcloud/vue/components/NcChip';
 import { getCurrentUser } from '@nextcloud/auth'
-
-import folderSvg from '@mdi/svg/svg/folder.svg?raw'
 import UsersFetcher from './UsersFetcher.vue'
 import { PROJECT_TYPES } from '../macros/project-types';
 import { UsersService } from '../Services/users'
@@ -136,13 +133,11 @@ export default {
 		NcActions,
 		NcActionButton,
 		NcEmptyContent,
-		NcNoteCard,
-		NcLoadingIcon,
-		NcTextField,
-		FolderOutline,
-        NcIconSvgWrapper,
+        NcNoteCard,
+        NcLoadingIcon,
+        NcTextField,
+        FolderOutline,
         Magnify,
-        folderSvg,
         NcListItem,
         Download,
         Details,
@@ -165,7 +160,6 @@ export default {
 			projects: [],
 			loading: true,
 			searchQuery: null,
-            folderSvg,
             selectedProjectId: null,
             showFilterDialog: false,
             isFetchingUsers: false,
@@ -247,12 +241,16 @@ export default {
             const event = new CustomEvent('projectcreatoraio:project-selected', { detail: eventPayload });
             document.dispatchEvent(event);
         },
-        navigateToProjectPage(circleId) {
-            const url = generateUrl(`/apps/contacts/circle/${circleId}`);
+        navigateToProjectPage(boardId) {
+            const url = generateUrl(`/apps/deck/#/board/${boardId}`);
             window.open(url, "_blank");
         },
         onPreview(project) {
-            this.navigateToProjectPage(project.circleId);
+            if (!project.boardId) {
+                return;
+            }
+
+            this.navigateToProjectPage(project.boardId);
         },
         onDownload(project) {
             if (!project.folderPath) {

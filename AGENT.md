@@ -1,7 +1,7 @@
 # ProjectCreatorAIO - Current Structure Documentation
 
 ## Overview
-ProjectCreatorAIO is a Nextcloud application designed to automate the creation and management of collaborative projects by orchestrating resources across several Nextcloud apps (Circles, Deck, Files, Contacts).
+ProjectCreatorAIO is a Nextcloud application designed to automate the creation and management of collaborative projects by orchestrating resources across several Nextcloud apps (Deck, Files, Contacts).
 
 ## File System Structure
 ```
@@ -34,7 +34,7 @@ Main table storing project metadata and integration links.
 - **Project Info:** `id`, `name`, `label`, `number`, `type`, `description`, `status`.
 - **Client Info:** `client_name`, `client_role`, `client_phone`, `client_email`, `client_address`.
 - **Location:** `loc_street`, `loc_city`, `loc_zip`.
-- **Integration IDs:** `owner_id`, `circle_id`, `board_id`, `folder_id`, `folder_path`, `organization_id`, `white_board_id`.
+- **Integration IDs:** `owner_id`, `board_id`, `project_group_gid`, `folder_id`, `folder_path`, `organization_id`, `white_board_id`.
 
 ### 2. `project_timeline_items`
 Stores milestones and tasks for the project timeline.
@@ -47,7 +47,7 @@ Links users to specific private folders within a project context.
 ## Backend Architecture
 
 ### Services
-- **`ProjectService`**: The core orchestrator. Manages the lifecycle of a project, including creating Circles, Deck boards, Group Folders, and direct filesystem manipulations.
+- **`ProjectService`**: The core orchestrator. Manages the lifecycle of a project, including creating Deck boards, project groups, Group Folders, and direct filesystem manipulations.
 - **`FileTreeService`**: Recursively builds a JSON representation of Nextcloud file nodes.
 
 ### API Endpoints
@@ -68,10 +68,9 @@ Links users to specific private folders within a project context.
 - **`UsersFetcher.vue`**: Integration with Nextcloud user search.
 
 ## External Dependencies
-- **Circles**: For member management and access control.
 - **Deck**: For task tracking and boards.
 - **Files/Group Folders**: For shared storage.
-- **Contacts**: Project members are often linked via Circles to the Contacts app.
+- **Contacts**: Used for user-facing integrations around project participants.
 
 ## Current Refactor Notes (Organization vs Group)
 
@@ -82,20 +81,39 @@ Links users to specific private folders within a project context.
 ### Backend changes made in `projectcreatoraio`
 - **Project creation now uses organization IDs**:
   - `ProjectService::createProject(...)` now accepts `?int $organizationId` (instead of group ID lookup).
-  - Admins must provide `organizationId`; non-admin users continue to resolve organization from `users.organization_id`.
+  - Global admins must provide `organizationId`.
+  - Organization users are resolved via `organization_members` and only users with role `admin` can create projects.
   - A compatibility bridge remains in `ProjectApiController::create(...)`: if legacy `groupId` contains a numeric string, it is treated as `organizationId`.
+- **Organization-membership enforcement during creation**:
+  - All selected project members (and owner) must belong to the selected organization.
+  - Cross-organization member assignment is rejected server-side.
 - **Group folders are still supported**:
   - Project-specific Nextcloud groups are still created dynamically in `ProjectService::createGroupForMembers(...)`.
   - These groups are still used to assign Group Folder permissions.
-  - This keeps Group Folder behavior intact while decoupling organizations from static group IDs.
+  - Deck board ACLs are now also assigned to the project group (`IShare::TYPE_GROUP`).
+  - This makes the project group the single membership primitive for both Group Folders and Deck.
+- **Circles usage removed from project orchestration**:
+  - The project service no longer creates project circles.
+  - Circle-based project lookup route has been removed.
+  - A new `project_group_gid` field is stored on projects for authorization and sharing.
+  - Legacy `circle_id` schema usage is scheduled for removal via migration.
+- **Project-level start/end dates removed (backend)**:
+  - `custom_projects.date_start` and `custom_projects.date_end` are removed from backend contract and schema.
+  - Timeline planning is expected to live in timeline/deck flows instead of project header dates.
 - **New backend user search endpoint for organization-scoped selection**:
   - Route added: `GET /apps/projectcreatoraio/api/v1/users/search`
   - Controller method: `ProjectApiController::searchUsers(...)`
   - Service method: `ProjectService::searchUsers(...)`
   - Behavior:
     - Admin: can search within a provided `organizationId`
-    - Non-admin: automatically restricted to own organization
-    - Search is executed against `users.organization_id` + `uid ILIKE %search%`
+    - Organization users: automatically restricted to own organization membership
+    - Search is executed against `organization_members.user_uid` + `user_uid ILIKE %search%`
+
+### Access-control alignment with `organization` app
+- The project app page is now available only to:
+  - global Nextcloud admins, or
+  - organization admins (role `admin` in `organization_members`)
+- Project API reads are now organization-scoped for non-global admins.
 
 ### Files updated
 - `lib/Service/ProjectService.php`

@@ -4,7 +4,7 @@ import axios from "axios";
 
 export class ProjectsService {
 
-    instance = null;
+    static instance = null;
     constructor() {}
 
     /**
@@ -16,7 +16,8 @@ export class ProjectsService {
             return this.instance;
         }
 
-        return new ProjectsService();
+        this.instance = new ProjectsService();
+        return this.instance;
     }
 
     /**
@@ -55,6 +56,71 @@ export class ProjectsService {
         } catch (e) {
             console.error('Failed to fetch projects:', e);
             return [];
+        }
+    }
+
+    /**
+     *
+     * @returns {Promise<{userId: string, isGlobalAdmin: boolean, organizationRole: string|null, organizationId: number|null}|null>}
+     */
+    async context() {
+        try {
+            const url = generateUrl('/apps/projectcreatoraio/api/v1/projects/context')
+            const response = await axios.get(url, {
+                headers: {
+                    'OCS-APIRequest': 'true',
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            return response.data ?? null;
+        } catch (e) {
+            console.error('Failed to fetch projects context:', e);
+            return null;
+        }
+    }
+
+    /**
+     *
+     * @param {number} projectId
+     * @returns {Promise<any|null>}
+     */
+    async get(projectId) {
+        try {
+            const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}`)
+            const response = await axios.get(url, {
+                headers: {
+                    'OCS-APIRequest': 'true',
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            return response.data ?? null;
+        } catch (e) {
+            console.error('Failed to fetch project details:', e);
+            return null;
+        }
+    }
+
+    /**
+     *
+     * @param {number} projectId
+     * @returns {Promise<{shared: any[], private: any[]}>}
+     */
+    async getFiles(projectId) {
+        try {
+            const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}/files`)
+            const response = await axios.get(url, {
+                headers: {
+                    'OCS-APIRequest': 'true',
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            return response.data ?? { shared: [], private: [] };
+        } catch (e) {
+            console.error('Failed to fetch project files:', e);
+            return { shared: [], private: [] };
         }
     }
 

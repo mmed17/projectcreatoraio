@@ -20,24 +20,14 @@ export class Project {
     type = null;
 
     /**
-     * @type {string}
+     * @type {number|null}
      */
-    groupId = null;
+    organizationId = null;
 
     /**
      * @type {string[]}
      */
-    members = null;
-
-    /**
-     * @type {string|null} - Date string in YYYY-MM-DD format
-     */
-    dateStart = null;
-
-    /**
-     * @type {string|null} - Date string in YYYY-MM-DD format
-     */
-    dateEnd = null;
+    members = [];
 
     /**
      * 
@@ -46,19 +36,15 @@ export class Project {
      * @param {string} description 
      * @param {number} type 
      * @param {string[]} members 
-     * @param {string} groupId
-     * @param {string|null} dateStart
-     * @param {string|null} dateEnd
+     * @param {number|null} organizationId
      */
-    constructor(name = '', number = '', description = '', type = undefined, members = [], groupId = '', dateStart = null, dateEnd = null) {
+    constructor(name = '', number = '', description = '', type = undefined, members = [], organizationId = null) {
         this.name = name.trim();
         this.number = number.trim();
         this.description = description.trim();
         this.type = type;
         this.members = members;
-        this.groupId = groupId.trim();
-        this.dateStart = dateStart;
-        this.dateEnd = dateEnd;
+        this.organizationId = organizationId;
     }
 
     get isValid() {
@@ -71,10 +57,8 @@ export class Project {
             number: this.number,
             description: this.description,
             type: this.type,
-            groupId: this.groupId,
+            organizationId: this.organizationId,
             members: this.members,
-            date_start: this.dateStart,
-            date_end: this.dateEnd,
         };
     }
 }

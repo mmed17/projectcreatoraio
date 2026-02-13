@@ -13,6 +13,11 @@ return [
             "verb" => "GET",
         ],
         [
+            "name" => "project_api#context",
+            "url" => "/api/v1/projects/context",
+            "verb" => "GET",
+        ],
+        [
             "name" => "project_api#get",
             "url" => "/api/v1/projects/{projectId}",
             "verb" => "GET",
@@ -26,11 +31,6 @@ return [
             'name' => 'project_api#searchUsers',
             'url' => '/api/v1/users/search',
             'verb' => 'GET'
-        ],
-        [
-            "name" => "project_api#getProjectByCircleId",
-            "url" => "/api/v1/projects/circle/{circleId}",
-            "verb" => "GET",
         ],
         [
             "name" => "project_api#getByBoardId",

@@ -1,11 +1,10 @@
 <?php
 
 namespace OCA\ProjectCreatorAIO\Service;
+use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
-use OCA\Circles\CirclesManager;
-use OCA\Circles\Service\FederatedUserService;
 use OCA\Deck\Service\BoardService;
 use OCP\Share\IManager as IShareManager;
 use OCP\Share\IShare;
@@ -13,14 +12,12 @@ use OCP\Constants;
 use OCP\IUserSession;
 use OCP\Files\Folder;
 use OCP\IUser;
-use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\Deck\Db\Board;
-use OCA\Circles\Model\Circle;
-use OCA\Circles\Model\Member;
 use Throwable;
 use Exception;
 use OCA\Organization\Db\OrganizationMapper;
 use OCA\Organization\Db\Organization;
+use OCA\Organization\Db\UserMapper as OrganizationUserMapper;
 use OCA\Organization\Db\PlanMapper;
 use OCA\Organization\Db\SubscriptionMapper;
 use OCP\AppFramework\OCS\OCSException;
@@ -36,14 +33,13 @@ class ProjectService
 {
     public function __construct(
         protected IUserSession $userSession,
-        protected CirclesManager $circlesManager,
         protected IShareManager $shareManager,
         protected BoardService $boardService,
         protected IRootFolder $rootFolder,
-        protected FederatedUserService $federatedUserService,
         protected ProjectMapper $projectMapper,
         protected FileTreeService $fileTreeService,
         protected OrganizationMapper $organizationMapper,
+        protected OrganizationUserMapper $organizationUserMapper,
         protected SubscriptionMapper $subscriptionMapper,
         protected PlanMapper $planMapper,
         protected IGroupManager $groupManager,
@@ -65,12 +61,10 @@ class ProjectService
         array $members,
         string $description,
         ?int $organizationId = null,
-        ?string $dateStart = null,
-        ?string $dateEnd = null,
     ): Project {
 
-        $createdCircle = null;
         $createdBoard = null;
+        $createdGroup = null;
         $createdFolders = [];
 
         try {
@@ -79,7 +73,8 @@ class ProjectService
                 throw new OCSException('You must be logged in to create a project.');
             }
 
-            $organization = $this->resolveOrganizationForCurrentUser($owner->getUID(), $organizationId);
+            $organization = $this->resolveOrganizationForCurrentUser($owner->getUID(), $organizationId, false);
+            $this->assertUsersBelongToOrganization(array_merge($members, [$owner->getUID()]), $organization->getId());
 
             $subscription = $this->subscriptionMapper->findByOrganizationId($organization->getId());
 
@@ -95,21 +90,15 @@ class ProjectService
                 ));
             }
 
-            $createdCircle = $this->createCircleForProject(
-                $name,
-                $members,
-                $owner
+            $group = $this->createGroupForMembers(
+                array_merge($members, [$owner->getUID()])
             );
+            $createdGroup = $group;
 
             $createdBoard = $this->createBoardForProject(
                 $name,
                 $owner,
-                $createdCircle->getSingleId()
-            );
-
-            $group = $this->createGroupForMembers(
-                array_merge($members, [$owner->getUID()]),
-                $name
+                $group->getGID()
             );
 
             $createdFolders = $this->createFoldersForProject(
@@ -134,14 +123,12 @@ class ProjectService
                 $type,
                 $description,
                 $owner->getUID(),
-                $createdCircle->getSingleId(),
                 $createdBoard->getId(),
+                $group->getGID(),
                 $createdFolders['shared']['id'],
                 $createdFolders['shared']['name'],
                 $createdFolders['private'],
                 $createdWhiteBoardId,
-                $dateStart,
-                $dateEnd,
             );
 
 
@@ -151,7 +138,7 @@ class ProjectService
 
             $this->cleanupResources(
                 $createdBoard,
-                $createdCircle,
+                $createdGroup,
                 $createdFolders['all'] ?? []
             );
 
@@ -181,18 +168,18 @@ class ProjectService
             throw new OCSException('You must be logged in to search users.');
         }
 
-        $organization = $this->resolveOrganizationForCurrentUser($user->getUID(), $organizationId);
+        $organization = $this->resolveOrganizationForCurrentUser($user->getUID(), $organizationId, false);
 
         $qb = $this->db->getQueryBuilder();
-        $qb->select('uid')
-            ->from('users')
+        $qb->select('user_uid')
+            ->from('organization_members')
             ->where(
                 $qb->expr()->eq('organization_id', $qb->createNamedParameter($organization->getId(), \PDO::PARAM_INT))
             )
             ->andWhere(
-                $qb->expr()->iLike('uid', $qb->createNamedParameter('%' . $search . '%'))
+                $qb->expr()->iLike('user_uid', $qb->createNamedParameter('%' . $search . '%'))
             )
-            ->orderBy('uid', 'ASC')
+            ->orderBy('user_uid', 'ASC')
             ->setMaxResults(max(1, $limit))
             ->setFirstResult(max(0, $offset));
 
@@ -202,7 +189,7 @@ class ProjectService
 
         $users = [];
         foreach ($rows as $row) {
-            $uid = (string) ($row['uid'] ?? '');
+            $uid = (string) ($row['user_uid'] ?? '');
             if ($uid === '') {
                 continue;
             }
@@ -227,7 +214,11 @@ class ProjectService
         return $users;
     }
 
-    private function resolveOrganizationForCurrentUser(string $userId, ?int $organizationId = null): Organization
+    private function resolveOrganizationForCurrentUser(
+        string $userId,
+        ?int $organizationId = null,
+        bool $mustBeOrgAdmin = true,
+    ): Organization
     {
         $isAdmin = $this->groupManager->isInGroup($userId, 'admin');
 
@@ -244,7 +235,22 @@ class ProjectService
             return $organization;
         }
 
-        $organization = $this->organizationMapper->findByUserId($userId);
+        $membership = $this->organizationUserMapper->getOrganizationMembership($userId);
+        if ($membership === null) {
+            throw new OCSException('No organization is assigned to your user account.');
+        }
+
+        if ($mustBeOrgAdmin && $membership['role'] !== 'admin') {
+            throw new OCSException('Only organization admins can create projects.');
+        }
+
+        $resolvedOrganizationId = (int) $membership['organization_id'];
+
+        if ($organizationId !== null && $organizationId !== $resolvedOrganizationId) {
+            throw new OCSException('You can only manage projects for your own organization.');
+        }
+
+        $organization = $this->organizationMapper->find($resolvedOrganizationId);
         if ($organization === null) {
             throw new OCSException('No organization is assigned to your user account.');
         }
@@ -253,37 +259,24 @@ class ProjectService
     }
 
     /**
-     * Creates and populates a circle for the project.
+     * @param string[] $userIds
      */
-    private function createCircleForProject(string $projectName, array $members, IUser $owner): Circle
+    private function assertUsersBelongToOrganization(array $userIds, int $organizationId): void
     {
-        $this->circlesManager->startSession();
-
-        $circleMembers = array_filter(
-            $members,
-            fn($memberId) => $memberId !== $owner->getUID()
-        );
-
-        $circle = $this->circlesManager->createCircle("{$projectName} - Team", null, false, false);
-
-        foreach ($circleMembers as $memberId) {
-            $federatedUser = $this->federatedUserService->getLocalFederatedUser($memberId, true, true);
-            $this->circlesManager->addMember($circle->getSingleId(), $federatedUser);
+        foreach ($userIds as $userId) {
+            $membership = $this->organizationUserMapper->getOrganizationMembership((string) $userId);
+            if ($membership === null || (int) $membership['organization_id'] !== $organizationId) {
+                throw new OCSException(sprintf(
+                    'User "%s" does not belong to the selected organization.',
+                    (string) $userId,
+                ));
+            }
         }
-
-        return $circle;
     }
 
-    private function createGroupForMembers(array $members, string $projectName): IGroup
+    private function createGroupForMembers(array $members): IGroup
     {
-        // Generate a unique group name using timestamp to avoid slow search loop
-        $timestamp = time();
-        $projectGroupName = "{$projectName} - Project Group - {$timestamp}";
-
-        // Ensure uniqueness (fallback, should rarely be needed)
-        if ($this->groupManager->groupExists($projectGroupName)) {
-            $projectGroupName = "{$projectName} - Project Group - {$timestamp}-" . random_int(1000, 9999);
-        }
+        $projectGroupName = $this->generateProjectGroupId();
 
         // Create the group
         $createdGroup = $this->groupManager->createGroup($projectGroupName);
@@ -297,6 +290,18 @@ class ProjectService
         $this->batchAddUsersToGroup($members, $gid);
 
         return $createdGroup;
+    }
+
+    private function generateProjectGroupId(): string
+    {
+        $prefix = 'proj-';
+
+        while (true) {
+            $groupId = $prefix . bin2hex(random_bytes(8));
+            if (!$this->groupManager->groupExists($groupId)) {
+                return $groupId;
+            }
+        }
     }
 
     /**
@@ -335,15 +340,15 @@ class ProjectService
     /**
      * Creates and shares a Deck board for the project.
      */
-    private function createBoardForProject(string $projectName, IUser $owner, string $circleId): Board
+    private function createBoardForProject(string $projectName, IUser $owner, string $projectGroupGid): Board
     {
         $color = strtoupper(sprintf('%06X', random_int(0, 0xFFFFFF)));
         $board = $this->boardService->create("{$projectName} - Main Board", $owner->getUID(), $color);
 
         $this->boardService->addAcl(
             $board->getId(),
-            IShare::TYPE_CIRCLE,
-            $circleId,
+            IShare::TYPE_GROUP,
+            $projectGroupGid,
             true,
             false,
             false
@@ -437,11 +442,9 @@ class ProjectService
 
     private function cleanupResources(
         ?Board $board,
-        ?Circle $circle,
+        ?IGroup $group,
         ?array $folders
     ): void {
-        $user = $this->userSession->getUser();
-
         if (!empty($folders)) {
             foreach ($folders as $folder) {
                 if ($folder !== null && $folder->isDeletable()) {
@@ -454,14 +457,8 @@ class ProjectService
         //     $this->boardService->delete($board->getId());
         // }
 
-        if ($circle !== null) {
-            $federatedUser = $this->circlesManager->getFederatedUser(
-                $user->getUID(),
-                Member::TYPE_USER
-            );
-
-            $this->circlesManager->startSession($federatedUser);
-            $this->circlesManager->destroyCircle($circle->getSingleId());
+        if ($group !== null) {
+            $group->delete();
         }
     }
 
@@ -535,8 +532,6 @@ class ProjectService
         ?string $loc_city = null,
         ?string $loc_zip = null,
         ?string $external_ref = null,
-        ?string $date_start = null,
-        ?string $date_end = null,
         ?int $status = null
     ) {
         // 1. Fetch the existing project
@@ -577,13 +572,6 @@ class ProjectService
         if ($external_ref !== null)
             $project->setExternalRef($external_ref);
 
-        // Timeline (Convert string dates to DateTime objects)
-        if ($date_start !== null) {
-            $project->setDateStart(empty($date_start) ? null : new \DateTime($date_start));
-        }
-        if ($date_end !== null) {
-            $project->setDateEnd(empty($date_end) ? null : new \DateTime($date_end));
-        }
         if ($status !== null)
             $project->setStatus($status);
 

@@ -1,22 +1,22 @@
 <script>
-import ProjectCreator from './components/ProjectCreator.vue';
 import NcAppContent from '@nextcloud/vue/components/NcAppContent';
+import ProjectsHome from './components/ProjectsHome.vue';
 
 export default {
 	name: 'App',
 	components: {
 		NcAppContent,
-		ProjectCreator
+		ProjectsHome,
 	},
-	data() {},
-	computed: {},
-	methods: {}
+	data() {
+		return {};
+	},
 }
 </script>
 
 
 <template>
 	<NcAppContent>
-		<ProjectCreator></ProjectCreator>
+		<ProjectsHome />
 	</NcAppContent>
 </template>

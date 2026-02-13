@@ -29,14 +29,10 @@ class Project extends Entity implements JsonSerializable {
     protected string|null $locZip      = null;
     protected string|null $externalRef = null;
 
-    // 4. Timeline
-    protected DateTime|null $dateStart = null;
-    protected DateTime|null $dateEnd   = null;
-
     // System Fields
     protected string|null $ownerId     = null;
-    protected string|null $circleId    = null;
     protected string|null $boardId     = null;
+    protected string|null $projectGroupGid = null;
     protected int|null    $folderId    = null;
     public    string|null $folderPath  = null;
     protected int|null    $status      = null;
@@ -65,14 +61,10 @@ class Project extends Entity implements JsonSerializable {
         $this->addType('locZip',      Types::STRING);
         $this->addType('externalRef', Types::STRING);
 
-        // Timeline
-        $this->addType('dateStart',   Types::DATE);
-        $this->addType('dateEnd',     Types::DATE);
-
         // System
         $this->addType('ownerId',     Types::STRING);
-        $this->addType('circleId',    Types::STRING);
         $this->addType('boardId',     Types::STRING);
+        $this->addType('project_group_gid', Types::STRING);
         $this->addType('folderId',    Types::INTEGER);
         $this->addType('folderPath',  Types::STRING);
         $this->addType('status',      Types::INTEGER);
@@ -104,13 +96,9 @@ class Project extends Entity implements JsonSerializable {
             'loc_zip'      => $this->locZip,
             'external_ref' => $this->externalRef,
 
-            // Timeline (Format Y-m-d for HTML date inputs)
-            'date_start' => $this->dateStart ? $this->dateStart->format('Y-m-d') : null,
-            'date_end'   => $this->dateEnd ? $this->dateEnd->format('Y-m-d') : null,
-
             'ownerId'    => $this->ownerId,
-            'circleId'   => $this->circleId,
             'boardId'    => $this->boardId,
+            'project_group_gid' => $this->projectGroupGid,
             'folderId'   => $this->folderId,
             'folderPath' => $this->folderPath,
             'status'     => $this->status,

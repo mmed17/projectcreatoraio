@@ -1,5 +1,5 @@
 <template>
-	<div id="projectcreatoraio" class="project-creator-container">
+	<div id="projectcreatoraio" :class="containerClasses">
 		<div class="project-creator-form">
 			<h1 class="project-creator-title">Create a New Project</h1>
 			<p class="project-creator-subtitle">
@@ -49,42 +49,16 @@
 						:multiple="false" />
 				</div>
 				<div v-if="isAdmin" class="form-row"> 
-					<GroupsFetcher
+					<OrganizationsFetcher
                         class="form-row-item"
                         input-label="Organization*"
                         placeholder="Search for an organization..."
-                        :model-value="project.groupId"
-                        @update:modelValue="project.groupId = $event" />
+						:model-value="project.organizationId"
+						@update:modelValue="project.organizationId = $event" />
                 </div>
-				<div class="form-row">
-					<UsersFetcher
-						class="form-row-item"
-						input-label="Project Team Members*"
-						placeholder="Select team members"
-						:model-value="project.members"
-						:group-id="project.groupId"
-						@update:modelValue="project.members = $event">
-					</UsersFetcher>
-				</div>
-
-				<div class="form-row">
-					<NcTextField v-model="project.dateStart"
-						label="Request Date (Start)"
-						class="form-row-item"
-						type="date"
-						:show-label="true"
-						input-label="Request Date" />
-
-					<NcTextField v-model="project.dateEnd"
-						label="Desired Execution Date (End)"
-						class="form-row-item"
-						type="date"
-						:show-label="true"
-						input-label="Desired Execution Date" />
-				</div>
 
 				<NcButton
-					:disabled="isCreatingProject || !project.name || !project.number || isNaN(project.type) || project.members.length === 0"
+					:disabled="isCreatingProject || !canSubmit"
 					type="primary"
 					:wide="true"
 					@click="createProject"
@@ -93,6 +67,15 @@
 						<Plus :size="20" />
 					</template>
 					{{ isCreatingProject ? 'Creating Project...' : 'Create Project' }}
+				</NcButton>
+
+				<NcButton
+					v-if="embedded"
+					type="secondary"
+					:wide="true"
+					class="cancel-button"
+					@click="$emit('cancel')">
+					Cancel
 				</NcButton>
 			</form>
 		</div>
@@ -112,20 +95,25 @@ import { PROJECT_TYPES } from '../macros/project-types';
 import { ProjectsService } from '../Services/projects';
 import { Project } from '../Models/project';
 
-import UsersFetcher from './UsersFetcher.vue';
-import GroupsFetcher from './GroupsFetcher.vue'
+import OrganizationsFetcher from './OrganizationsFetcher.vue'
 
 const projectsService = ProjectsService.getInstance();
 
 export default {
 	name: 'ProjectCreator',
+	emits: ['cancel', 'created'],
+	props: {
+		embedded: {
+			type: Boolean,
+			default: false,
+		},
+	},
 	components: {
 		NcButton,
 		NcTextField,
 		NcSelect,
 		NcNoteCard,
-		UsersFetcher,
-		GroupsFetcher,
+		OrganizationsFetcher,
 		NcTextArea,
 		Plus,
 	},
@@ -140,6 +128,12 @@ export default {
 		};
 	},
 	computed: {
+		containerClasses() {
+			return {
+				'project-creator-container': true,
+				'project-creator-container--embedded': this.embedded,
+			}
+		},
 		selectedProjectType: {
 			get() {
 				return this.PROJECT_TYPES.find((type) => type.id === this.project.type) || null;
@@ -151,6 +145,17 @@ export default {
 		isAdmin() {
 			return !!getCurrentUser()?.isAdmin;
 		},
+		canSubmit() {
+			if (!this.project.name || !this.project.number || isNaN(this.project.type)) {
+				return false;
+			}
+
+			if (this.isAdmin && !this.project.organizationId) {
+				return false;
+			}
+
+			return true;
+		},
 	},
 	methods: {
 		async createProject() {
@@ -160,9 +165,10 @@ export default {
 			this.statusDescription = ''; // UPDATED: Reset description
 
 			try {
-				await projectsService.create(this.project);
+				const result = await projectsService.create(this.project);
 				this.showProjectCreationSuccessMessage();
 				this.resetProjectForm();
+				this.$emit('created', result);
 				
 				setTimeout(() => {
 					this.resetProjectCreationMessage();
@@ -181,6 +187,11 @@ export default {
 		showProjectCreationSuccessMessage() {
 			this.submissionStatus = 'success';
 			this.statusMessage = 'Project has been created successfully';
+		},
+		resetProjectCreationMessage() {
+			this.submissionStatus = '';
+			this.statusMessage = '';
+			this.statusDescription = '';
 		},
 		/**
 		 * @param error {Error}
@@ -225,6 +236,10 @@ export default {
 	width: 100%;
 }
 
+.project-creator-container--embedded {
+	padding: 0;
+}
+
 .project-creator-form {
 	max-width: 700px;
 	width: 100%;
@@ -263,6 +278,10 @@ export default {
 	margin-top: 16px;
 	height: 44px; 
 	font-size: 1.1em;
+}
+
+.cancel-button {
+	margin-top: 8px;
 }
 
 .status-card {

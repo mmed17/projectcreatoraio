@@ -26,14 +26,12 @@ class ProjectMapper extends QBMapper
         int $type,
         string $description,
         string $ownerId,
-        string $circleId,
         string $boardId,
+        string $projectGroupGid,
         int $folderId,
         string $folderPath,
         array $privateFolders,
         string $whiteBoardId,
-        ?string $dateStart = null,
-        ?string $dateEnd = null,
     ) {
         $project = new Project();
 
@@ -42,20 +40,12 @@ class ProjectMapper extends QBMapper
         $project->setType($type);
         $project->setDescription($description);
         $project->setOwnerId($ownerId);
-        $project->setCircleId($circleId);
         $project->setBoardId($boardId);
+        $project->setProjectGroupGid($projectGroupGid);
         $project->setFolderId($folderId);
         $project->setFolderPath($folderPath);
         $project->setOrganizationId($organization->getId());
         $project->setWhiteBoardId($whiteBoardId);
-
-        // Set dates if provided
-        if ($dateStart !== null) {
-            $project->setDateStart(new DateTime($dateStart));
-        }
-        if ($dateEnd !== null) {
-            $project->setDateEnd(new DateTime($dateEnd));
-        }
 
         $now = new DateTime();
         $project->setCreatedAt($now);
@@ -124,25 +114,55 @@ class ProjectMapper extends QBMapper
             ->from(self::TABLE_NAME, 'p')
             ->innerJoin(
                 'p',
-                'circles_member',
+                'group_user',
                 'm',
-                'p.circle_id = m.circle_id'
+                'p.project_group_gid = m.gid'
             )
             ->where(
-                $qb->expr()->eq('m.user_id', $qb->createNamedParameter($userId))
+                $qb->expr()->eq('m.uid', $qb->createNamedParameter($userId))
             )
             ->orderBy('p.created_at', 'DESC');
 
         return $this->findEntities($qb);
     }
 
-    public function findByCircleId(string $circleId)
+    public function findByUserIdAndOrganizationId(string $userId, int $organizationId): array
     {
         $qb = $this->db->getQueryBuilder();
+
         $qb->select('p.*')
             ->from(self::TABLE_NAME, 'p')
-            ->where($qb->expr()->eq('p.circle_id', $qb->createNamedParameter($circleId)));
-        return $this->findEntity($qb);
+            ->innerJoin(
+                'p',
+                'group_user',
+                'm',
+                'p.project_group_gid = m.gid'
+            )
+            ->where(
+                $qb->expr()->eq('m.uid', $qb->createNamedParameter($userId))
+            )
+            ->andWhere(
+                $qb->expr()->eq('p.organization_id', $qb->createNamedParameter($organizationId, IQueryBuilder::PARAM_INT))
+            )
+            ->orderBy('p.created_at', 'DESC');
+
+        return $this->findEntities($qb);
+    }
+
+    public function findByOrganizationId(int $organizationId, int $limit = null, int $offset = null): array
+    {
+        $qb = $this->db->getQueryBuilder();
+
+        $qb->select('*')
+            ->from(self::TABLE_NAME)
+            ->where(
+                $qb->expr()->eq('organization_id', $qb->createNamedParameter($organizationId, IQueryBuilder::PARAM_INT))
+            )
+            ->orderBy('created_at', 'DESC')
+            ->setMaxResults($limit)
+            ->setFirstResult($offset);
+
+        return $this->findEntities($qb);
     }
 
     /**

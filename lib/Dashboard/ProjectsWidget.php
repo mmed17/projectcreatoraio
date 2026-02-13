@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace OCA\ProjectCreatorAIO\Dashboard;
 
 use OCP\Dashboard\IWidget;
@@ -12,15 +14,11 @@ class ProjectsWidget implements IWidget {
     public const APP_ID = 'projectcreatoraio';
 
     public function __construct(
-        IInitialStateService $initialStateService,
-        IL10N $l10n,
-        IURLGenerator $urlGenerator,
-        IUserSession $userSession
+        private readonly IInitialStateService $initialStateService,
+        private readonly IL10N $l10n,
+        private readonly IURLGenerator $urlGenerator,
+        private readonly IUserSession $userSession,
     ) {
-        $this->initialStateService = $initialStateService;
-        $this->l10n = $l10n;
-        $this->urlGenerator = $urlGenerator;
-        $this->userSession = $userSession;
     }
 
     /**
@@ -61,7 +59,7 @@ class ProjectsWidget implements IWidget {
      * @since 20.0.0
      */
     public function getUrl(): ?string {
-        return $this->urlGenerator->linkToRouteAbsolute(self::APP_ID . '.view.index');
+        return $this->urlGenerator->linkToRouteAbsolute(self::APP_ID . '.page.index');
     }
 
     /**
@@ -69,6 +67,9 @@ class ProjectsWidget implements IWidget {
      */
     public function load(): void {
         $user = $this->userSession->getUser();
+        if ($user === null) {
+            return;
+        }
 
         $this->initialStateService->provideInitialState(self::APP_ID, 'currentUser', [
             'id' => $user->getUID(),
