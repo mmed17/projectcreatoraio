@@ -32,6 +32,7 @@ const organizationsService = OrganizationsService.getInstance()
 
 export default {
 	name: 'OrganizationsFetcher',
+	emits: ['update:modelValue', 'error'],
 	components: {
 		NcSelect,
 	},
@@ -72,12 +73,17 @@ export default {
 				}
 
 				this.isLoading = true
-				const details = await organizationsService.getDetails(newId)
-				if (details) {
-					this.selectedOption = details
-					this.options = [details]
+				try {
+					const details = await organizationsService.getDetails(newId)
+					if (details) {
+						this.selectedOption = details
+						this.options = [details]
+					}
+				} catch (error) {
+					this.$emit('error', error)
+				} finally {
+					this.isLoading = false
 				}
-				this.isLoading = false
 			},
 		},
 	},
@@ -109,7 +115,7 @@ export default {
 				}
 			} catch (error) {
 				if (!(error instanceof CanceledError)) {
-					console.error('Error searching organizations:', error)
+					this.$emit('error', error)
 				}
 			} finally {
 				this.isLoading = false

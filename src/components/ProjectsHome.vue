@@ -1,5 +1,14 @@
 <template>
-	<div v-if="!hasProjectAccess" class="projects-home-empty">
+	<div v-if="contextError" class="projects-home-empty">
+		<NcEmptyContent
+			name="Could not load project context"
+			:description="contextError">
+			<template #icon>
+				<Details :size="44" />
+			</template>
+		</NcEmptyContent>
+	</div>
+	<div v-else-if="!hasProjectAccess" class="projects-home-empty">
 		<NcEmptyContent
 			name="No organization assigned"
 			description="Ask your administrator to assign your account to an organization before creating projects.">
@@ -340,6 +349,7 @@ export default {
 	data() {
 		return {
 			context: null,
+			contextError: '',
 			filesError: '',
 			filesLoading: false,
 			isCreateMode: false,
@@ -409,7 +419,13 @@ export default {
 	},
 	methods: {
 		async loadContext() {
-			this.context = await projectsService.context()
+			this.contextError = ''
+			try {
+				this.context = await projectsService.context()
+			} catch (error) {
+				this.context = null
+				this.contextError = error?.response?.data?.message || 'Unable to load project context.'
+			}
 		},
 		async loadProjects() {
 			const previousSelectedProjectId = this.selectedProjectId

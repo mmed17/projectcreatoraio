@@ -82,9 +82,14 @@ class ProjectApiController extends Controller
             ]);
 
         } catch (Throwable $e) {
+            $statusCode = (int) $e->getCode();
+            if ($statusCode < 400 || $statusCode > 599) {
+                $statusCode = 500;
+            }
+
             return new DataResponse([
                 'message' => 'Failed to create project: ' . $e->getMessage()
-            ], 500);
+            ], $statusCode);
         }
     }
 

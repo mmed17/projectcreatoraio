@@ -54,7 +54,8 @@
                         input-label="Organization*"
                         placeholder="Search for an organization..."
 						:model-value="project.organizationId"
-						@update:modelValue="project.organizationId = $event" />
+						@update:modelValue="project.organizationId = $event"
+						@error="handleDependencyError" />
                 </div>
 
 				<NcButton
@@ -158,6 +159,9 @@ export default {
 		},
 	},
 	methods: {
+		handleDependencyError(error) {
+			this.showProjectCreationErrorMessage(error)
+		},
 		async createProject() {
 			this.isCreatingProject = true;
 			this.submissionStatus = '';

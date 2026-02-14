@@ -148,7 +148,7 @@ class ProjectService
                 $createdFolders['shared']['group_folder_id'] ?? null,
             );
 
-            throw new Exception($e->getMessage(), 500, $e);
+            throw $e;
         }
     }
 

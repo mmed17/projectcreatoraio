@@ -64,20 +64,15 @@ export class ProjectsService {
      * @returns {Promise<{userId: string, isGlobalAdmin: boolean, organizationRole: string|null, organizationId: number|null}|null>}
      */
     async context() {
-        try {
-            const url = generateUrl('/apps/projectcreatoraio/api/v1/projects/context')
-            const response = await axios.get(url, {
-                headers: {
-                    'OCS-APIRequest': 'true',
-                    'Content-Type': 'application/json'
-                }
-            });
+        const url = generateUrl('/apps/projectcreatoraio/api/v1/projects/context')
+        const response = await axios.get(url, {
+            headers: {
+                'OCS-APIRequest': 'true',
+                'Content-Type': 'application/json'
+            }
+        });
 
-            return response.data ?? null;
-        } catch (e) {
-            console.error('Failed to fetch projects context:', e);
-            return null;
-        }
+        return response.data ?? null;
     }
 
     /**
