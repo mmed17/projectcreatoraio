@@ -9,6 +9,7 @@ use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\NotFoundResponse;
+use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IRequest;
 use OCP\IUserSession;
 use OCP\AppFramework\Http\TemplateResponse;
@@ -22,6 +23,7 @@ class PageController extends Controller {
         string $appName,
         IRequest $request,
         private IUserSession $userSession,
+        private IEventDispatcher $eventDispatcher,
     ) {
         parent::__construct($appName, $request);
     }
@@ -34,9 +36,23 @@ class PageController extends Controller {
 			return new NotFoundResponse();
 		}
 
-		return new TemplateResponse(
+		// Load Viewer scripts so apps (like Whiteboard) can register handlers.
+		$viewerEventClass = '\\OCA\\Viewer\\Event\\LoadViewer';
+		if (class_exists($viewerEventClass)) {
+			$this->eventDispatcher->dispatchTyped(new $viewerEventClass());
+		}
+
+		$response = new TemplateResponse(
 			Application::APP_ID,
 			'index',
 		);
+
+		// Allow embedding same-origin pages (Files/Viewer) in an iframe.
+		// Needed for the embedded project whiteboard editor.
+		$response->getContentSecurityPolicy()->addAllowedFrameDomain("'self'");
+		// Allow service workers/workers used by Viewer/Whiteboard.
+		$response->getContentSecurityPolicy()->addAllowedWorkerSrcDomain("'self'");
+
+		return $response;
 	}
 }

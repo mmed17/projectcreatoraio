@@ -14,6 +14,9 @@ use OCP\AppFramework\Http\OCS\OCSForbiddenException;
 use OCP\IGroupManager;
 use OCP\IUserSession;
 use OCP\IRequest;
+use OCP\Files\IRootFolder;
+use OCP\Files\Folder;
+use OCP\Files\File;
 use Throwable;
 
 class ProjectApiController extends Controller
@@ -28,6 +31,7 @@ class ProjectApiController extends Controller
         protected ProjectService $projectService,
         private IGroupManager $iGroupManager,
         private OrganizationUserMapper $organizationUserMapper,
+        private IRootFolder $rootFolder,
     ) {
         parent::__construct($appName, $request);
         $this->request = $request;
@@ -162,6 +166,77 @@ class ProjectApiController extends Controller
         $files = $this->projectService->getProjectFiles($projectId);
         return new DataResponse(['files' => $files]);
     }
+
+	#[NoCSRFRequired]
+	#[NoAdminRequired]
+	public function getWhiteboardInfo(int $projectId): DataResponse {
+		$project = $this->projectMapper->find($projectId);
+		if ($project === null) {
+			throw new OCSNotFoundException("Project with ID $projectId not found");
+		}
+
+		$this->assertCanAccessProject($project);
+		$currentUser = $this->userSession->getUser();
+		if ($currentUser === null) {
+			throw new OCSForbiddenException('Authentication required');
+		}
+
+		$whiteboardIdRaw = $project->getWhiteBoardId();
+		$whiteboardId = ($whiteboardIdRaw !== null && $whiteboardIdRaw !== '') ? (int)$whiteboardIdRaw : 0;
+		if ($whiteboardId <= 0) {
+			throw new OCSNotFoundException('Whiteboard not linked');
+		}
+
+		$userFolder = $this->rootFolder->getUserFolder($currentUser->getUID());
+		$file = null;
+		$node = $userFolder->getFirstNodeById($whiteboardId);
+		if ($node instanceof File) {
+			$file = $node;
+		}
+
+		if ($file === null) {
+			$folderNode = $userFolder->get($project->getFolderPath());
+			if ($folderNode instanceof Folder) {
+				$file = $this->findWhiteboardInFolder($folderNode, $project->getName());
+			}
+		}
+
+		if ($file === null) {
+			throw new OCSNotFoundException('Whiteboard file not found');
+		}
+
+		$relative = $userFolder->getRelativePath($file->getPath());
+		if (!is_string($relative) || $relative === '') {
+			throw new OCSNotFoundException('Whiteboard path not accessible');
+		}
+
+		return new DataResponse([
+			'fileId' => $file->getId(),
+			'name' => $file->getName(),
+			'mimetype' => $file->getMimeType(),
+			'size' => $file->getSize(),
+			'mtime' => $file->getMTime(),
+			'path' => '/' . ltrim($relative, '/'),
+		]);
+	}
+
+	private function findWhiteboardInFolder(Folder $folder, string $projectName): ?File {
+		$preferred = trim($projectName) !== '' ? $projectName . '.whiteboard' : null;
+		foreach ($folder->getDirectoryListing() as $child) {
+			if ($child instanceof File) {
+				$name = $child->getName();
+				$lower = strtolower($name);
+				if ($preferred !== null && $name === $preferred) {
+					return $child;
+				}
+				if (str_ends_with($lower, '.whiteboard') || str_ends_with($lower, '.excalidraw')) {
+					return $child;
+				}
+			}
+		}
+
+		return null;
+	}
 
     #[NoCSRFRequired]
     #[NoAdminRequired]

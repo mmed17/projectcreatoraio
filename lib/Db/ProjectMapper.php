@@ -31,7 +31,7 @@ class ProjectMapper extends QBMapper
         int $folderId,
         string $folderPath,
         array $privateFolders,
-        string $whiteBoardId,
+        ?string $whiteBoardId,
     ) {
         $project = new Project();
 

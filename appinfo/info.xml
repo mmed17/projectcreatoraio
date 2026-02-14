@@ -19,6 +19,9 @@
 		<app id="deck" />
 		<app id="files" />
 		<app id="contacts" />
+		<app id="groupfolders" />
+		<app id="whiteboard" />
+		<app id="viewer" />
 	</dependencies>
 	<dashboard>
 		<widget>projectcreatoraio</widget>

@@ -43,6 +43,11 @@ return [
             "verb" => "GET",
         ],
         [
+            "name" => "project_api#getWhiteboardInfo",
+            "url" => "/api/v1/projects/{projectId}/whiteboard",
+            "verb" => "GET",
+        ],
+        [
             "name" => "project_api#update",
             "url" => "/api/v1/projects/{id}",
             "verb" => "PUT",

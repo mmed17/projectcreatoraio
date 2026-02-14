@@ -117,12 +117,39 @@ export class ProjectsService {
                 }
             });
 
-            return response.data ?? { shared: [], private: [] };
+            // API may return either { shared, private } or { files: { shared, private } }
+            const payload = response.data ?? null
+            if (payload && typeof payload === 'object' && payload.files) {
+                return payload.files
+            }
+
+            return payload ?? { shared: [], private: [] };
         } catch (e) {
             console.error('Failed to fetch project files:', e);
             return { shared: [], private: [] };
         }
     }
+
+	/**
+	 *
+	 * @param {number} projectId
+	 * @returns {Promise<{fileId:number,name:string,mimetype:string,size:number,mtime:number,path:string}|null>}
+	 */
+	async getWhiteboardInfo(projectId) {
+		try {
+			const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}/whiteboard`)
+			const response = await axios.get(url, {
+				headers: {
+					'OCS-APIRequest': 'true',
+					'Content-Type': 'application/json',
+				},
+			})
+			return response.data ?? null
+		} catch (e) {
+			console.error('Failed to fetch project whiteboard info:', e)
+			return null
+		}
+	}
 
     /**
      * 

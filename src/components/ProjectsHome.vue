@@ -129,118 +129,155 @@
 
 				<div class="projects-home__detail-grid">
 					<article class="projects-home__card">
-						<h3 class="projects-home__card-title">Project details</h3>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">Name</span>
-							<span>{{ selectedProject.name || '-' }}</span>
-						</div>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">Number</span>
-							<span>{{ selectedProject.number || '-' }}</span>
-						</div>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">External ref</span>
-							<span>{{ selectedProject.external_ref || '-' }}</span>
-						</div>
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Project details</h3>
+							</summary>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">Name</span>
+								<span>{{ selectedProject.name || '-' }}</span>
+							</div>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">Number</span>
+								<span>{{ selectedProject.number || '-' }}</span>
+							</div>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">External ref</span>
+								<span>{{ selectedProject.external_ref || '-' }}</span>
+							</div>
+						</details>
 					</article>
 
 					<article class="projects-home__card">
-						<h3 class="projects-home__card-title">Client information</h3>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">Client name</span>
-							<span>{{ selectedProject.client_name || '-' }}</span>
-						</div>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">Role</span>
-							<span>{{ selectedProject.client_role || '-' }}</span>
-						</div>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">Phone</span>
-							<span>{{ selectedProject.client_phone || '-' }}</span>
-						</div>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">Email</span>
-							<span>{{ selectedProject.client_email || '-' }}</span>
-						</div>
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Client information</h3>
+							</summary>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">Client name</span>
+								<span>{{ selectedProject.client_name || '-' }}</span>
+							</div>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">Role</span>
+								<span>{{ selectedProject.client_role || '-' }}</span>
+							</div>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">Phone</span>
+								<span>{{ selectedProject.client_phone || '-' }}</span>
+							</div>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">Email</span>
+								<span>{{ selectedProject.client_email || '-' }}</span>
+							</div>
+						</details>
 					</article>
 
 					<article class="projects-home__card">
-						<h3 class="projects-home__card-title">Location</h3>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">Street</span>
-							<span>{{ selectedProject.loc_street || '-' }}</span>
-						</div>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">City</span>
-							<span>{{ selectedProject.loc_city || '-' }}</span>
-						</div>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">ZIP</span>
-							<span>{{ selectedProject.loc_zip || '-' }}</span>
-						</div>
-						<div class="projects-home__kv">
-							<span class="projects-home__label">Address</span>
-							<span>{{ selectedProject.client_address || '-' }}</span>
-						</div>
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Location</h3>
+							</summary>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">Street</span>
+								<span>{{ selectedProject.loc_street || '-' }}</span>
+							</div>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">City</span>
+								<span>{{ selectedProject.loc_city || '-' }}</span>
+							</div>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">ZIP</span>
+								<span>{{ selectedProject.loc_zip || '-' }}</span>
+							</div>
+							<div class="projects-home__kv">
+								<span class="projects-home__label">Address</span>
+								<span>{{ selectedProject.client_address || '-' }}</span>
+							</div>
+						</details>
 					</article>
 
 					<article class="projects-home__card">
-						<h3 class="projects-home__card-title">Project links</h3>
-						<div class="projects-home__links">
-							<NcButton type="secondary" :disabled="!selectedProject.boardId" @click="openDeck(selectedProject)">
-								<template #icon>
-									<EyeOutline :size="18" />
-								</template>
-								Open Deck board
-							</NcButton>
-							<NcButton type="secondary" :disabled="!selectedProject.folderPath" @click="openFolder(selectedProject)">
-								<template #icon>
-									<FolderOutline :size="18" />
-								</template>
-								Open folder
-							</NcButton>
-							<NcButton type="secondary" :disabled="!selectedProject.white_board_id" @click="openWhiteboard(selectedProject)">
-								<template #icon>
-									<Details :size="18" />
-								</template>
-								Open whiteboard
-							</NcButton>
-						</div>
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Project links</h3>
+							</summary>
+							<div class="projects-home__links">
+								<NcButton type="secondary" :disabled="!selectedProject.boardId" @click="openDeck(selectedProject)">
+									<template #icon>
+										<EyeOutline :size="18" />
+									</template>
+									Open Deck board
+								</NcButton>
+								<NcButton type="secondary" :disabled="!selectedProject.folderPath" @click="openFolder(selectedProject)">
+									<template #icon>
+										<FolderOutline :size="18" />
+									</template>
+									Open folder
+								</NcButton>
+								<NcButton type="secondary" :disabled="!selectedProject.white_board_id" @click="openWhiteboard(selectedProject)">
+									<template #icon>
+										<Details :size="18" />
+									</template>
+									Open whiteboard
+								</NcButton>
+							</div>
+						</details>
+					</article>
+
+						<article class="projects-home__card projects-home__card--full">
+							<details class="projects-home__collapse" open>
+								<summary class="projects-home__summary">
+									<h3 class="projects-home__card-title">Whiteboard</h3>
+								</summary>
+								<WhiteboardBoard
+									ref="whiteboardBoard"
+									:project-id="selectedProject.id"
+									:user-id="context?.userId || ''"
+									:key="String(selectedProject.id || '') + ':' + String(selectedProject.white_board_id || '')"
+								/>
+							</details>
+						</article>
+
+						<article class="projects-home__card projects-home__card--full">
+							<details class="projects-home__collapse" open>
+								<summary class="projects-home__summary">
+									<h3 class="projects-home__card-title">Deck board</h3>
+								</summary>
+								<DeckBoard :board-id="selectedProject.boardId" />
+							</details>
+						</article>
+
+					<article class="projects-home__card projects-home__card--full">
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Files</h3>
+								<NcButton
+									type="secondary"
+									:disabled="!selectedProject.folderPath"
+									@click.stop.prevent="downloadProject(selectedProject)">
+									<template #icon>
+										<Download :size="18" />
+									</template>
+									Project ZIP
+								</NcButton>
+							</summary>
+
+							<ProjectFilesBrowser
+								:shared-roots="projectFiles.shared"
+								:private-roots="projectFiles.private"
+								:loading="filesLoading"
+								:error="filesError"
+							/>
+						</details>
 					</article>
 
 					<article class="projects-home__card projects-home__card--full">
-						<div class="projects-home__card-header-row">
-							<h3 class="projects-home__card-title">Files</h3>
-							<NcButton type="secondary" :disabled="!selectedProject.folderPath" @click="downloadProject(selectedProject)">
-								<template #icon>
-									<Download :size="18" />
-								</template>
-								Download ZIP
-							</NcButton>
-						</div>
-
-						<div v-if="filesLoading" class="projects-home__muted">Loading file structure...</div>
-						<div v-else-if="filesError" class="projects-home__muted">{{ filesError }}</div>
-						<div v-else class="projects-home__files-grid">
-							<div>
-								<div class="projects-home__label">Shared files</div>
-								<div class="projects-home__file-stat">{{ sharedFileCount }} files</div>
-								<ul class="projects-home__file-list">
-									<li v-for="node in topNodes(projectFiles.shared)" :key="`shared-${node.path}`">
-										{{ node.name }}
-									</li>
-								</ul>
-							</div>
-							<div>
-								<div class="projects-home__label">Private files</div>
-								<div class="projects-home__file-stat">{{ privateFileCount }} files</div>
-								<ul class="projects-home__file-list">
-									<li v-for="node in topNodes(projectFiles.private)" :key="`private-${node.path}`">
-										{{ node.name }}
-									</li>
-								</ul>
-							</div>
-						</div>
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Timeline phases</h3>
+							</summary>
+							<GanttChart :project-id="selectedProject.id" :is-admin="true" />
+						</details>
 					</article>
 				</div>
 			</div>
@@ -269,29 +306,37 @@ import Magnify from 'vue-material-design-icons/Magnify.vue'
 import OfficeBuilding from 'vue-material-design-icons/OfficeBuilding.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
 import { generateRemoteUrl, generateUrl } from '@nextcloud/router'
-import { createClient } from 'webdav'
-import { PROJECT_TYPES } from '../macros/project-types'
-import { ProjectsService } from '../Services/projects'
-import ProjectCreator from './ProjectCreator.vue'
+	import { createClient } from 'webdav'
+	import { PROJECT_TYPES } from '../macros/project-types'
+	import { ProjectsService } from '../Services/projects'
+	import DeckBoard from './ProjectDeck/DeckBoard.vue'
+	import GanttChart from './ProjectTimeline/GanttChart.vue'
+	import ProjectFilesBrowser from './ProjectFiles/ProjectFilesBrowser.vue'
+	import WhiteboardBoard from './ProjectWhiteboard/WhiteboardBoard.vue'
+	import ProjectCreator from './ProjectCreator.vue'
 
 const projectsService = ProjectsService.getInstance()
 const webdavClient = createClient(generateRemoteUrl('dav'))
 
 export default {
 	name: 'ProjectsHome',
-	components: {
-		Details,
-		Download,
-		EyeOutline,
-		FolderOutline,
-		Magnify,
-		NcButton,
-		NcEmptyContent,
-		NcTextField,
-		OfficeBuilding,
-		Plus,
-		ProjectCreator,
-	},
+		components: {
+			DeckBoard,
+			Details,
+			Download,
+			EyeOutline,
+			FolderOutline,
+			GanttChart,
+			Magnify,
+			NcButton,
+			NcEmptyContent,
+			NcTextField,
+			OfficeBuilding,
+			Plus,
+			ProjectFilesBrowser,
+			WhiteboardBoard,
+			ProjectCreator,
+		},
 	data() {
 		return {
 			context: null,
@@ -332,12 +377,6 @@ export default {
 			}
 
 			return 'My projects view'
-		},
-		privateFileCount() {
-			return this.countFiles(this.projectFiles.private)
-		},
-		sharedFileCount() {
-			return this.countFiles(this.projectFiles.shared)
 		},
 		filteredProjects() {
 			const search = this.searchQuery.trim().toLowerCase()
@@ -443,34 +482,6 @@ export default {
 				this.filesLoading = false
 			}
 		},
-		topNodes(nodes) {
-			return (nodes || []).slice(0, 6)
-		},
-		countFiles(nodes) {
-			const list = nodes || []
-			let count = 0
-			for (const node of list) {
-				count += this.countFilesFromNode(node)
-			}
-			return count
-		},
-		countFilesFromNode(node) {
-			if (!node) {
-				return 0
-			}
-
-			if (node.type === 'file') {
-				return 1
-			}
-
-			const children = node.children || []
-			let count = 0
-			for (const child of children) {
-				count += this.countFilesFromNode(child)
-			}
-
-			return count
-		},
 		openDeck(project) {
 			if (!project.boardId) {
 				return
@@ -492,11 +503,18 @@ export default {
 			window.open(url, '_blank')
 		},
 		openWhiteboard(project) {
-			if (!project.white_board_id) {
+			if (!project?.white_board_id) {
 				return
 			}
 
-			const url = generateUrl(`/apps/whiteboard/${project.white_board_id}`)
+			const component = this.$refs.whiteboardBoard
+			if (component && typeof component.openOverlay === 'function') {
+				component.openOverlay()
+				return
+			}
+
+			// Fallback
+			const url = generateUrl(`/apps/files/f/${encodeURIComponent(String(project.white_board_id))}?openfile=true`)
 			window.open(url, '_blank')
 		},
 		downloadProject(project) {
@@ -759,6 +777,24 @@ export default {
 	border: 1px solid var(--color-border-dark);
 	border-radius: 12px;
 	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+}
+
+.projects-home__collapse {
+	display: grid;
+	gap: 10px;
+}
+
+.projects-home__summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	cursor: pointer;
+	list-style: none;
+}
+
+.projects-home__summary::-webkit-details-marker {
+	display: none;
 }
 
 .projects-home__card--full {
