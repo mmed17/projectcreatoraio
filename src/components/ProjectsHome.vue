@@ -224,28 +224,37 @@
 						</details>
 					</article>
 
-						<article class="projects-home__card projects-home__card--full">
-							<details class="projects-home__collapse" open>
-								<summary class="projects-home__summary">
-									<h3 class="projects-home__card-title">Whiteboard</h3>
-								</summary>
-								<WhiteboardBoard
-									ref="whiteboardBoard"
-									:project-id="selectedProject.id"
-									:user-id="context?.userId || ''"
-									:key="String(selectedProject.id || '') + ':' + String(selectedProject.white_board_id || '')"
-								/>
-							</details>
-						</article>
+					<article class="projects-home__card projects-home__card--full">
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Timeline phases</h3>
+							</summary>
+							<GanttChart :project-id="selectedProject.id" :is-admin="true" />
+						</details>
+					</article>
 
-						<article class="projects-home__card projects-home__card--full">
-							<details class="projects-home__collapse" open>
-								<summary class="projects-home__summary">
-									<h3 class="projects-home__card-title">Deck board</h3>
-								</summary>
-								<DeckBoard :board-id="selectedProject.boardId" />
-							</details>
-						</article>
+					<article class="projects-home__card projects-home__card--full">
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Deck board</h3>
+							</summary>
+							<DeckBoard :board-id="selectedProject.boardId" />
+						</details>
+					</article>
+
+					<article class="projects-home__card projects-home__card--full">
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Whiteboard</h3>
+							</summary>
+							<WhiteboardBoard
+								ref="whiteboardBoard"
+								:project-id="selectedProject.id"
+								:user-id="context?.userId || ''"
+								:key="String(selectedProject.id || '') + ':' + String(selectedProject.white_board_id || '')"
+							/>
+						</details>
+					</article>
 
 					<article class="projects-home__card projects-home__card--full">
 						<details class="projects-home__collapse" open>
@@ -268,15 +277,6 @@
 								:loading="filesLoading"
 								:error="filesError"
 							/>
-						</details>
-					</article>
-
-					<article class="projects-home__card projects-home__card--full">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
-								<h3 class="projects-home__card-title">Timeline phases</h3>
-							</summary>
-							<GanttChart :project-id="selectedProject.id" :is-admin="true" />
 						</details>
 					</article>
 				</div>
