@@ -3,6 +3,7 @@
 namespace OCA\ProjectCreatorAIO\Service;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
+use OCA\ProjectCreatorAIO\Db\ProjectNoteMapper;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCA\Deck\Service\BoardService;
@@ -28,6 +29,7 @@ use OCA\GroupFolders\Mount\FolderStorageManager;
 use OCA\Organization\Db\Plan;
 use OCP\IDBConnection;
 use OCP\IUserManager;
+use OCP\Files\File;
 
 class ProjectService
 {
@@ -37,6 +39,7 @@ class ProjectService
         protected BoardService $boardService,
         protected IRootFolder $rootFolder,
         protected ProjectMapper $projectMapper,
+        protected ProjectNoteMapper $noteMapper,
         protected FileTreeService $fileTreeService,
         protected OrganizationMapper $organizationMapper,
         protected OrganizationUserMapper $organizationUserMapper,
@@ -218,6 +221,195 @@ class ProjectService
         }
 
         return $users;
+    }
+
+    /**
+     * @return array<int, array{id: string, displayName: string, email: string, isOwner: bool}>
+     */
+    public function getProjectMembers(int $projectId): array
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSException("Project with ID $projectId not found", 404);
+        }
+
+        $ownerId = trim((string) ($project->getOwnerId() ?? ''));
+        $groupGid = trim((string) ($project->getProjectGroupGid() ?? ''));
+
+        $memberIds = $groupGid !== ''
+            ? $this->getMemberUserIdsByGroup($groupGid)
+            : [];
+
+        if ($ownerId !== '' && !in_array($ownerId, $memberIds, true)) {
+            $memberIds[] = $ownerId;
+        }
+
+        $members = [];
+        foreach ($memberIds as $memberId) {
+            $user = $this->userManager->get($memberId);
+            if ($user === null) {
+                continue;
+            }
+
+            $members[] = $this->formatProjectMember($user, $ownerId);
+        }
+
+        usort($members, static function (array $a, array $b): int {
+            if ($a['isOwner'] !== $b['isOwner']) {
+                return $a['isOwner'] ? -1 : 1;
+            }
+
+            return strcasecmp($a['displayName'], $b['displayName']);
+        });
+
+        return $members;
+    }
+
+    /**
+     * Adds an organization member to the project group and provisions a private folder link.
+     *
+     * @return array{added: bool, alreadyMember: bool, member: array{id: string, displayName: string, email: string, isOwner: bool}}
+     */
+    public function addMemberToProject(int $projectId, string $userId): array
+    {
+        $userId = trim($userId);
+        if ($userId === '') {
+            throw new OCSException('A user ID is required to add a project member.', 400);
+        }
+
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSException("Project with ID $projectId not found", 404);
+        }
+
+        $groupGid = trim((string) ($project->getProjectGroupGid() ?? ''));
+        if ($groupGid === '') {
+            throw new OCSException('This project cannot accept members because the member group is not configured.', 500);
+        }
+
+        $memberOrganization = $this->organizationUserMapper->getOrganizationMembership($userId);
+        if ($memberOrganization === null || (int) $memberOrganization['organization_id'] !== (int) $project->getOrganizationId()) {
+            throw new OCSException('User does not belong to this organization.', 403);
+        }
+
+        $user = $this->userManager->get($userId);
+        if ($user === null) {
+            throw new OCSException(sprintf('User "%s" does not exist.', $userId), 404);
+        }
+
+        $alreadyMember = $this->groupManager->isInGroup($userId, $groupGid);
+        $group = null;
+        $addedToGroup = false;
+
+        if (!$alreadyMember) {
+            $group = $this->groupManager->get($groupGid);
+            if ($group === null) {
+                throw new OCSException('Project member group not found.', 404);
+            }
+
+            $group->addUser($user);
+            $addedToGroup = true;
+        }
+
+        try {
+            $this->ensurePrivateFolderForMember($project, $userId);
+        } catch (Throwable $e) {
+            if ($addedToGroup && $group !== null) {
+                $group->removeUser($user);
+            }
+
+            throw $e;
+        }
+
+        $ownerId = trim((string) ($project->getOwnerId() ?? ''));
+
+        return [
+            'added' => !$alreadyMember,
+            'alreadyMember' => $alreadyMember,
+            'member' => $this->formatProjectMember($user, $ownerId),
+        ];
+    }
+
+    /**
+     * @return string[]
+     */
+    private function getMemberUserIdsByGroup(string $groupGid): array
+    {
+        if ($groupGid === '') {
+            return [];
+        }
+
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('uid')
+            ->from('group_user')
+            ->where(
+                $qb->expr()->eq('gid', $qb->createNamedParameter($groupGid))
+            )
+            ->orderBy('uid', 'ASC');
+
+        $result = $qb->executeQuery();
+        $rows = $result->fetchAll();
+        $result->closeCursor();
+
+        $memberIds = [];
+        $seen = [];
+        foreach ($rows as $row) {
+            $uid = (string) ($row['uid'] ?? '');
+            if ($uid !== '' && !isset($seen[$uid])) {
+                $seen[$uid] = true;
+                $memberIds[] = $uid;
+            }
+        }
+
+        return $memberIds;
+    }
+
+    private function ensurePrivateFolderForMember(Project $project, string $userId): void
+    {
+        $projectId = (int) ($project->getId() ?? 0);
+        if ($projectId <= 0) {
+            throw new OCSException('Invalid project while creating private folder.', 500);
+        }
+
+        $existingLink = $this->projectMapper->findPrivateFolderForUser($projectId, $userId);
+        if ($existingLink !== null) {
+            return;
+        }
+
+        try {
+            $userFolder = $this->rootFolder->getUserFolder($userId);
+            $projectName = trim((string) ($project->getName() ?? ''));
+            if ($projectName === '') {
+                $projectName = 'Project';
+            }
+
+            $privateFolderName = $this->getUniqueFolderName($projectName, 'Private Files', $userFolder);
+            $privateFolder = $userFolder->newFolder($privateFolderName);
+
+            $this->projectMapper->createPrivateFolderLink(
+                $projectId,
+                $userId,
+                (int) $privateFolder->getId(),
+                $privateFolder->getPath(),
+            );
+        } catch (Throwable $e) {
+            throw new OCSException('Unable to provision private files for invited member.', 500);
+        }
+    }
+
+    /**
+     * @return array{id: string, displayName: string, email: string, isOwner: bool}
+     */
+    private function formatProjectMember(IUser $user, string $ownerId): array
+    {
+        $userId = $user->getUID();
+
+        return [
+            'id' => $userId,
+            'displayName' => $user->getDisplayName() ?: $userId,
+            'email' => $user->getEMailAddress() ?: '',
+            'isOwner' => $ownerId !== '' && $userId === $ownerId,
+        ];
     }
 
     private function resolveOrganizationForCurrentUser(
@@ -529,6 +721,263 @@ class ProjectService
             'shared' => [$sharedFilesTree],
             'private' => $privateFilesTrees
         ];
+    }
+
+    /**
+     * Returns project notes stored as files.
+     *
+     * public note:  <project shared folder>/Public Notes/public-note.md
+     * private note: <user private project folder>/private-note.md (per-user)
+     *
+     * @return array{public: string, private: string, private_available: bool}
+     */
+    public function getProjectNotes(int $projectId): array
+    {
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            throw new OCSException('Authentication required');
+        }
+
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSException("Project with ID $projectId not found", 404);
+        }
+
+        $userFolder = $this->rootFolder->getUserFolder($currentUser->getUID());
+
+        $projectRoot = null;
+        try {
+            $node = $userFolder->get($project->getFolderPath());
+            if ($node instanceof Folder) {
+                $projectRoot = $node;
+            }
+        } catch (NotFoundException $e) {
+            $projectRoot = null;
+        }
+
+        $public = $projectRoot instanceof Folder
+            ? $this->readOrCreateNoteFile($projectRoot, 'Public Notes', 'public-note.md')
+            : '';
+
+        $privateFolder = $this->resolvePrivateFolderForCurrentUser($userFolder, $projectId, $currentUser->getUID());
+        if ($privateFolder === null) {
+            return [
+                'public' => $public,
+                'private' => '',
+                'private_available' => false,
+            ];
+        }
+
+        // Legacy fallback: older versions stored "private" note in the shared folder.
+        $privateNoteFileName = 'private-note.md';
+        if (!$privateFolder->nodeExists($privateNoteFileName) && $projectRoot instanceof Folder) {
+            $legacy = $this->readLegacySharedPrivateNote($projectRoot);
+            if ($legacy !== '') {
+                $this->writeOrCreateFile($privateFolder, $privateNoteFileName, $legacy);
+            }
+        }
+
+        $private = $this->readOrCreateFile($privateFolder, $privateNoteFileName);
+
+        return [
+            'public' => $public,
+            'private' => $private,
+            'private_available' => true,
+        ];
+    }
+
+    /**
+     * Updates project notes.
+     *
+     * @return array{public: string, private: string, private_available: bool}
+     */
+    public function updateProjectNotes(int $projectId, ?string $publicNote = null, ?string $privateNote = null): array
+    {
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            throw new OCSException('Authentication required');
+        }
+
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSException("Project with ID $projectId not found", 404);
+        }
+
+        $userFolder = $this->rootFolder->getUserFolder($currentUser->getUID());
+
+        if ($publicNote !== null) {
+            $projectRoot = $userFolder->get($project->getFolderPath());
+            if (!$projectRoot instanceof Folder) {
+                throw new OCSException('Project shared folder not found', 404);
+            }
+            $this->writeOrCreateNoteFile($projectRoot, 'Public Notes', 'public-note.md', $publicNote);
+        }
+
+        if ($privateNote !== null) {
+            $privateFolder = $this->resolvePrivateFolderForCurrentUser($userFolder, $projectId, $currentUser->getUID());
+            if ($privateFolder === null) {
+                throw new OCSException('Private note is not available for this user', 403);
+            }
+            $this->writeOrCreateFile($privateFolder, 'private-note.md', $privateNote);
+        }
+
+        return $this->getProjectNotes($projectId);
+    }
+
+    /**
+     * Check if user has a private folder for this project
+     */
+    public function hasPrivateFolderForUser(int $projectId, string $userId): bool
+    {
+        $link = $this->projectMapper->findPrivateFolderForUser($projectId, $userId);
+        return $link !== null;
+    }
+
+    /**
+     * Get list of all notes for a project
+     * Returns public notes and private notes owned by the user
+     * 
+     * @return array{public: array, private: array, private_available: bool}
+     */
+    public function getProjectNotesList(int $projectId, string $userId): array
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSException("Project with ID $projectId not found", 404);
+        }
+
+        // Get all public notes
+        $publicNotes = $this->noteMapper->findPublicByProject($projectId);
+
+        // Get private notes for this user
+        $privateNotes = $this->noteMapper->findPrivateByProjectAndUser($projectId, $userId);
+
+        // Check if user has private folder available
+        $hasPrivateFolder = $this->hasPrivateFolderForUser($projectId, $userId);
+
+        return [
+            'public' => array_map(fn($note) => $note->jsonSerialize(), $publicNotes),
+            'private' => array_map(fn($note) => $note->jsonSerialize(), $privateNotes),
+            'private_available' => $hasPrivateFolder,
+        ];
+    }
+
+    private function resolvePrivateFolderForCurrentUser(Folder $userFolder, int $projectId, string $userId): ?Folder
+    {
+        $link = $this->projectMapper->findPrivateFolderForUser($projectId, $userId);
+        if ($link === null) {
+            return null;
+        }
+
+        $folderId = (int) ($link->getFolderId() ?? 0);
+        if ($folderId <= 0) {
+            return null;
+        }
+
+        $node = $userFolder->getFirstNodeById($folderId);
+        return $node instanceof Folder ? $node : null;
+    }
+
+    private function readLegacySharedPrivateNote(Folder $projectRoot): string
+    {
+        $legacyFolderName = 'Private Notes';
+        $legacyFileName = 'private-note.md';
+
+        if (!$projectRoot->nodeExists($legacyFolderName)) {
+            return '';
+        }
+
+        $legacyFolder = $projectRoot->get($legacyFolderName);
+        if (!$legacyFolder instanceof Folder) {
+            return '';
+        }
+
+        if (!$legacyFolder->nodeExists($legacyFileName)) {
+            return '';
+        }
+
+        $node = $legacyFolder->get($legacyFileName);
+        if (!$node instanceof File) {
+            return '';
+        }
+
+        $content = $node->getContent();
+        return is_string($content) ? $content : '';
+    }
+
+    private function readOrCreateNoteFile(Folder $projectRoot, string $notesFolderName, string $noteFileName): string
+    {
+        $notesFolder = null;
+        if ($projectRoot->nodeExists($notesFolderName)) {
+            $notesFolder = $projectRoot->get($notesFolderName);
+            if (!$notesFolder instanceof Folder) {
+                throw new OCSException(sprintf('%s exists but is not a folder', $notesFolderName), 500);
+            }
+        } else {
+            $notesFolder = $projectRoot->newFolder($notesFolderName);
+        }
+
+        if (!$notesFolder->nodeExists($noteFileName)) {
+            $noteFile = $notesFolder->newFile($noteFileName);
+            $noteFile->putContent('');
+            return '';
+        }
+
+        $node = $notesFolder->get($noteFileName);
+        if (!$node instanceof File) {
+            throw new OCSException(sprintf('%s exists but is not a file', $noteFileName), 500);
+        }
+
+        $content = $node->getContent();
+        return is_string($content) ? $content : '';
+    }
+
+    private function writeOrCreateNoteFile(Folder $projectRoot, string $notesFolderName, string $noteFileName, string $content): void
+    {
+        $notesFolder = null;
+        if ($projectRoot->nodeExists($notesFolderName)) {
+            $notesFolder = $projectRoot->get($notesFolderName);
+            if (!$notesFolder instanceof Folder) {
+                throw new OCSException(sprintf('%s exists but is not a folder', $notesFolderName), 500);
+            }
+        } else {
+            $notesFolder = $projectRoot->newFolder($notesFolderName);
+        }
+
+        $this->writeOrCreateFile($notesFolder, $noteFileName, $content);
+    }
+
+    private function readOrCreateFile(Folder $folder, string $fileName): string
+    {
+        if (!$folder->nodeExists($fileName)) {
+            $file = $folder->newFile($fileName);
+            $file->putContent('');
+            return '';
+        }
+
+        $node = $folder->get($fileName);
+        if (!$node instanceof File) {
+            throw new OCSException(sprintf('%s exists but is not a file', $fileName), 500);
+        }
+
+        $content = $node->getContent();
+        return is_string($content) ? $content : '';
+    }
+
+    private function writeOrCreateFile(Folder $folder, string $fileName, string $content): void
+    {
+        if (!$folder->nodeExists($fileName)) {
+            $file = $folder->newFile($fileName);
+            $file->putContent($content);
+            return;
+        }
+
+        $node = $folder->get($fileName);
+        if (!$node instanceof File) {
+            throw new OCSException(sprintf('%s exists but is not a file', $fileName), 500);
+        }
+
+        $node->putContent($content);
     }
 
     public function findProjectByBoard(int $boardId)

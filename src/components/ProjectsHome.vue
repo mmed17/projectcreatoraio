@@ -129,10 +129,29 @@
 						<h2 class="projects-home__details-title">{{ selectedProject.name || 'Unnamed project' }}</h2>
 						<p class="projects-home__details-subtitle">{{ selectedProject.description || 'No description provided yet.' }}</p>
 					</div>
-					<div class="projects-home__hero-badges">
-						<span class="projects-home__badge">{{ statusLabel(selectedProject.status) }}</span>
-						<span class="projects-home__badge">{{ typeLabel(selectedProject.type) }}</span>
-						<span class="projects-home__badge">#{{ selectedProject.number || 'N/A' }}</span>
+					<div class="projects-home__hero-aside">
+						<div class="projects-home__hero-badges">
+							<span class="projects-home__badge">{{ statusLabel(selectedProject.status) }}</span>
+							<span class="projects-home__badge">{{ typeLabel(selectedProject.type) }}</span>
+							<span class="projects-home__badge">#{{ selectedProject.number || 'N/A' }}</span>
+						</div>
+						<div v-if="canManageProjects" class="projects-home__hero-actions">
+							<NcActions>
+								<template #icon>
+									<DotsHorizontal :size="18" />
+								</template>
+								<NcActionButton
+									:icon="isArchivedStatus(selectedProject.status) ? 'icon-history' : 'icon-archive'"
+									@click="openArchiveDialog">
+									<template #icon>
+										<ArchiveArrowUp v-if="isArchivedStatus(selectedProject.status)" :size="16" />
+										<Archive v-else :size="16" />
+									</template>
+									{{ isArchivedStatus(selectedProject.status) ? 'Restore project' : 'Archive project' }}
+								</NcActionButton>
+							</NcActions>
+						</div>
+						<p v-if="canManageProjects && statusUpdateError" class="projects-home__inline-error">{{ statusUpdateError }}</p>
 					</div>
 				</div>
 
@@ -233,6 +252,64 @@
 						</details>
 					</article>
 
+					<article class="projects-home__card">
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Project members</h3>
+							</summary>
+
+							<p class="projects-home__muted">Anyone in this project can invite organization members.</p>
+
+							<div class="projects-home__member-invite-row">
+								<NcSelect
+									:model-value="memberInviteSelection"
+									:options="memberInviteOptions"
+									:loading="memberSearchLoading"
+									:show-label="true"
+									:multiple="false"
+									:searchable="true"
+									:clearable="true"
+									input-label="Invite a member"
+									placeholder="Search organization members"
+									@search="searchMemberCandidates"
+									@update:model-value="memberInviteSelection = $event" />
+								<NcButton
+									type="primary"
+									:disabled="memberInviteLoading || !memberInviteSelection || !selectedProject.id"
+									@click="inviteSelectedMember">
+									{{ memberInviteLoading ? 'Inviting...' : 'Invite' }}
+								</NcButton>
+							</div>
+
+							<p v-if="memberInviteMessage" class="projects-home__inline-success">{{ memberInviteMessage }}</p>
+							<p v-if="membersError" class="projects-home__inline-error projects-home__inline-error--left">{{ membersError }}</p>
+
+							<div v-if="membersLoading" class="projects-home__muted">Loading members...</div>
+							<div v-else-if="projectMembers.length === 0" class="projects-home__muted">No members found.</div>
+							<ul v-else class="projects-home__members-list">
+								<li v-for="member in projectMembers" :key="member.id" class="projects-home__member-item">
+									<div class="projects-home__member-main">
+										<span class="projects-home__member-name">{{ member.displayName || member.id }}</span>
+										<span class="projects-home__member-meta">{{ member.id }}</span>
+									</div>
+									<div class="projects-home__member-badges">
+										<span v-if="member.isOwner" class="projects-home__member-badge">Owner</span>
+										<span v-if="member.email" class="projects-home__member-badge projects-home__member-badge--muted">{{ member.email }}</span>
+									</div>
+								</li>
+							</ul>
+						</details>
+					</article>
+
+					<article class="projects-home__card projects-home__card--full">
+						<details class="projects-home__collapse" open>
+							<summary class="projects-home__summary">
+								<h3 class="projects-home__card-title">Project Notes</h3>
+							</summary>
+							<ProjectNotesList :project-id="selectedProject.id" />
+						</details>
+					</article>
+
 					<article class="projects-home__card projects-home__card--full">
 						<details class="projects-home__collapse" open>
 							<summary class="projects-home__summary">
@@ -300,6 +377,27 @@
 				</template>
 			</NcEmptyContent>
 		</section>
+
+		<NcDialog
+			v-if="showArchiveDialog && selectedProject"
+			:name="archiveDialogAction === 'archive' ? 'Archive project' : 'Restore project'"
+			:message="archiveDialogAction === 'archive'
+				? `Are you sure you want to archive "${selectedProject.name}"? Archived projects will be hidden from active project lists but can be restored at any time.`
+				: `Are you sure you want to restore "${selectedProject.name}"? This project will become active again and visible in project lists.`"
+			:buttons="[
+				{
+					label: 'Cancel',
+					type: 'secondary',
+					callback: () => { showArchiveDialog = false }
+				},
+				{
+					label: archiveDialogAction === 'archive' ? 'Archive' : 'Restore',
+					type: 'primary',
+					nativeType: archiveDialogAction === 'archive' ? 'error' : 'submit',
+					callback: () => { executeArchiveAction() }
+				}
+			]"
+			@close="showArchiveDialog = false" />
 	</div>
 </template>
 
@@ -307,6 +405,10 @@
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
+import NcSelect from '@nextcloud/vue/components/NcSelect'
+import NcActions from '@nextcloud/vue/components/NcActions'
+import NcActionButton from '@nextcloud/vue/components/NcActionButton'
+import NcDialog from '@nextcloud/vue/components/NcDialog'
 import Details from 'vue-material-design-icons/Details.vue'
 import Download from 'vue-material-design-icons/Download.vue'
 import EyeOutline from 'vue-material-design-icons/EyeOutline.vue'
@@ -314,44 +416,58 @@ import FolderOutline from 'vue-material-design-icons/FolderOutline.vue'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 import OfficeBuilding from 'vue-material-design-icons/OfficeBuilding.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
+import Archive from 'vue-material-design-icons/Archive.vue'
+import ArchiveArrowUp from 'vue-material-design-icons/ArchiveArrowUp.vue'
+import DotsHorizontal from 'vue-material-design-icons/DotsHorizontal.vue'
 import { generateRemoteUrl, generateUrl } from '@nextcloud/router'
-	import { createClient } from 'webdav'
-	import { PROJECT_TYPES } from '../macros/project-types'
-	import { ProjectsService } from '../Services/projects'
-	import DeckBoard from './ProjectDeck/DeckBoard.vue'
-	import GanttChart from './ProjectTimeline/GanttChart.vue'
-	import ProjectFilesBrowser from './ProjectFiles/ProjectFilesBrowser.vue'
-	import WhiteboardBoard from './ProjectWhiteboard/WhiteboardBoard.vue'
-	import ProjectCreator from './ProjectCreator.vue'
+import { createClient } from 'webdav'
+import { PROJECT_TYPES } from '../macros/project-types'
+import { ProjectsService } from '../Services/projects'
+import DeckBoard from './ProjectDeck/DeckBoard.vue'
+import GanttChart from './ProjectTimeline/GanttChart.vue'
+import ProjectFilesBrowser from './ProjectFiles/ProjectFilesBrowser.vue'
+import WhiteboardBoard from './ProjectWhiteboard/WhiteboardBoard.vue'
+import ProjectCreator from './ProjectCreator.vue'
+import ProjectNotesList from './ProjectNotesList.vue'
 
 const projectsService = ProjectsService.getInstance()
 const webdavClient = createClient(generateRemoteUrl('dav'))
 
 export default {
 	name: 'ProjectsHome',
-		components: {
-			DeckBoard,
-			Details,
-			Download,
-			EyeOutline,
-			FolderOutline,
-			GanttChart,
-			Magnify,
-			NcButton,
-			NcEmptyContent,
-			NcTextField,
-			OfficeBuilding,
-			Plus,
-			ProjectFilesBrowser,
-			WhiteboardBoard,
-			ProjectCreator,
-		},
+	components: {
+		DeckBoard,
+		Details,
+		Download,
+		EyeOutline,
+		FolderOutline,
+		GanttChart,
+		Magnify,
+		NcButton,
+		NcEmptyContent,
+		NcTextField,
+		NcSelect,
+		NcActions,
+		NcActionButton,
+		NcDialog,
+		OfficeBuilding,
+		Plus,
+		Archive,
+		ArchiveArrowUp,
+		DotsHorizontal,
+		ProjectFilesBrowser,
+		WhiteboardBoard,
+		ProjectCreator,
+		ProjectNotesList,
+	},
 	data() {
 		return {
 			context: null,
 			contextError: '',
 			filesError: '',
 			filesLoading: false,
+			statusUpdating: false,
+			statusUpdateError: '',
 			isCreateMode: false,
 			loading: false,
 			projectFiles: {
@@ -364,6 +480,17 @@ export default {
 			selectedProject: null,
 			selectedProjectId: null,
 			statusFilter: 'all',
+			showArchiveDialog: false,
+			archiveDialogAction: 'archive',
+			projectMembers: [],
+			membersLoading: false,
+			membersError: '',
+			memberInviteSelection: null,
+			memberInviteOptions: [],
+			memberSearchLoading: false,
+			memberInviteLoading: false,
+			memberInviteMessage: '',
+			memberSearchTimeout: null,
 		}
 	},
 	computed: {
@@ -376,6 +503,9 @@ export default {
 		},
 		isOrganizationAdmin() {
 			return this.context?.organizationRole === 'admin' && !this.context?.isGlobalAdmin
+		},
+		canManageProjects() {
+			return !!(this.context?.isGlobalAdmin || this.context?.organizationRole === 'admin')
 		},
 		scopeLabel() {
 			if (this.context?.isGlobalAdmin) {
@@ -391,10 +521,11 @@ export default {
 		filteredProjects() {
 			const search = this.searchQuery.trim().toLowerCase()
 			return this.projects.filter((project) => {
-				if (this.statusFilter === 'active' && project.status !== 1) {
+				const normalizedStatus = Number(project.status)
+				if (this.statusFilter === 'active' && normalizedStatus !== 1) {
 					return false
 				}
-				if (this.statusFilter === 'archived' && project.status !== 0) {
+				if (this.statusFilter === 'archived' && normalizedStatus !== 0) {
 					return false
 				}
 				if (search === '') {
@@ -418,6 +549,45 @@ export default {
 		await this.loadProjects()
 	},
 	methods: {
+		isArchivedStatus(status) {
+			return Number(status) === 0
+		},
+		openArchiveDialog() {
+			if (!this.selectedProject) {
+				return
+			}
+			const currentlyArchived = this.isArchivedStatus(this.selectedProject.status)
+			this.archiveDialogAction = currentlyArchived ? 'restore' : 'archive'
+			this.showArchiveDialog = true
+		},
+		async executeArchiveAction() {
+			if (!this.selectedProject) {
+				this.showArchiveDialog = false
+				return
+			}
+			const projectId = Number(this.selectedProject.id)
+			if (!Number.isFinite(projectId) || projectId <= 0) {
+				this.showArchiveDialog = false
+				return
+			}
+
+			const currentlyArchived = this.isArchivedStatus(this.selectedProject.status)
+			const nextStatus = currentlyArchived ? 1 : 0
+
+			this.showArchiveDialog = false
+			this.statusUpdateError = ''
+			this.statusUpdating = true
+			try {
+				await projectsService.update(projectId, { status: nextStatus })
+				// Update local state immediately
+				this.selectedProject.status = nextStatus
+				await this.loadProjects()
+			} catch (error) {
+				this.statusUpdateError = error?.response?.data?.message || 'Could not update project status.'
+			} finally {
+				this.statusUpdating = false
+			}
+		},
 		async loadContext() {
 			this.contextError = ''
 			try {
@@ -441,6 +611,7 @@ export default {
 				if (previousSelectedProjectId !== null) {
 					const stillExists = this.projects.some((project) => project.id === previousSelectedProjectId)
 					if (!stillExists) {
+						this.resetMembersState()
 						this.selectedProject = null
 						this.selectedProjectId = null
 					}
@@ -451,12 +622,18 @@ export default {
 		},
 		async selectProject(project) {
 			this.isCreateMode = false
+			this.statusUpdateError = ''
+			this.memberInviteMessage = ''
+			this.membersError = ''
 			this.selectedProjectId = project.id
 			this.selectedProject = await projectsService.get(project.id)
+			await this.loadProjectMembers(project.id)
 			await this.loadProjectFiles(project.id)
 		},
 		startCreateProject() {
 			this.isCreateMode = true
+			this.statusUpdateError = ''
+			this.resetMembersState()
 			this.projectFiles = { private: [], shared: [] }
 			this.selectedProject = null
 			this.selectedProjectId = null
@@ -478,10 +655,11 @@ export default {
 			return match ? match.label : 'Unknown'
 		},
 		statusLabel(status) {
-			if (status === 1) {
+			const normalized = Number(status)
+			if (normalized === 1) {
 				return 'Active'
 			}
-			if (status === 0) {
+			if (normalized === 0) {
 				return 'Archived'
 			}
 			return 'Unknown'
@@ -496,6 +674,107 @@ export default {
 				this.projectFiles = { private: [], shared: [] }
 			} finally {
 				this.filesLoading = false
+			}
+		},
+		resetMembersState() {
+			this.projectMembers = []
+			this.membersLoading = false
+			this.membersError = ''
+			this.memberInviteSelection = null
+			this.memberInviteOptions = []
+			this.memberSearchLoading = false
+			this.memberInviteLoading = false
+			this.memberInviteMessage = ''
+			if (this.memberSearchTimeout) {
+				clearTimeout(this.memberSearchTimeout)
+				this.memberSearchTimeout = null
+			}
+		},
+		getMemberSearchOrganizationId() {
+			const selectedProjectOrg = Number(this.selectedProject?.organization_id)
+			if (Number.isFinite(selectedProjectOrg) && selectedProjectOrg > 0) {
+				return selectedProjectOrg
+			}
+
+			const contextOrg = Number(this.context?.organizationId)
+			if (Number.isFinite(contextOrg) && contextOrg > 0) {
+				return contextOrg
+			}
+
+			return null
+		},
+		async loadProjectMembers(projectId) {
+			this.membersLoading = true
+			this.membersError = ''
+			try {
+				this.projectMembers = await projectsService.listMembers(projectId)
+			} catch (error) {
+				this.projectMembers = []
+				this.membersError = error?.response?.data?.message || 'Could not load project members.'
+			} finally {
+				this.membersLoading = false
+			}
+		},
+		searchMemberCandidates(query) {
+			if (this.memberSearchTimeout) {
+				clearTimeout(this.memberSearchTimeout)
+			}
+
+			if (!query || !this.selectedProject?.id) {
+				this.memberInviteOptions = []
+				this.memberSearchLoading = false
+				return
+			}
+
+			this.memberSearchLoading = true
+			this.memberSearchTimeout = setTimeout(async () => {
+				try {
+					const organizationId = this.getMemberSearchOrganizationId()
+					const users = await projectsService.searchUsers(query, organizationId)
+					const existingIds = new Set(this.projectMembers.map((member) => String(member.id)))
+					this.memberInviteOptions = users
+						.filter((user) => !existingIds.has(String(user.id)))
+						.map((user) => ({
+							id: user.id,
+							label: user.displayName || user.label || user.id,
+							subname: user.subname || user.id,
+						}))
+				} catch (error) {
+					this.memberInviteOptions = []
+					this.membersError = error?.response?.data?.message || 'Could not search organization users.'
+				} finally {
+					this.memberSearchLoading = false
+				}
+			}, 250)
+		},
+		async inviteSelectedMember() {
+			if (!this.selectedProject?.id || !this.memberInviteSelection) {
+				return
+			}
+
+			const userId = typeof this.memberInviteSelection === 'string'
+				? this.memberInviteSelection
+				: this.memberInviteSelection.id
+
+			if (!userId) {
+				return
+			}
+
+			this.memberInviteLoading = true
+			this.memberInviteMessage = ''
+			this.membersError = ''
+			try {
+				const result = await projectsService.addMember(this.selectedProject.id, String(userId))
+				await this.loadProjectMembers(this.selectedProject.id)
+				this.memberInviteMessage = result?.alreadyMember
+					? 'This user is already a project member.'
+					: 'Member added to project successfully.'
+				this.memberInviteSelection = null
+				this.memberInviteOptions = []
+			} catch (error) {
+				this.membersError = error?.response?.data?.message || 'Could not add member to project.'
+			} finally {
+				this.memberInviteLoading = false
 			}
 		},
 		openDeck(project) {
@@ -849,6 +1128,84 @@ export default {
 	gap: 8px;
 }
 
+.projects-home__member-invite-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 8px;
+	align-items: end;
+}
+
+.projects-home__members-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: grid;
+	gap: 8px;
+}
+
+.projects-home__member-item {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 10px;
+	border: 1px solid var(--color-border-dark);
+	border-radius: 10px;
+	background: var(--color-background-hover);
+}
+
+.projects-home__member-main {
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+}
+
+.projects-home__member-name {
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.projects-home__member-meta {
+	font-size: 12px;
+	color: var(--color-text-maxcontrast);
+}
+
+.projects-home__member-badges {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+}
+
+.projects-home__member-badge {
+	padding: 2px 8px;
+	border-radius: 999px;
+	border: 1px solid var(--color-border-dark);
+	background: var(--color-main-background);
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.projects-home__member-badge--muted {
+	font-weight: 500;
+	color: var(--color-text-maxcontrast);
+}
+
+
+.projects-home__note-editor {
+	width: 100%;
+}
+
+.projects-home__note-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding-top: 8px;
+}
+
 .projects-home__files-grid {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -882,6 +1239,37 @@ export default {
 	justify-content: flex-end;
 }
 
+.projects-home__hero-aside {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 10px;
+}
+
+.projects-home__hero-actions {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.projects-home__inline-error {
+	margin: 0;
+	font-size: 12px;
+	color: var(--color-error-text);
+	text-align: right;
+	max-width: 320px;
+}
+
+.projects-home__inline-error--left {
+	text-align: left;
+	max-width: none;
+}
+
+.projects-home__inline-success {
+	margin: 0;
+	font-size: 12px;
+	color: var(--color-success, #1e7f2d);
+}
+
 .projects-home__badge {
 	padding: 5px 10px;
 	border-radius: 999px;
@@ -894,6 +1282,21 @@ export default {
 .projects-home__centered {
 	padding: 24px;
 	color: var(--color-text-maxcontrast);
+}
+
+.projects-home__hero-actions :deep(.action-item) {
+	--border-radius: 8px;
+}
+
+.projects-home__hero-actions :deep(.action-item__menutoggle) {
+	background: var(--color-main-background);
+	border: 1px solid var(--color-border-dark);
+	border-radius: 8px;
+	padding: 6px 12px;
+}
+
+.projects-home__hero-actions :deep(.action-item__menutoggle:hover) {
+	background: var(--color-background-hover);
 }
 
 @media (max-width: 900px) {
@@ -909,6 +1312,32 @@ export default {
 
 	.projects-home__hero {
 		flex-direction: column;
+	}
+
+	.projects-home__hero-aside {
+		align-items: flex-start;
+	}
+
+	.projects-home__hero-badges,
+	.projects-home__hero-actions {
+		justify-content: flex-start;
+	}
+
+	.projects-home__inline-error {
+		text-align: left;
+	}
+
+	.projects-home__member-invite-row {
+		grid-template-columns: 1fr;
+	}
+
+	.projects-home__member-item {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.projects-home__member-badges {
+		justify-content: flex-start;
 	}
 }
 </style>

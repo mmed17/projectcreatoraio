@@ -44,6 +44,8 @@ class ProjectMapper extends QBMapper
         $project->setProjectGroupGid($projectGroupGid);
         $project->setFolderId($folderId);
         $project->setFolderPath($folderPath);
+        // New projects start as Active (1)
+        $project->setStatus(1);
         $project->setOrganizationId($organization->getId());
         $project->setWhiteBoardId($whiteBoardId);
 
@@ -208,6 +210,11 @@ class ProjectMapper extends QBMapper
     public function findPrivateFolderForUser(int $projectId, string $userId): ?PrivateFolderLink
     {
         return $this->linkMapper->findByProjectAndUser($projectId, $userId);
+    }
+
+    public function createPrivateFolderLink(int $projectId, string $userId, int $folderId, string $folderPath): PrivateFolderLink
+    {
+        return $this->linkMapper->createLink($projectId, $userId, $folderId, $folderPath);
     }
 
     /**

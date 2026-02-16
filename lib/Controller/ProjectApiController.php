@@ -3,12 +3,14 @@ namespace OCA\Projectcreatoraio\Controller;
 
 use OCA\ProjectCreatorAIO\Service\ProjectService;
 use OCA\ProjectCreatorAIO\Db\Project;
+use OCA\ProjectCreatorAIO\Db\ProjectNote;
 use OCA\Organization\Db\UserMapper as OrganizationUserMapper;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
+use OCA\ProjectCreatorAIO\Db\ProjectNoteMapper;
 use OCP\AppFramework\OCS\OCSNotFoundException;
 use OCP\AppFramework\Http\OCS\OCSForbiddenException;
 use OCP\IGroupManager;
@@ -28,6 +30,7 @@ class ProjectApiController extends Controller
         IRequest $request,
         protected IUserSession $userSession,
         protected ProjectMapper $projectMapper,
+        protected ProjectNoteMapper $noteMapper,
         protected ProjectService $projectService,
         private IGroupManager $iGroupManager,
         private OrganizationUserMapper $organizationUserMapper,
@@ -47,7 +50,294 @@ class ProjectApiController extends Controller
         }
 
         $this->assertCanAccessProject($project);
-        return $project;
+
+        $notes = $this->projectService->getProjectNotes($projectId);
+        $payload = $project->jsonSerialize();
+        $payload['public_note'] = $notes['public'] ?? '';
+        $payload['private_note'] = $notes['private'] ?? '';
+        $payload['private_note_available'] = (bool) ($notes['private_available'] ?? true);
+
+        return new DataResponse($payload);
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function listMembers(int $projectId): DataResponse
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        $members = $this->projectService->getProjectMembers($projectId);
+
+        return new DataResponse([
+            'members' => $members,
+        ]);
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function addMember(int $projectId, string $userId = ''): DataResponse
+    {
+        $params = $this->request->getParams();
+        if (is_array($params) && array_key_exists('userId', $params) && is_string($params['userId'])) {
+            $userId = $params['userId'];
+        }
+
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        $result = $this->projectService->addMemberToProject($projectId, $userId);
+
+        return new DataResponse($result, $result['added'] ? 201 : 200);
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function updateNotes(
+        int $projectId,
+        ?string $public_note = null,
+        ?string $private_note = null,
+    ): DataResponse {
+        // Some setups don't map snake_case JSON keys reliably to method args.
+        // Fall back to raw request params while still allowing empty-string updates.
+        $params = $this->request->getParams();
+        if (is_array($params)) {
+            if (array_key_exists('public_note', $params)) {
+                $public_note = is_string($params['public_note']) ? $params['public_note'] : '';
+            }
+            if (array_key_exists('private_note', $params)) {
+                $private_note = is_string($params['private_note']) ? $params['private_note'] : '';
+            }
+        }
+
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        $notes = $this->projectService->updateProjectNotes($projectId, $public_note, $private_note);
+
+        return new DataResponse([
+            'public_note' => $notes['public'] ?? '',
+            'private_note' => $notes['private'] ?? '',
+            'private_note_available' => (bool) ($notes['private_available'] ?? true),
+        ]);
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function listNotes(int $projectId): DataResponse
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            throw new OCSForbiddenException('Authentication required');
+        }
+
+        $notes = $this->projectService->getProjectNotesList($projectId, $currentUser->getUID());
+
+        return new DataResponse([
+            'notes' => $notes,
+            'canCreatePublic' => true,
+            'canCreatePrivate' => $notes['private_available'] ?? true,
+        ]);
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function getNote(int $projectId, int $noteId): DataResponse
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        $note = $this->noteMapper->find($noteId);
+        if ($note === null) {
+            throw new OCSNotFoundException("Note with ID $noteId not found");
+        }
+
+        if ($note->getProjectId() !== $projectId) {
+            throw new OCSNotFoundException("Note not found for this project");
+        }
+
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            throw new OCSForbiddenException('Authentication required');
+        }
+
+        // Private notes can only be accessed by their creator
+        if ($note->getVisibility() === 'private' && $note->getUserId() !== $currentUser->getUID()) {
+            throw new OCSForbiddenException('You do not have permission to view this note');
+        }
+
+        return new DataResponse($note->jsonSerialize());
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function createNote(
+        int $projectId,
+        string $title,
+        string $content,
+        string $visibility = 'public'
+    ): DataResponse {
+        $params = $this->request->getParams();
+        if (is_array($params)) {
+            if (array_key_exists('title', $params)) {
+                $title = is_string($params['title']) ? $params['title'] : '';
+            }
+            if (array_key_exists('content', $params)) {
+                $content = is_string($params['content']) ? $params['content'] : '';
+            }
+            if (array_key_exists('visibility', $params)) {
+                $visibility = is_string($params['visibility']) ? $params['visibility'] : 'public';
+            }
+        }
+
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            throw new OCSForbiddenException('Authentication required');
+        }
+
+        // Validate visibility
+        if ($visibility !== 'public' && $visibility !== 'private') {
+            return new DataResponse(['message' => 'Invalid visibility. Use "public" or "private"'], 400);
+        }
+
+        // Check if private notes are available
+        if ($visibility === 'private') {
+            $hasPrivateFolder = $this->projectService->hasPrivateFolderForUser($projectId, $currentUser->getUID());
+            if (!$hasPrivateFolder) {
+                return new DataResponse(['message' => 'Private notes are not available for this user'], 403);
+            }
+        }
+
+        $note = $this->noteMapper->createNote(
+            $projectId,
+            $currentUser->getUID(),
+            $title,
+            $content,
+            $visibility
+        );
+
+        return new DataResponse($note->jsonSerialize(), 201);
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function updateNote(
+        int $projectId,
+        int $noteId,
+        ?string $title = null,
+        ?string $content = null
+    ): DataResponse {
+        $params = $this->request->getParams();
+        if (is_array($params)) {
+            if (array_key_exists('title', $params)) {
+                $title = is_string($params['title']) ? $params['title'] : '';
+            }
+            if (array_key_exists('content', $params)) {
+                $content = is_string($params['content']) ? $params['content'] : '';
+            }
+        }
+
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        $note = $this->noteMapper->find($noteId);
+        if ($note === null) {
+            throw new OCSNotFoundException("Note with ID $noteId not found");
+        }
+
+        if ($note->getProjectId() !== $projectId) {
+            throw new OCSNotFoundException("Note not found for this project");
+        }
+
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            throw new OCSForbiddenException('Authentication required');
+        }
+
+        // Only the creator can update the note
+        if ($note->getUserId() !== $currentUser->getUID()) {
+            throw new OCSForbiddenException('You do not have permission to update this note');
+        }
+
+        if ($title !== null) {
+            $note->setTitle($title);
+        }
+        if ($content !== null) {
+            $note->setContent($content);
+        }
+
+        $updatedNote = $this->noteMapper->updateNote($note);
+
+        return new DataResponse($updatedNote->jsonSerialize());
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function deleteNote(int $projectId, int $noteId): DataResponse
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        $note = $this->noteMapper->find($noteId);
+        if ($note === null) {
+            throw new OCSNotFoundException("Note with ID $noteId not found");
+        }
+
+        if ($note->getProjectId() !== $projectId) {
+            throw new OCSNotFoundException("Note not found for this project");
+        }
+
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            throw new OCSForbiddenException('Authentication required');
+        }
+
+        // Only the creator can delete the note
+        if ($note->getUserId() !== $currentUser->getUID()) {
+            throw new OCSForbiddenException('You do not have permission to delete this note');
+        }
+
+        $success = $this->noteMapper->deleteNote($noteId);
+
+        return new DataResponse(['deleted' => $success]);
     }
 
     #[NoCSRFRequired]

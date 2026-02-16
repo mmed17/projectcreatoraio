@@ -23,6 +23,48 @@ return [
             "verb" => "GET",
         ],
         [
+            "name" => "project_api#listMembers",
+            "url" => "/api/v1/projects/{projectId}/members",
+            "verb" => "GET",
+        ],
+        [
+            "name" => "project_api#addMember",
+            "url" => "/api/v1/projects/{projectId}/members",
+            "verb" => "POST",
+        ],
+        // Legacy single-note endpoints (for backward compatibility)
+        [
+            "name" => "project_api#updateNotes",
+            "url" => "/api/v1/projects/{projectId}/notes",
+            "verb" => "PUT",
+        ],
+        // New multi-note endpoints
+        [
+            "name" => "project_api#listNotes",
+            "url" => "/api/v1/projects/{projectId}/notes/list",
+            "verb" => "GET",
+        ],
+        [
+            "name" => "project_api#getNote",
+            "url" => "/api/v1/projects/{projectId}/notes/{noteId}",
+            "verb" => "GET",
+        ],
+        [
+            "name" => "project_api#createNote",
+            "url" => "/api/v1/projects/{projectId}/notes",
+            "verb" => "POST",
+        ],
+        [
+            "name" => "project_api#updateNote",
+            "url" => "/api/v1/projects/{projectId}/notes/{noteId}",
+            "verb" => "PUT",
+        ],
+        [
+            "name" => "project_api#deleteNote",
+            "url" => "/api/v1/projects/{projectId}/notes/{noteId}",
+            "verb" => "DELETE",
+        ],
+        [
             'name' => 'project_api#listByUser',
             'url' => '/api/v1/users/{userId}/projects',
             'verb' => 'GET'
