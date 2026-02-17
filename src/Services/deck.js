@@ -2,6 +2,7 @@ import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 
 export class DeckService {
+
 	static instance = null
 
 	static getInstance() {
@@ -50,4 +51,59 @@ export class DeckService {
 		const response = await axios.put(url, { stackId, order }, { headers: this.headers() })
 		return response.data
 	}
+
+	async getTransitionPermissions(boardId) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/transition-permissions`)
+		const response = await axios.get(url, { headers: this.headers() })
+		return response.data ?? []
+	}
+
+	async addTransitionPermission(boardId, data) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/transition-permissions`)
+		const response = await axios.post(url, data, { headers: this.headers() })
+		return response.data
+	}
+
+	async deleteTransitionPermission(id) {
+		const url = generateUrl(`/apps/deck/transition-permissions/${id}`)
+		const response = await axios.delete(url, { headers: this.headers() })
+		return response.data
+	}
+
+	async listRoleProfiles(organizationId) {
+		const url = generateUrl(`/apps/deck/organizations/${organizationId}/role-profiles`)
+		const response = await axios.get(url, { headers: this.headers() })
+		return response.data ?? []
+	}
+
+	async getRoleProfile(profileId) {
+		const url = generateUrl(`/apps/deck/role-profiles/${profileId}`)
+		const response = await axios.get(url, { headers: this.headers() })
+		return response.data ?? null
+	}
+
+	async createRoleProfile(organizationId, name, permissions = []) {
+		const url = generateUrl(`/apps/deck/organizations/${organizationId}/role-profiles`)
+		const response = await axios.post(url, { name, permissions }, { headers: this.headers() })
+		return response.data
+	}
+
+	async createRoleProfileFromBoard(boardId, name, organizationId) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/export-role-profile`)
+		const response = await axios.post(url, { name, organizationId }, { headers: this.headers() })
+		return response.data
+	}
+
+	async applyRoleProfile(boardId, profileId, clearExisting = false) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/apply-role-profile/${profileId}`)
+		const response = await axios.post(url, { clearExisting }, { headers: this.headers() })
+		return response.data
+	}
+
+	async deleteRoleProfile(profileId) {
+		const url = generateUrl(`/apps/deck/role-profiles/${profileId}`)
+		const response = await axios.delete(url, { headers: this.headers() })
+		return response.data
+	}
+
 }

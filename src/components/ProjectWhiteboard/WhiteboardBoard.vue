@@ -487,7 +487,7 @@ export default {
 	border-radius: 12px;
 	overflow: hidden;
 	background: var(--color-main-background);
-	min-height: 280px;
+	min-height: 420px;
 }
 
 .whiteboard-board__loading,
@@ -512,9 +512,9 @@ export default {
 
 .whiteboard-board__preview-wrap {
 	width: 100%;
-	height: 320px;
-	max-height: 44vh;
-	min-height: 280px;
+	height: 560px;
+	max-height: 72vh;
+	min-height: 420px;
 	position: relative;
 	overflow: hidden;
 }
@@ -562,6 +562,16 @@ export default {
 	.whiteboard-board__top {
 		flex-direction: column;
 		align-items: stretch;
+	}
+
+	.whiteboard-board__frame {
+		min-height: 340px;
+	}
+
+	.whiteboard-board__preview-wrap {
+		height: 420px;
+		max-height: 64vh;
+		min-height: 340px;
 	}
 }
 </style>

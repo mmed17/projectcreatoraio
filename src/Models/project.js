@@ -15,6 +15,46 @@ export class Project {
     description = '';
 
     /**
+     * @type {string}
+     */
+    client_name = '';
+
+    /**
+     * @type {string}
+     */
+    client_role = '';
+
+    /**
+     * @type {string}
+     */
+    client_phone = '';
+
+    /**
+     * @type {string}
+     */
+    client_email = '';
+
+    /**
+     * @type {string}
+     */
+    client_address = '';
+
+    /**
+     * @type {string}
+     */
+    loc_street = '';
+
+    /**
+     * @type {string}
+     */
+    loc_city = '';
+
+    /**
+     * @type {string}
+     */
+    loc_zip = '';
+
+    /**
      * @type {number}
      */
     type = null;
@@ -56,6 +96,14 @@ export class Project {
             name: this.name,
             number: this.number,
             description: this.description,
+            client_name: this.client_name,
+            client_role: this.client_role,
+            client_phone: this.client_phone,
+            client_email: this.client_email,
+            client_address: this.client_address,
+            loc_street: this.loc_street,
+            loc_city: this.loc_city,
+            loc_zip: this.loc_zip,
             type: this.type,
             organizationId: this.organizationId,
             members: this.members,

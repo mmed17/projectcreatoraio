@@ -350,6 +350,14 @@ class ProjectApiController extends Controller
         string $groupId = '',
         ?int $organizationId = null,
         string $description = '',
+        ?string $client_name = null,
+        ?string $client_role = null,
+        ?string $client_phone = null,
+        ?string $client_email = null,
+        ?string $client_address = null,
+        ?string $loc_street = null,
+        ?string $loc_city = null,
+        ?string $loc_zip = null,
     ): DataResponse {
 
         if ($organizationId === null && $groupId !== '' && ctype_digit($groupId)) {
@@ -364,6 +372,14 @@ class ProjectApiController extends Controller
                 $members,
                 $description,
                 $organizationId,
+                $client_name,
+                $client_role,
+                $client_phone,
+                $client_email,
+                $client_address,
+                $loc_street,
+                $loc_city,
+                $loc_zip,
             );
 
             return new DataResponse([

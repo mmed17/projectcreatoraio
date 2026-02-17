@@ -32,6 +32,14 @@ class ProjectMapper extends QBMapper
         string $folderPath,
         array $privateFolders,
         ?string $whiteBoardId,
+        ?string $clientName = null,
+        ?string $clientRole = null,
+        ?string $clientPhone = null,
+        ?string $clientEmail = null,
+        ?string $clientAddress = null,
+        ?string $locStreet = null,
+        ?string $locCity = null,
+        ?string $locZip = null,
     ) {
         $project = new Project();
 
@@ -44,6 +52,14 @@ class ProjectMapper extends QBMapper
         $project->setProjectGroupGid($projectGroupGid);
         $project->setFolderId($folderId);
         $project->setFolderPath($folderPath);
+        $project->setClientName($clientName);
+        $project->setClientRole($clientRole);
+        $project->setClientPhone($clientPhone);
+        $project->setClientEmail($clientEmail);
+        $project->setClientAddress($clientAddress);
+        $project->setLocStreet($locStreet);
+        $project->setLocCity($locCity);
+        $project->setLocZip($locZip);
         // New projects start as Active (1)
         $project->setStatus(1);
         $project->setOrganizationId($organization->getId());

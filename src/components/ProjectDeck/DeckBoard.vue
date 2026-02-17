@@ -28,6 +28,15 @@
 				</div>
 			</div>
 
+			<DeckRasciManager
+				v-if="!loading && !error && canManage"
+				:board-id="boardId"
+				:organization-id="normalizedOrganizationId"
+				:members="projectMembers"
+				:stacks="sortedStacks"
+				:can-manage-profiles="canManageProfiles"
+			/>
+
 			<div v-if="loading" class="deck-board__muted">Loading board...</div>
 			<div v-else-if="error" class="deck-board__muted">{{ error }}</div>
 			<div v-else class="deck-board__lane" @dragover.prevent>
@@ -103,13 +112,17 @@ import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
 import Refresh from 'vue-material-design-icons/Refresh.vue'
 
-import { DeckService } from '../../Services/deck'
+import { DeckService } from '../../Services/deck.js'
+import { ProjectsService } from '../../Services/projects.js'
+import DeckRasciManager from './DeckRasciManager.vue'
 
 const deckService = DeckService.getInstance()
+const projectsService = ProjectsService.getInstance()
 
 export default {
 	name: 'DeckBoard',
 	components: {
+		DeckRasciManager,
 		NcButton,
 		OpenInNew,
 		Plus,
@@ -120,6 +133,18 @@ export default {
 			type: [String, Number],
 			default: null,
 		},
+		projectId: {
+			type: [String, Number],
+			default: null,
+		},
+		organizationId: {
+			type: Number,
+			default: null,
+		},
+		canManageProfiles: {
+			type: Boolean,
+			default: false,
+		},
 	},
 	data() {
 		return {
@@ -128,6 +153,7 @@ export default {
 			error: '',
 			loading: false,
 			stacks: [],
+			projectMembers: [],
 			creatingStackId: null,
 			newCardTitleByStack: {},
 			drag: {
@@ -152,6 +178,16 @@ export default {
 			}
 			return !!this.board?.permissions?.PERMISSION_EDIT
 		},
+		canManage() {
+			if (this.permissions && typeof this.permissions === 'object') {
+				return !!this.permissions.PERMISSION_MANAGE
+			}
+			return !!this.board?.permissions?.PERMISSION_MANAGE
+		},
+		normalizedOrganizationId() {
+			const value = Number(this.organizationId)
+			return Number.isFinite(value) && value > 0 ? value : null
+		},
 		sortedStacks() {
 			return (this.stacks || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 		},
@@ -163,6 +199,9 @@ export default {
 				this.load()
 			},
 		},
+		projectId() {
+			this.loadProjectMembers()
+		},
 	},
 	methods: {
 		async load() {
@@ -172,18 +211,32 @@ export default {
 			}
 			this.loading = true
 			try {
-				const [board, permissions, stacks] = await Promise.all([
+				const [board, permissions, stacks, members] = await Promise.all([
 					deckService.getBoard(this.boardId),
 					deckService.getBoardPermissions(this.boardId),
 					deckService.listStacks(this.boardId),
+					this.projectId ? projectsService.listMembers(Number(this.projectId)) : Promise.resolve([]),
 				])
 				this.board = board
 				this.permissions = permissions
 				this.stacks = this.normalizeStacks(stacks)
+				this.projectMembers = Array.isArray(members) ? members : []
 			} catch (e) {
 				this.error = 'Could not load Deck board.'
 			} finally {
 				this.loading = false
+			}
+		},
+		async loadProjectMembers() {
+			if (!this.projectId) {
+				this.projectMembers = []
+				return
+			}
+			try {
+				const members = await projectsService.listMembers(Number(this.projectId))
+				this.projectMembers = Array.isArray(members) ? members : []
+			} catch (e) {
+				this.projectMembers = []
 			}
 		},
 		reload() {
@@ -193,6 +246,7 @@ export default {
 			this.board = null
 			this.permissions = null
 			this.stacks = []
+			this.projectMembers = []
 			this.error = ''
 			this.creatingStackId = null
 			this.drag = { active: false, cardId: null, fromStackId: null, fromIndex: null }
@@ -416,7 +470,7 @@ export default {
 	grid-auto-flow: column;
 	grid-auto-columns: minmax(260px, 320px);
 	gap: 12px;
-	align-items: start;
+	align-items: stretch;
 	overflow-x: auto;
 	padding-bottom: 6px;
 }
@@ -428,7 +482,8 @@ export default {
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
-	min-height: 240px;
+	min-height: 430px;
+	max-height: min(76vh, 860px);
 }
 
 .deck-board__stack-head {
@@ -462,6 +517,8 @@ export default {
 	display: grid;
 	gap: 8px;
 	min-height: 0;
+	max-height: min(62vh, 720px);
+	overflow-y: auto;
 }
 
 .deck-board__slot {
@@ -551,6 +608,15 @@ export default {
 @media (max-width: 900px) {
 	.deck-board__lane {
 		grid-auto-columns: minmax(240px, 86vw);
+	}
+
+	.deck-board__stack {
+		min-height: 360px;
+		max-height: min(70vh, 680px);
+	}
+
+	.deck-board__cards {
+		max-height: min(56vh, 560px);
 	}
 }
 </style>

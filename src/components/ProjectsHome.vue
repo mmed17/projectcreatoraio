@@ -1,8 +1,6 @@
 <template>
 	<div v-if="contextError" class="projects-home-empty">
-		<NcEmptyContent
-			name="Could not load project context"
-			:description="contextError">
+		<NcEmptyContent name="Could not load project context" :description="contextError">
 			<template #icon>
 				<Details :size="44" />
 			</template>
@@ -17,12 +15,21 @@
 			</template>
 		</NcEmptyContent>
 	</div>
-	<div v-else class="projects-home">
-		<section class="projects-home__list-pane">
+	<div
+		v-else
+		class="projects-home"
+		:class="{
+			'projects-home--narrow': isNarrow,
+			'projects-home--narrow-details': isNarrow && mobilePane === 'details',
+		}">
+		<section class="projects-home__list-pane" v-show="!isNarrow || mobilePane === 'list'">
 			<header class="projects-home__header">
-				<div>
+				<div class="projects-home__header-left">
 					<h2 class="projects-home__title">Projects</h2>
 					<p class="projects-home__subtitle">Browse and manage project spaces</p>
+					<div class="projects-home__header-meta">
+						<span class="projects-home__scope-pill">{{ scopeLabel }}</span>
+					</div>
 				</div>
 				<NcButton type="primary" @click="startCreateProject">
 					<template #icon>
@@ -33,10 +40,10 @@
 			</header>
 
 			<div class="projects-home__controls">
-				<div class="projects-home__scope-row">
-					<span class="projects-home__scope-pill">{{ scopeLabel }}</span>
+				<div v-if="isOrganizationAdmin" class="projects-home__scope-row">
+					<label class="projects-home__control-label" for="projects-scope">Scope</label>
 					<select
-						v-if="isOrganizationAdmin"
+						id="projects-scope"
 						v-model="projectScope"
 						class="projects-home__filter-select"
 						aria-label="Project scope"
@@ -56,25 +63,50 @@
 					</template>
 				</NcTextField>
 
-				<select v-model="statusFilter" class="projects-home__filter-select" aria-label="Filter projects">
-					<option value="all">All statuses</option>
-					<option value="active">Active only</option>
-					<option value="archived">Archived only</option>
-				</select>
+				<div class="projects-home__filters-row">
+					<div class="projects-home__filter">
+						<label class="projects-home__control-label" for="projects-status">Status</label>
+						<select
+							id="projects-status"
+							v-model="statusFilter"
+							class="projects-home__filter-select"
+							aria-label="Filter projects">
+							<option value="all">All</option>
+							<option value="active">Active</option>
+							<option value="archived">Archived</option>
+						</select>
+					</div>
+					<div class="projects-home__filter">
+						<label class="projects-home__control-label" for="projects-sort">Sort</label>
+						<select
+							id="projects-sort"
+							v-model="sortKey"
+							class="projects-home__filter-select"
+							aria-label="Sort projects">
+							<option value="default">Default</option>
+							<option value="name">Name</option>
+							<option value="number">Number</option>
+						</select>
+					</div>
+					<NcButton type="tertiary" :disabled="!canClearFilters" class="projects-home__clear" @click="clearFilters">
+						Clear
+					</NcButton>
+				</div>
+
+				<div v-if="!loading" class="projects-home__count-row">
+					{{ visibleProjects.length }} / {{ projects.length }} projects
+				</div>
 			</div>
 
 			<div class="projects-home__list">
 				<div v-if="loading" class="projects-home__centered">Loading projects...</div>
-				<NcEmptyContent
-					v-else-if="filteredProjects.length === 0"
-					name="No projects yet"
-					description="Create a project to get started.">
+				<NcEmptyContent v-else-if="visibleProjects.length === 0" name="No projects yet" description="Create a project to get started.">
 					<template #icon>
 						<FolderOutline :size="36" />
 					</template>
 				</NcEmptyContent>
 				<ul v-else class="projects-home__items">
-					<li v-for="project in filteredProjects" :key="project.id">
+					<li v-for="project in visibleProjects" :key="project.id">
 						<button
 							type="button"
 							class="projects-home__project-item"
@@ -84,7 +116,7 @@
 								<div class="projects-home__project-title-row">
 									<FolderOutline :size="20" />
 									<span class="projects-home__project-name">{{ project.name }}</span>
-									<span class="projects-home__status-pill">{{ statusLabel(project.status) }}</span>
+									<span class="projects-home__status-pill" :class="statusPillClass(project.status)">{{ statusLabel(project.status) }}</span>
 								</div>
 								<div class="projects-home__project-meta">
 									<span>{{ project.number || 'No project number' }}</span>
@@ -116,51 +148,63 @@
 			</div>
 		</section>
 
-		<section class="projects-home__details-pane">
-			<ProjectCreator
-				v-if="isCreateMode"
-				embedded
-				@created="handleProjectCreated"
-				@cancel="isCreateMode = false" />
-
-			<div v-else-if="selectedProject" class="projects-home__details-content">
+		<section class="projects-home__details-pane" v-show="!isNarrow || mobilePane === 'details'">
+			<div v-if="selectedProject" class="projects-home__details-content">
 				<div class="projects-home__hero">
-					<div>
-						<h2 class="projects-home__details-title">{{ selectedProject.name || 'Unnamed project' }}</h2>
-						<p class="projects-home__details-subtitle">{{ selectedProject.description || 'No description provided yet.' }}</p>
+					<div v-if="isNarrow" class="projects-home__hero-mobile">
+						<NcButton type="tertiary" class="projects-home__back" @click="mobilePane = 'list'">
+							<template #icon>
+								<ChevronLeft :size="18" />
+							</template>
+							Back
+						</NcButton>
 					</div>
-					<div class="projects-home__hero-aside">
-						<div class="projects-home__hero-badges">
-							<span class="projects-home__badge">{{ statusLabel(selectedProject.status) }}</span>
-							<span class="projects-home__badge">{{ typeLabel(selectedProject.type) }}</span>
-							<span class="projects-home__badge">#{{ selectedProject.number || 'N/A' }}</span>
+					<div class="projects-home__hero-main">
+						<div>
+							<h2 class="projects-home__details-title">{{ selectedProject.name || 'Unnamed project' }}</h2>
+							<p class="projects-home__details-subtitle">{{ selectedProject.description || 'No description provided yet.' }}</p>
 						</div>
-						<div v-if="canManageProjects" class="projects-home__hero-actions">
-							<NcActions>
-								<template #icon>
-									<DotsHorizontal :size="18" />
-								</template>
-								<NcActionButton
-									:icon="isArchivedStatus(selectedProject.status) ? 'icon-history' : 'icon-archive'"
-									@click="openArchiveDialog">
+						<div class="projects-home__hero-aside">
+							<div class="projects-home__hero-badges">
+								<span class="projects-home__badge">{{ statusLabel(selectedProject.status) }}</span>
+								<span class="projects-home__badge">{{ typeLabel(selectedProject.type) }}</span>
+								<span class="projects-home__badge">#{{ selectedProject.number || 'N/A' }}</span>
+							</div>
+							<div v-if="canManageProjects" class="projects-home__hero-actions">
+								<NcActions>
 									<template #icon>
-										<ArchiveArrowUp v-if="isArchivedStatus(selectedProject.status)" :size="16" />
-										<Archive v-else :size="16" />
+										<DotsHorizontal :size="18" />
 									</template>
-									{{ isArchivedStatus(selectedProject.status) ? 'Restore project' : 'Archive project' }}
-								</NcActionButton>
-							</NcActions>
+									<NcActionButton
+										:icon="isArchivedStatus(selectedProject.status) ? 'icon-history' : 'icon-archive'"
+										@click="openArchiveDialog">
+										<template #icon>
+											<ArchiveArrowUp v-if="isArchivedStatus(selectedProject.status)" :size="16" />
+											<Archive v-else :size="16" />
+										</template>
+										{{ isArchivedStatus(selectedProject.status) ? 'Restore project' : 'Archive project' }}
+									</NcActionButton>
+								</NcActions>
+							</div>
+							<p v-if="canManageProjects && statusUpdateError" class="projects-home__inline-error">{{ statusUpdateError }}</p>
 						</div>
-						<p v-if="canManageProjects && statusUpdateError" class="projects-home__inline-error">{{ statusUpdateError }}</p>
 					</div>
 				</div>
 
-				<div class="projects-home__detail-grid">
-					<article class="projects-home__card">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
-								<h3 class="projects-home__card-title">Project details</h3>
-							</summary>
+				<div class="projects-home__tabs" role="tablist" aria-label="Project workspace">
+					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'overview' }" @click="setActiveTab('overview')">Overview</button>
+					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'members' }" @click="setActiveTab('members')">Members</button>
+					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'notes' }" @click="setActiveTab('notes')">Notes</button>
+					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'timeline' }" @click="setActiveTab('timeline')">Timeline</button>
+					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'deck' }" @click="setActiveTab('deck')">Deck</button>
+					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'whiteboard' }" @click="setActiveTab('whiteboard')">Whiteboard</button>
+					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'files' }" @click="setActiveTab('files')">Files</button>
+				</div>
+
+				<div class="projects-home__tab-panel" role="tabpanel">
+					<div v-if="activeTab === 'overview'" class="projects-home__detail-grid">
+						<article class="projects-home__card">
+							<h3 class="projects-home__card-title">Project details</h3>
 							<div class="projects-home__kv">
 								<span class="projects-home__label">Name</span>
 								<span>{{ selectedProject.name || '-' }}</span>
@@ -173,14 +217,18 @@
 								<span class="projects-home__label">External ref</span>
 								<span>{{ selectedProject.external_ref || '-' }}</span>
 							</div>
-						</details>
-					</article>
+						</article>
 
-					<article class="projects-home__card">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
+						<article class="projects-home__card">
+							<div class="projects-home__card-head">
 								<h3 class="projects-home__card-title">Client information</h3>
-							</summary>
+								<NcButton
+									v-if="canManageProjects"
+									type="tertiary"
+									@click="startProjectProfileEdit">
+									Edit details
+								</NcButton>
+							</div>
 							<div class="projects-home__kv">
 								<span class="projects-home__label">Client name</span>
 								<span>{{ selectedProject.client_name || '-' }}</span>
@@ -197,14 +245,10 @@
 								<span class="projects-home__label">Email</span>
 								<span>{{ selectedProject.client_email || '-' }}</span>
 							</div>
-						</details>
-					</article>
+						</article>
 
-					<article class="projects-home__card">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
-								<h3 class="projects-home__card-title">Location</h3>
-							</summary>
+						<article class="projects-home__card">
+							<h3 class="projects-home__card-title">Location</h3>
 							<div class="projects-home__kv">
 								<span class="projects-home__label">Street</span>
 								<span>{{ selectedProject.loc_street || '-' }}</span>
@@ -221,14 +265,12 @@
 								<span class="projects-home__label">Address</span>
 								<span>{{ selectedProject.client_address || '-' }}</span>
 							</div>
-						</details>
-					</article>
+							<p v-if="projectProfileError" class="projects-home__inline-error projects-home__inline-error--left">{{ projectProfileError }}</p>
+							<p v-if="projectProfileMessage" class="projects-home__inline-success">{{ projectProfileMessage }}</p>
+						</article>
 
-					<article class="projects-home__card">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
-								<h3 class="projects-home__card-title">Project links</h3>
-							</summary>
+						<article class="projects-home__card">
+							<h3 class="projects-home__card-title">Project links</h3>
 							<div class="projects-home__links">
 								<NcButton type="secondary" :disabled="!selectedProject.boardId" @click="openDeck(selectedProject)">
 									<template #icon>
@@ -249,129 +291,104 @@
 									Open whiteboard
 								</NcButton>
 							</div>
-						</details>
-					</article>
+						</article>
+					</div>
 
-					<article class="projects-home__card">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
-								<h3 class="projects-home__card-title">Project members</h3>
-							</summary>
-
+					<div v-else-if="activeTab === 'members'" class="projects-home__tab-section">
+						<div class="projects-home__tab-section-head">
+							<h3 class="projects-home__section-title">Members</h3>
 							<p class="projects-home__muted">Anyone in this project can invite organization members.</p>
+						</div>
 
-							<div class="projects-home__member-invite-row">
-								<NcSelect
-									:model-value="memberInviteSelection"
-									:options="memberInviteOptions"
-									:loading="memberSearchLoading"
-									:show-label="true"
-									:multiple="false"
-									:searchable="true"
-									:clearable="true"
-									input-label="Invite a member"
-									placeholder="Search organization members"
-									@search="searchMemberCandidates"
-									@update:model-value="memberInviteSelection = $event" />
-								<NcButton
-									type="primary"
-									:disabled="memberInviteLoading || !memberInviteSelection || !selectedProject.id"
-									@click="inviteSelectedMember">
-									{{ memberInviteLoading ? 'Inviting...' : 'Invite' }}
-								</NcButton>
-							</div>
+						<div class="projects-home__member-invite-row">
+							<NcSelect
+								:model-value="memberInviteSelection"
+								:options="memberInviteOptions"
+								:loading="memberSearchLoading"
+								:show-label="true"
+								:multiple="false"
+								:searchable="true"
+								:clearable="true"
+								input-label="Invite a member"
+								placeholder="Search organization members"
+								@search="searchMemberCandidates"
+								@update:model-value="memberInviteSelection = $event" />
+							<NcButton
+								type="primary"
+								:disabled="memberInviteLoading || !memberInviteSelection || !selectedProject.id"
+								@click="inviteSelectedMember">
+								{{ memberInviteLoading ? 'Inviting...' : 'Invite' }}
+							</NcButton>
+						</div>
 
-							<p v-if="memberInviteMessage" class="projects-home__inline-success">{{ memberInviteMessage }}</p>
-							<p v-if="membersError" class="projects-home__inline-error projects-home__inline-error--left">{{ membersError }}</p>
+						<p v-if="memberInviteMessage" class="projects-home__inline-success">{{ memberInviteMessage }}</p>
+						<p v-if="membersError" class="projects-home__inline-error projects-home__inline-error--left">{{ membersError }}</p>
 
-							<div v-if="membersLoading" class="projects-home__muted">Loading members...</div>
-							<div v-else-if="projectMembers.length === 0" class="projects-home__muted">No members found.</div>
-							<ul v-else class="projects-home__members-list">
-								<li v-for="member in projectMembers" :key="member.id" class="projects-home__member-item">
-									<div class="projects-home__member-main">
-										<span class="projects-home__member-name">{{ member.displayName || member.id }}</span>
-										<span class="projects-home__member-meta">{{ member.id }}</span>
-									</div>
-									<div class="projects-home__member-badges">
-										<span v-if="member.isOwner" class="projects-home__member-badge">Owner</span>
-										<span v-if="member.email" class="projects-home__member-badge projects-home__member-badge--muted">{{ member.email }}</span>
-									</div>
-								</li>
-							</ul>
-						</details>
-					</article>
+						<div v-if="membersLoading" class="projects-home__muted">Loading members...</div>
+						<div v-else-if="projectMembers.length === 0" class="projects-home__muted">No members found.</div>
+						<ul v-else class="projects-home__members-list">
+							<li v-for="member in projectMembers" :key="member.id" class="projects-home__member-item">
+								<div class="projects-home__member-main">
+									<span class="projects-home__member-name">{{ member.displayName || member.id }}</span>
+									<span class="projects-home__member-meta">{{ member.id }}</span>
+								</div>
+								<div class="projects-home__member-badges">
+									<span v-if="member.isOwner" class="projects-home__member-badge">Owner</span>
+									<span v-if="member.email" class="projects-home__member-badge projects-home__member-badge--muted">{{ member.email }}</span>
+								</div>
+							</li>
+						</ul>
+					</div>
 
-					<article class="projects-home__card projects-home__card--full">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
-								<h3 class="projects-home__card-title">Project Notes</h3>
-							</summary>
-							<ProjectNotesList :project-id="selectedProject.id" />
-						</details>
-					</article>
+					<div v-else-if="activeTab === 'notes'" class="projects-home__tab-section">
+						<ProjectNotesList :project-id="selectedProject.id" />
+					</div>
 
-					<article class="projects-home__card projects-home__card--full">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
-								<h3 class="projects-home__card-title">Timeline phases</h3>
-							</summary>
-							<GanttChart :project-id="selectedProject.id" :is-admin="true" />
-						</details>
-					</article>
+					<div v-else-if="activeTab === 'timeline'" class="projects-home__tab-section">
+						<GanttChart :project-id="selectedProject.id" :is-admin="true" />
+					</div>
 
-					<article class="projects-home__card projects-home__card--full">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
-								<h3 class="projects-home__card-title">Deck board</h3>
-							</summary>
-							<DeckBoard :board-id="selectedProject.boardId" />
-						</details>
-					</article>
+					<div v-else-if="activeTab === 'deck'" class="projects-home__tab-section">
+						<DeckBoard
+							:board-id="selectedProject.boardId"
+							:project-id="selectedProject.id"
+							:organization-id="Number(selectedProject.organization_id) || Number(context?.organizationId) || null"
+							:can-manage-profiles="canManageProjects"
+						/>
+					</div>
 
-					<article class="projects-home__card projects-home__card--full">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
-								<h3 class="projects-home__card-title">Whiteboard</h3>
-							</summary>
-							<WhiteboardBoard
-								ref="whiteboardBoard"
-								:project-id="selectedProject.id"
-								:user-id="context?.userId || ''"
-								:key="String(selectedProject.id || '') + ':' + String(selectedProject.white_board_id || '')"
-							/>
-						</details>
-					</article>
+					<div v-else-if="activeTab === 'whiteboard'" class="projects-home__tab-section">
+						<WhiteboardBoard
+							ref="whiteboardBoard"
+							:project-id="selectedProject.id"
+							:user-id="context?.userId || ''"
+							:key="String(selectedProject.id || '') + ':' + String(selectedProject.white_board_id || '')"
+						/>
+					</div>
 
-					<article class="projects-home__card projects-home__card--full">
-						<details class="projects-home__collapse" open>
-							<summary class="projects-home__summary">
-								<h3 class="projects-home__card-title">Files</h3>
-								<NcButton
-									type="secondary"
-									:disabled="!selectedProject.folderPath"
-									@click.stop.prevent="downloadProject(selectedProject)">
-									<template #icon>
-										<Download :size="18" />
-									</template>
-									Project ZIP
-								</NcButton>
-							</summary>
-
-							<ProjectFilesBrowser
-								:shared-roots="projectFiles.shared"
-								:private-roots="projectFiles.private"
-								:loading="filesLoading"
-								:error="filesError"
-							/>
-						</details>
-					</article>
+					<div v-else-if="activeTab === 'files'" class="projects-home__tab-section">
+						<div class="projects-home__tab-top">
+							<NcButton
+								type="secondary"
+								:disabled="!selectedProject.folderPath"
+								@click.stop.prevent="downloadProject(selectedProject)">
+								<template #icon>
+									<Download :size="18" />
+								</template>
+								Project ZIP
+							</NcButton>
+						</div>
+						<ProjectFilesBrowser
+							:shared-roots="projectFiles.shared"
+							:private-roots="projectFiles.private"
+							:loading="filesLoading"
+							:error="filesError"
+						/>
+					</div>
 				</div>
 			</div>
 
-			<NcEmptyContent
-				v-else
-				name="Select a project"
-				description="Choose a project from the list to view details.">
+			<NcEmptyContent v-else name="Select a project" description="Choose a project from the list to view details.">
 				<template #icon>
 					<Details :size="36" />
 				</template>
@@ -382,22 +399,103 @@
 			v-if="showArchiveDialog && selectedProject"
 			:name="archiveDialogAction === 'archive' ? 'Archive project' : 'Restore project'"
 			:message="archiveDialogAction === 'archive'
-				? `Are you sure you want to archive "${selectedProject.name}"? Archived projects will be hidden from active project lists but can be restored at any time.`
-				: `Are you sure you want to restore "${selectedProject.name}"? This project will become active again and visible in project lists.`"
+				? `Are you sure you want to archive '${selectedProject.name}'? Archived projects will be hidden from active project lists but can be restored at any time.`
+				: `Are you sure you want to restore '${selectedProject.name}'? This project will become active again and visible in project lists.`"
 			:buttons="[
 				{
 					label: 'Cancel',
 					type: 'secondary',
-					callback: () => { showArchiveDialog = false }
+					callback: () => { showArchiveDialog = false },
 				},
 				{
 					label: archiveDialogAction === 'archive' ? 'Archive' : 'Restore',
 					type: 'primary',
 					nativeType: archiveDialogAction === 'archive' ? 'error' : 'submit',
-					callback: () => { executeArchiveAction() }
-				}
+					callback: () => { executeArchiveAction() },
+				},
 			]"
 			@close="showArchiveDialog = false" />
+
+		<NcModal :show="showCreateModal" size="large" @close="closeCreateModal">
+			<ProjectCreator embedded @created="handleProjectCreated" @cancel="closeCreateModal" />
+		</NcModal>
+
+		<NcModal :show="showProjectProfileModal" size="normal" @close="cancelProjectProfileEdit">
+			<div class="projects-home__profile-modal">
+				<h3 class="projects-home__profile-modal-title">Edit client and location details</h3>
+				<p class="projects-home__muted projects-home__profile-modal-subtitle">
+					Update project client and location metadata.
+				</p>
+
+				<div class="projects-home__profile-grid">
+					<NcTextField
+						v-model="projectProfileDraft.client_name"
+						label="Client name"
+						:show-label="true"
+						input-label="Client name"
+						placeholder="Client name" />
+					<NcTextField
+						v-model="projectProfileDraft.client_role"
+						label="Client role"
+						:show-label="true"
+						input-label="Client role"
+						placeholder="Client role" />
+					<NcTextField
+						v-model="projectProfileDraft.client_phone"
+						label="Client phone"
+						:show-label="true"
+						input-label="Client phone"
+						placeholder="Client phone" />
+					<NcTextField
+						v-model="projectProfileDraft.client_email"
+						label="Client email"
+						:show-label="true"
+						input-label="Client email"
+						placeholder="Client email" />
+					<NcTextField
+						v-model="projectProfileDraft.loc_street"
+						label="Location street"
+						:show-label="true"
+						input-label="Location street"
+						placeholder="Location street" />
+					<NcTextField
+						v-model="projectProfileDraft.loc_city"
+						label="Location city"
+						:show-label="true"
+						input-label="Location city"
+						placeholder="Location city" />
+					<NcTextField
+						v-model="projectProfileDraft.loc_zip"
+						label="Location ZIP"
+						:show-label="true"
+						input-label="Location ZIP"
+						placeholder="Location ZIP" />
+					<NcTextField
+						v-model="projectProfileDraft.client_address"
+						label="Client address"
+						:show-label="true"
+						input-label="Client address"
+						placeholder="Client address" />
+				</div>
+
+				<p v-if="projectProfileError" class="projects-home__inline-error projects-home__inline-error--left">{{ projectProfileError }}</p>
+
+				<div class="projects-home__profile-actions">
+					<NcButton
+						type="secondary"
+						:disabled="projectProfileSaving"
+						@click="cancelProjectProfileEdit">
+						Cancel
+					</NcButton>
+					<NcButton
+						type="primary"
+						:disabled="projectProfileSaving"
+						@click="saveProjectProfile">
+						{{ projectProfileSaving ? 'Saving...' : 'Save details' }}
+					</NcButton>
+				</div>
+			</div>
+		</NcModal>
 	</div>
 </template>
 
@@ -409,6 +507,8 @@ import NcSelect from '@nextcloud/vue/components/NcSelect'
 import NcActions from '@nextcloud/vue/components/NcActions'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
+import NcModal from '@nextcloud/vue/components/NcModal'
+
 import Details from 'vue-material-design-icons/Details.vue'
 import Download from 'vue-material-design-icons/Download.vue'
 import EyeOutline from 'vue-material-design-icons/EyeOutline.vue'
@@ -419,10 +519,14 @@ import Plus from 'vue-material-design-icons/Plus.vue'
 import Archive from 'vue-material-design-icons/Archive.vue'
 import ArchiveArrowUp from 'vue-material-design-icons/ArchiveArrowUp.vue'
 import DotsHorizontal from 'vue-material-design-icons/DotsHorizontal.vue'
+import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
+
 import { generateRemoteUrl, generateUrl } from '@nextcloud/router'
 import { createClient } from 'webdav'
+
 import { PROJECT_TYPES } from '../macros/project-types'
 import { ProjectsService } from '../Services/projects'
+
 import DeckBoard from './ProjectDeck/DeckBoard.vue'
 import GanttChart from './ProjectTimeline/GanttChart.vue'
 import ProjectFilesBrowser from './ProjectFiles/ProjectFilesBrowser.vue'
@@ -450,11 +554,13 @@ export default {
 		NcActions,
 		NcActionButton,
 		NcDialog,
+		NcModal,
 		OfficeBuilding,
 		Plus,
 		Archive,
 		ArchiveArrowUp,
 		DotsHorizontal,
+		ChevronLeft,
 		ProjectFilesBrowser,
 		WhiteboardBoard,
 		ProjectCreator,
@@ -468,7 +574,13 @@ export default {
 			filesLoading: false,
 			statusUpdating: false,
 			statusUpdateError: '',
-			isCreateMode: false,
+			showCreateModal: false,
+			activeTab: 'overview',
+			sortKey: 'default',
+			isNarrow: false,
+			mobilePane: 'list',
+			loadedMembersProjectId: null,
+			loadedFilesProjectId: null,
 			loading: false,
 			projectFiles: {
 				private: [],
@@ -491,6 +603,20 @@ export default {
 			memberInviteLoading: false,
 			memberInviteMessage: '',
 			memberSearchTimeout: null,
+			showProjectProfileModal: false,
+			projectProfileDraft: {
+				client_name: '',
+				client_role: '',
+				client_phone: '',
+				client_email: '',
+				client_address: '',
+				loc_street: '',
+				loc_city: '',
+				loc_zip: '',
+			},
+			projectProfileSaving: false,
+			projectProfileError: '',
+			projectProfileMessage: '',
 		}
 	},
 	computed: {
@@ -536,8 +662,24 @@ export default {
 				return name.includes(search) || number.includes(search)
 			})
 		},
+		visibleProjects() {
+			const list = (this.filteredProjects || []).slice()
+			if (this.sortKey === 'name') {
+				return list.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }))
+			}
+			if (this.sortKey === 'number') {
+				return list.sort((a, b) => String(a.number || '').localeCompare(String(b.number || ''), undefined, { sensitivity: 'base' }))
+			}
+			return list
+		},
+		canClearFilters() {
+			return this.searchQuery.trim() !== '' || this.statusFilter !== 'all' || this.sortKey !== 'default'
+		},
 	},
 	async mounted() {
+		this.updateNarrowState()
+		window.addEventListener('resize', this.updateNarrowState)
+
 		await this.loadContext()
 		if (!this.hasProjectAccess) {
 			return
@@ -548,7 +690,165 @@ export default {
 		}
 		await this.loadProjects()
 	},
+	beforeDestroy() {
+		window.removeEventListener('resize', this.updateNarrowState)
+	},
 	methods: {
+		getProjectProfileDraftFromSelected() {
+			const selected = this.selectedProject || {}
+			return {
+				client_name: selected.client_name || '',
+				client_role: selected.client_role || '',
+				client_phone: selected.client_phone || '',
+				client_email: selected.client_email || '',
+				client_address: selected.client_address || '',
+				loc_street: selected.loc_street || '',
+				loc_city: selected.loc_city || '',
+				loc_zip: selected.loc_zip || '',
+			}
+		},
+		resetProjectProfileEditor(clearMessage = true) {
+			this.showProjectProfileModal = false
+			this.projectProfileSaving = false
+			this.projectProfileError = ''
+			if (clearMessage) {
+				this.projectProfileMessage = ''
+			}
+			this.projectProfileDraft = {
+				client_name: '',
+				client_role: '',
+				client_phone: '',
+				client_email: '',
+				client_address: '',
+				loc_street: '',
+				loc_city: '',
+				loc_zip: '',
+			}
+		},
+		startProjectProfileEdit() {
+			if (!this.canManageProjects || !this.selectedProject) {
+				return
+			}
+
+			this.projectProfileError = ''
+			this.projectProfileMessage = ''
+			this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
+			this.showProjectProfileModal = true
+		},
+		cancelProjectProfileEdit() {
+			this.projectProfileError = ''
+			this.showProjectProfileModal = false
+		},
+		async saveProjectProfile() {
+			if (!this.selectedProject) {
+				return
+			}
+
+			const projectId = Number(this.selectedProject.id)
+			if (!Number.isFinite(projectId) || projectId <= 0) {
+				return
+			}
+
+			this.projectProfileSaving = true
+			this.projectProfileError = ''
+			this.projectProfileMessage = ''
+
+			const payload = {
+				client_name: this.projectProfileDraft.client_name,
+				client_role: this.projectProfileDraft.client_role,
+				client_phone: this.projectProfileDraft.client_phone,
+				client_email: this.projectProfileDraft.client_email,
+				client_address: this.projectProfileDraft.client_address,
+				loc_street: this.projectProfileDraft.loc_street,
+				loc_city: this.projectProfileDraft.loc_city,
+				loc_zip: this.projectProfileDraft.loc_zip,
+			}
+
+			try {
+				const updated = await projectsService.update(projectId, payload)
+
+				if (updated && typeof updated === 'object') {
+					this.selectedProject = {
+						...this.selectedProject,
+						...updated,
+					}
+				} else {
+					this.selectedProject = {
+						...this.selectedProject,
+						...payload,
+					}
+				}
+
+				const projectIndex = this.projects.findIndex((project) => Number(project.id) === projectId)
+				if (projectIndex !== -1) {
+					this.projects.splice(projectIndex, 1, {
+						...this.projects[projectIndex],
+						...this.selectedProject,
+					})
+				}
+
+				this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
+				this.showProjectProfileModal = false
+				this.projectProfileMessage = 'Client and location details updated.'
+			} catch (error) {
+				this.projectProfileError = error?.response?.data?.message || 'Could not update client and location details.'
+			} finally {
+				this.projectProfileSaving = false
+			}
+		},
+		updateNarrowState() {
+			this.isNarrow = window.matchMedia ? window.matchMedia('(max-width: 900px)').matches : (window.innerWidth <= 900)
+			if (!this.isNarrow) {
+				this.mobilePane = 'list'
+				return
+			}
+			this.mobilePane = this.selectedProjectId ? 'details' : 'list'
+		},
+		clearFilters() {
+			this.searchQuery = ''
+			this.statusFilter = 'all'
+			this.sortKey = 'default'
+		},
+		statusPillClass(status) {
+			const normalized = Number(status)
+			if (normalized === 1) {
+				return 'projects-home__status-pill--active'
+			}
+			if (normalized === 0) {
+				return 'projects-home__status-pill--archived'
+			}
+			return ''
+		},
+		setActiveTab(tab) {
+			this.activeTab = tab
+			if (!this.selectedProjectId) {
+				return
+			}
+			const projectId = Number(this.selectedProjectId)
+			if (!Number.isFinite(projectId) || projectId <= 0) {
+				return
+			}
+			if (tab === 'members') {
+				this.ensureMembersLoaded(projectId)
+			}
+			if (tab === 'files') {
+				this.ensureFilesLoaded(projectId)
+			}
+		},
+		async ensureMembersLoaded(projectId) {
+			if (this.loadedMembersProjectId === projectId && !this.membersError) {
+				return
+			}
+			await this.loadProjectMembers(projectId)
+			this.loadedMembersProjectId = projectId
+		},
+		async ensureFilesLoaded(projectId) {
+			if (this.loadedFilesProjectId === projectId && !this.filesError) {
+				return
+			}
+			await this.loadProjectFiles(projectId)
+			this.loadedFilesProjectId = projectId
+		},
 		isArchivedStatus(status) {
 			return Number(status) === 0
 		},
@@ -579,7 +879,6 @@ export default {
 			this.statusUpdating = true
 			try {
 				await projectsService.update(projectId, { status: nextStatus })
-				// Update local state immediately
 				this.selectedProject.status = nextStatus
 				await this.loadProjects()
 			} catch (error) {
@@ -611,9 +910,17 @@ export default {
 				if (previousSelectedProjectId !== null) {
 					const stillExists = this.projects.some((project) => project.id === previousSelectedProjectId)
 					if (!stillExists) {
+						this.resetProjectProfileEditor()
 						this.resetMembersState()
+						this.resetFilesState()
 						this.selectedProject = null
 						this.selectedProjectId = null
+						this.activeTab = 'overview'
+						this.loadedMembersProjectId = null
+						this.loadedFilesProjectId = null
+						if (this.isNarrow) {
+							this.mobilePane = 'list'
+						}
 					}
 				}
 			} finally {
@@ -621,27 +928,32 @@ export default {
 			}
 		},
 		async selectProject(project) {
-			this.isCreateMode = false
+			this.activeTab = 'overview'
 			this.statusUpdateError = ''
 			this.memberInviteMessage = ''
 			this.membersError = ''
+			this.resetProjectProfileEditor()
+			this.resetMembersState()
+			this.resetFilesState()
 			this.selectedProjectId = project.id
 			this.selectedProject = await projectsService.get(project.id)
-			await this.loadProjectMembers(project.id)
-			await this.loadProjectFiles(project.id)
+			this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
+			this.loadedMembersProjectId = null
+			this.loadedFilesProjectId = null
+			if (this.isNarrow) {
+				this.mobilePane = 'details'
+			}
 		},
 		startCreateProject() {
-			this.isCreateMode = true
-			this.statusUpdateError = ''
-			this.resetMembersState()
-			this.projectFiles = { private: [], shared: [] }
-			this.selectedProject = null
-			this.selectedProjectId = null
+			this.showCreateModal = true
+		},
+		closeCreateModal() {
+			this.showCreateModal = false
 		},
 		async handleProjectCreated(payload) {
 			const createdProjectId = payload?.projectId ?? null
 			await this.loadProjects()
-			this.isCreateMode = false
+			this.showCreateModal = false
 			if (createdProjectId === null) {
 				return
 			}
@@ -675,6 +987,11 @@ export default {
 			} finally {
 				this.filesLoading = false
 			}
+		},
+		resetFilesState() {
+			this.filesError = ''
+			this.filesLoading = false
+			this.projectFiles = { private: [], shared: [] }
 		},
 		resetMembersState() {
 			this.projectMembers = []
@@ -730,6 +1047,10 @@ export default {
 			this.memberSearchTimeout = setTimeout(async () => {
 				try {
 					const organizationId = this.getMemberSearchOrganizationId()
+					if (this.loadedMembersProjectId !== Number(this.selectedProject?.id)) {
+						await this.loadProjectMembers(Number(this.selectedProject?.id))
+						this.loadedMembersProjectId = Number(this.selectedProject?.id)
+					}
 					const users = await projectsService.searchUsers(query, organizationId)
 					const existingIds = new Set(this.projectMembers.map((member) => String(member.id)))
 					this.memberInviteOptions = users
@@ -766,6 +1087,7 @@ export default {
 			try {
 				const result = await projectsService.addMember(this.selectedProject.id, String(userId))
 				await this.loadProjectMembers(this.selectedProject.id)
+				this.loadedMembersProjectId = Number(this.selectedProject.id)
 				this.memberInviteMessage = result?.alreadyMember
 					? 'This user is already a project member.'
 					: 'Member added to project successfully.'
@@ -781,7 +1103,6 @@ export default {
 			if (!project.boardId) {
 				return
 			}
-
 			const url = generateUrl(`/apps/deck/#/board/${project.boardId}`)
 			window.open(url, '_blank')
 		},
@@ -789,11 +1110,9 @@ export default {
 			if (!project.folderPath) {
 				return
 			}
-
 			const directory = project.folderPath.startsWith('/')
 				? project.folderPath
 				: `/${project.folderPath}`
-
 			const url = generateUrl(`/apps/files/?dir=${encodeURIComponent(directory)}`)
 			window.open(url, '_blank')
 		},
@@ -801,22 +1120,23 @@ export default {
 			if (!project?.white_board_id) {
 				return
 			}
-
-			const component = this.$refs.whiteboardBoard
-			if (component && typeof component.openOverlay === 'function') {
-				component.openOverlay()
-				return
+			if (this.activeTab !== 'whiteboard') {
+				this.setActiveTab('whiteboard')
 			}
-
-			// Fallback
-			const url = generateUrl(`/apps/files/f/${encodeURIComponent(String(project.white_board_id))}?openfile=true`)
-			window.open(url, '_blank')
+			this.$nextTick(() => {
+				const component = this.$refs.whiteboardBoard
+				if (component && typeof component.openOverlay === 'function') {
+					component.openOverlay()
+					return
+				}
+				const url = generateUrl(`/apps/files/f/${encodeURIComponent(String(project.white_board_id))}?openfile=true`)
+				window.open(url, '_blank')
+			})
 		},
 		downloadProject(project) {
 			if (!project.folderPath) {
 				return
 			}
-
 			const path = this.normalizedPath(project.folderPath)
 			const downloadUrl = new URL(webdavClient.getFileDownloadLink(path))
 			downloadUrl.searchParams.append('accept', 'zip')
@@ -833,7 +1153,9 @@ export default {
 		normalizedPath(path) {
 			const parts = path.split('/')
 			if (parts.length >= 3) {
-				[parts[1], parts[2]] = [parts[2], parts[1]]
+				const tmp = parts[1]
+				parts[1] = parts[2]
+				parts[2] = tmp
 			}
 			return parts.join('/')
 		},
@@ -852,7 +1174,7 @@ export default {
 
 .projects-home {
 	display: grid;
-	grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+	grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
 	gap: 16px;
 	width: 100%;
 	padding: 16px;
@@ -882,6 +1204,17 @@ export default {
 	border-bottom: 1px solid var(--color-border);
 }
 
+.projects-home__header-left {
+	min-width: 0;
+}
+
+.projects-home__header-meta {
+	margin-top: 10px;
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
 .projects-home__title {
 	margin: 0;
 	font-size: 20px;
@@ -900,10 +1233,15 @@ export default {
 	border-bottom: 1px solid var(--color-border);
 }
 
+.projects-home__control-label {
+	font-size: 12px;
+	color: var(--color-text-maxcontrast);
+}
+
 .projects-home__scope-row {
-	display: flex;
+	display: grid;
+	grid-template-columns: auto 1fr;
 	align-items: center;
-	justify-content: space-between;
 	gap: 10px;
 }
 
@@ -914,6 +1252,27 @@ export default {
 	border-radius: 999px;
 	background: var(--color-background-hover);
 	border: 1px solid var(--color-border-dark);
+	font-size: 12px;
+	color: var(--color-text-maxcontrast);
+}
+
+.projects-home__filters-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr auto;
+	gap: 10px;
+	align-items: end;
+}
+
+.projects-home__filter {
+	display: grid;
+	gap: 6px;
+}
+
+.projects-home__clear {
+	height: 36px;
+}
+
+.projects-home__count-row {
 	font-size: 12px;
 	color: var(--color-text-maxcontrast);
 }
@@ -951,14 +1310,31 @@ export default {
 	padding: 12px 14px;
 	cursor: pointer;
 	border-bottom: 1px solid var(--color-border);
+	position: relative;
 }
 
 .projects-home__project-item:hover {
 	background: var(--color-background-hover);
 }
 
+.projects-home__project-item:focus-visible {
+	outline: 2px solid var(--color-primary-element);
+	outline-offset: -2px;
+}
+
 .projects-home__project-item--active {
 	background: var(--color-primary-element-light);
+}
+
+.projects-home__project-item--active::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 10px;
+	bottom: 10px;
+	width: 3px;
+	border-radius: 99px;
+	background: var(--color-primary-element);
 }
 
 .projects-home__project-main {
@@ -989,6 +1365,16 @@ export default {
 	color: var(--color-main-text);
 }
 
+.projects-home__status-pill--active {
+	background: rgba(30, 127, 45, 0.12);
+	border: 1px solid rgba(30, 127, 45, 0.25);
+}
+
+.projects-home__status-pill--archived {
+	background: rgba(120, 120, 120, 0.14);
+	border: 1px solid rgba(120, 120, 120, 0.22);
+}
+
 .projects-home__project-meta {
 	display: flex;
 	align-items: center;
@@ -1001,6 +1387,12 @@ export default {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
+	opacity: 0.8;
+}
+
+.projects-home__project-item:hover .projects-home__quick-actions,
+.projects-home__project-item:focus-within .projects-home__quick-actions {
+	opacity: 1;
 }
 
 .projects-home__quick-action {
@@ -1031,14 +1423,12 @@ export default {
 .projects-home__details-content {
 	display: flex;
 	flex-direction: column;
-	gap: 16px;
+	gap: 12px;
 }
 
 .projects-home__hero {
-	display: flex;
-	justify-content: space-between;
-	align-items: flex-start;
-	gap: 14px;
+	display: grid;
+	gap: 10px;
 	padding: 16px;
 	border-radius: 14px;
 	background:
@@ -1046,6 +1436,21 @@ export default {
 		radial-gradient(circle at 100% 20%, rgba(255, 166, 0, 0.2), transparent 40%),
 		var(--color-main-background);
 	border: 1px solid var(--color-border-dark);
+}
+
+.projects-home__hero-mobile {
+	display: flex;
+}
+
+.projects-home__back {
+	--border-radius: 10px;
+}
+
+.projects-home__hero-main {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 14px;
 }
 
 .projects-home__details-title {
@@ -1056,6 +1461,61 @@ export default {
 .projects-home__details-subtitle {
 	margin: 0;
 	color: var(--color-text-maxcontrast);
+}
+
+.projects-home__tabs {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	padding: 8px 2px 0;
+}
+
+.projects-home__tab {
+	appearance: none;
+	border: 1px solid var(--color-border-dark);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	border-radius: 999px;
+	padding: 6px 10px;
+	font: inherit;
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.projects-home__tab:hover {
+	background: var(--color-background-hover);
+}
+
+.projects-home__tab--active {
+	border-color: rgba(0, 0, 0, 0);
+	background: var(--color-primary-element-light);
+}
+
+.projects-home__tab-panel {
+	padding-top: 4px;
+}
+
+.projects-home__tab-section {
+	border: 1px solid var(--color-border-dark);
+	border-radius: 12px;
+	background: var(--color-main-background);
+	padding: 14px;
+}
+
+.projects-home__tab-section-head {
+	margin-bottom: 10px;
+}
+
+.projects-home__section-title {
+	margin: 0;
+	font-size: 15px;
+	font-weight: 700;
+}
+
+.projects-home__tab-top {
+	display: flex;
+	justify-content: flex-end;
+	margin-bottom: 10px;
 }
 
 .projects-home__detail-grid {
@@ -1074,39 +1534,17 @@ export default {
 	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
 }
 
-.projects-home__collapse {
-	display: grid;
-	gap: 10px;
-}
-
-.projects-home__summary {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 10px;
-	cursor: pointer;
-	list-style: none;
-}
-
-.projects-home__summary::-webkit-details-marker {
-	display: none;
-}
-
-.projects-home__card--full {
-	grid-column: 1 / -1;
-}
-
 .projects-home__card-title {
 	margin: 0;
 	font-size: 15px;
 	font-weight: 700;
 }
 
-.projects-home__card-header-row {
+.projects-home__card-head {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	gap: 10px;
+	gap: 8px;
 }
 
 .projects-home__kv {
@@ -1128,6 +1566,37 @@ export default {
 	gap: 8px;
 }
 
+.projects-home__profile-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin-top: 4px;
+}
+
+.projects-home__profile-modal {
+	display: grid;
+	gap: 14px;
+	padding: 16px;
+}
+
+.projects-home__profile-modal-title {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 700;
+}
+
+.projects-home__profile-modal-subtitle {
+	margin: -6px 0 0;
+	font-size: 13px;
+}
+
+.projects-home__profile-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 10px;
+}
+
 .projects-home__member-invite-row {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) auto;
@@ -1138,7 +1607,7 @@ export default {
 .projects-home__members-list {
 	list-style: none;
 	padding: 0;
-	margin: 0;
+	margin: 12px 0 0;
 	display: grid;
 	gap: 8px;
 }
@@ -1193,41 +1662,6 @@ export default {
 	color: var(--color-text-maxcontrast);
 }
 
-
-.projects-home__note-editor {
-	width: 100%;
-}
-
-.projects-home__note-actions {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 12px;
-	padding-top: 8px;
-}
-
-.projects-home__files-grid {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 16px;
-	padding-top: 6px;
-}
-
-.projects-home__file-list {
-	margin: 8px 0 0;
-	padding-left: 18px;
-	color: var(--color-text-maxcontrast);
-}
-
-.projects-home__file-list li {
-	margin-bottom: 4px;
-	word-break: break-word;
-}
-
-.projects-home__file-stat {
-	font-weight: 600;
-}
-
 .projects-home__muted {
 	color: var(--color-text-maxcontrast);
 }
@@ -1265,7 +1699,7 @@ export default {
 }
 
 .projects-home__inline-success {
-	margin: 0;
+	margin: 10px 0 0;
 	font-size: 12px;
 	color: var(--color-success, #1e7f2d);
 }
@@ -1305,12 +1739,11 @@ export default {
 		min-height: auto;
 	}
 
-	.projects-home__detail-grid,
-	.projects-home__files-grid {
+	.projects-home__detail-grid {
 		grid-template-columns: 1fr;
 	}
 
-	.projects-home__hero {
+	.projects-home__hero-main {
 		flex-direction: column;
 	}
 
@@ -1328,6 +1761,10 @@ export default {
 	}
 
 	.projects-home__member-invite-row {
+		grid-template-columns: 1fr;
+	}
+
+	.projects-home__profile-grid {
 		grid-template-columns: 1fr;
 	}
 

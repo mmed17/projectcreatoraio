@@ -40,6 +40,80 @@
 				</div>
 
 				<div class="form-row">
+					<NcTextField
+						v-model="project.client_name"
+						label="Client name"
+						class="form-row-item"
+						placeholder="e.g., ACME Corp"
+						:show-label="true"
+						input-label="Client name" />
+
+					<NcTextField
+						v-model="project.client_role"
+						label="Client role"
+						class="form-row-item"
+						placeholder="e.g., Project sponsor"
+						:show-label="true"
+						input-label="Client role" />
+				</div>
+
+				<div class="form-row">
+					<NcTextField
+						v-model="project.client_phone"
+						label="Client phone"
+						class="form-row-item"
+						placeholder="e.g., +1 555 123 4567"
+						:show-label="true"
+						input-label="Client phone" />
+
+					<NcTextField
+						v-model="project.client_email"
+						label="Client email"
+						class="form-row-item"
+						placeholder="e.g., client@example.com"
+						:show-label="true"
+						input-label="Client email" />
+				</div>
+
+				<div class="form-row">
+					<NcTextField
+						v-model="project.client_address"
+						label="Client address"
+						class="form-row-item"
+						placeholder="e.g., 12 Market Street"
+						:show-label="true"
+						input-label="Client address" />
+				</div>
+
+				<div class="form-row">
+					<NcTextField
+						v-model="project.loc_street"
+						label="Location street"
+						class="form-row-item"
+						placeholder="e.g., 45 Industrial Ave"
+						:show-label="true"
+						input-label="Location street" />
+
+					<NcTextField
+						v-model="project.loc_city"
+						label="Location city"
+						class="form-row-item"
+						placeholder="e.g., Toronto"
+						:show-label="true"
+						input-label="Location city" />
+				</div>
+
+				<div class="form-row">
+					<NcTextField
+						v-model="project.loc_zip"
+						label="Location ZIP"
+						class="form-row-item"
+						placeholder="e.g., 10001"
+						:show-label="true"
+						input-label="Location ZIP" />
+				</div>
+
+				<div class="form-row">
 					<NcSelect v-model="selectedProjectType"
 						class="form-row-item"
 						placeholder="Select project type"

@@ -64,6 +64,14 @@ class ProjectService
         array $members,
         string $description,
         ?int $organizationId = null,
+        ?string $clientName = null,
+        ?string $clientRole = null,
+        ?string $clientPhone = null,
+        ?string $clientEmail = null,
+        ?string $clientAddress = null,
+        ?string $locStreet = null,
+        ?string $locCity = null,
+        ?string $locZip = null,
     ): Project {
 
         $createdBoard = null;
@@ -137,6 +145,14 @@ class ProjectService
                 $createdFolders['shared']['name'],
                 $createdFolders['private'],
                 $whiteBoardId,
+                $clientName,
+                $clientRole,
+                $clientPhone,
+                $clientEmail,
+                $clientAddress,
+                $locStreet,
+                $locCity,
+                $locZip,
             );
 
 
