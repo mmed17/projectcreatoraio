@@ -4,6 +4,7 @@ namespace OCA\ProjectCreatorAIO\Service;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Db\ProjectNoteMapper;
+use OCA\ProjectCreatorAIO\Db\TimelineItemMapper;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCA\Deck\Service\BoardService;
@@ -72,6 +73,9 @@ class ProjectService
         ?string $locStreet = null,
         ?string $locCity = null,
         ?string $locZip = null,
+        ?string $requestDate = null,
+        ?string $desiredExecutionDate = null,
+        ?int $requiredPreparationDays = null,
     ): Project {
 
         $createdBoard = null;
@@ -155,6 +159,13 @@ class ProjectService
                 $locZip,
             );
 
+            $this->seedDefaultPlanningTimelineItems(
+                (int) $project->getId(),
+                $requestDate,
+                $desiredExecutionDate,
+                $requiredPreparationDays,
+            );
+
 
             return $project;
 
@@ -168,6 +179,109 @@ class ProjectService
             );
 
             throw $e;
+        }
+    }
+
+    private function seedDefaultPlanningTimelineItems(
+        int $projectId,
+        ?string $requestDate,
+        ?string $desiredExecutionDate,
+        ?int $requiredPreparationDays,
+    ): void {
+        if ($projectId <= 0) {
+            return;
+        }
+
+        $timelineMapper = new TimelineItemMapper($this->db);
+
+        // Seed defaults relative to today, so every new project starts with
+        // a consistent planning baseline (can be edited later in the Gantt UI).
+        $request = new \DateTime('today');
+
+        $prepDays = (int) ($requiredPreparationDays ?? 0);
+        if ($prepDays < 0) {
+            $prepDays = 0;
+        }
+
+        $desired = clone $request;
+        if ($prepDays > 0) {
+            $desired->modify('+' . $prepDays . ' days');
+        }
+
+        $requestStr = $request->format('Y-m-d');
+        $desiredStr = $desired->format('Y-m-d');
+
+        $prepStart = clone $request;
+        $prepEnd = clone $desired;
+        if ($prepDays > 0) {
+            $prepEnd->modify('-1 day');
+        }
+
+        $items = [
+            [
+                'key' => 'request_date',
+                'label' => 'Request Date',
+                'start' => $requestStr,
+                'end' => $requestStr,
+                'color' => '#64748b',
+                'order' => 0,
+            ],
+            [
+                'key' => 'desired_execution_date',
+                'label' => 'Desired Execution Date',
+                'start' => $desiredStr,
+                'end' => $desiredStr,
+                'color' => '#f59e0b',
+                'order' => 1,
+            ],
+            [
+                'key' => 'required_preparation',
+                'label' => 'Required Preparation',
+                'start' => $prepStart->format('Y-m-d'),
+                'end' => $prepEnd->format('Y-m-d'),
+                'color' => '#10b981',
+                'order' => 2,
+            ],
+        ];
+
+        foreach ($items as $def) {
+            $existing = $timelineMapper->findByProjectAndSystemKey($projectId, $def['key']);
+            if ($existing === null) {
+                $timelineMapper->createItem(
+                    $projectId,
+                    $def['label'],
+                    $def['start'],
+                    $def['end'],
+                    $def['color'],
+                    (int) $def['order'],
+                    $def['key'],
+                );
+                continue;
+            }
+
+            $existing->setStartDate(new \DateTime($def['start']));
+            $existing->setEndDate(new \DateTime($def['end']));
+            $existing->setColor($def['color']);
+            $existing->setOrderIndex((int) $def['order']);
+            $timelineMapper->updateItem($existing);
+        }
+    }
+
+    private function parseDateOrNull(?string $value): ?\DateTime
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+
+        try {
+            return new \DateTime($value);
+        } catch (\Throwable $e) {
+            return null;
         }
     }
 

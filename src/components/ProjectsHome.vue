@@ -2,7 +2,7 @@
 	<div v-if="contextError" class="projects-home-empty">
 		<NcEmptyContent name="Could not load project context" :description="contextError">
 			<template #icon>
-				<Details :size="44" />
+				<AlertCircle :size="44" />
 			</template>
 		</NcEmptyContent>
 	</div>
@@ -21,34 +21,51 @@
 		:class="{
 			'projects-home--narrow': isNarrow,
 			'projects-home--narrow-details': isNarrow && mobilePane === 'details',
+			'projects-home--sidebar-collapsed': isSidebarCollapsed && !isNarrow,
 		}">
-		<section class="projects-home__list-pane" v-show="!isNarrow || mobilePane === 'list'">
-			<header class="projects-home__header">
-				<div class="projects-home__header-left">
+		<!-- Collapsible Sidebar -->
+		<aside
+			class="projects-home__sidebar"
+			:class="{ 'projects-home__sidebar--collapsed': isSidebarCollapsed && !isNarrow }"
+			v-show="!isNarrow || mobilePane === 'list'">
+			<header class="projects-home__sidebar-header">
+				<div v-if="!isSidebarCollapsed || isNarrow" class="projects-home__sidebar-brand">
 					<h2 class="projects-home__title">Projects</h2>
-					<p class="projects-home__subtitle">Browse and manage project spaces</p>
-					<div class="projects-home__header-meta">
-						<span class="projects-home__scope-pill">{{ scopeLabel }}</span>
-					</div>
+					<p class="projects-home__subtitle">Manage spaces</p>
 				</div>
-				<NcButton type="primary" @click="startCreateProject">
-					<template #icon>
-						<Plus :size="18" />
-					</template>
-					New project
-				</NcButton>
+				<div class="projects-home__sidebar-actions">
+					<NcButton
+						v-if="!isNarrow"
+						type="tertiary"
+						:aria-label="isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'"
+						@click="toggleSidebar">
+						<template #icon>
+							<MenuOpen v-if="isSidebarCollapsed" :size="18" />
+							<MenuClose v-else :size="18" />
+						</template>
+					</NcButton>
+					<NcButton
+						v-if="!isSidebarCollapsed || isNarrow"
+						type="primary"
+						@click="startCreateProject">
+						<template #icon>
+							<Plus :size="18" />
+						</template>
+						<span v-if="!isSidebarCollapsed || isNarrow">New</span>
+					</NcButton>
+				</div>
 			</header>
 
-			<div class="projects-home__controls">
-				<div v-if="isOrganizationAdmin" class="projects-home__scope-row">
-					<label class="projects-home__control-label" for="projects-scope">Scope</label>
+			<div v-if="!isSidebarCollapsed || isNarrow" class="projects-home__controls">
+				<div v-if="isOrganizationAdmin" class="projects-home__control-row">
+					<label class="projects-home__control-label" for="projects-scope">View</label>
 					<select
 						id="projects-scope"
 						v-model="projectScope"
 						class="projects-home__filter-select"
 						aria-label="Project scope"
 						@change="loadProjects">
-						<option value="all">All org projects</option>
+						<option value="all">All organization</option>
 						<option value="my">My projects</option>
 					</select>
 				</div>
@@ -88,19 +105,52 @@
 							<option value="number">Number</option>
 						</select>
 					</div>
-					<NcButton type="tertiary" :disabled="!canClearFilters" class="projects-home__clear" @click="clearFilters">
-						Clear
+					<NcButton
+						type="tertiary"
+						:disabled="!canClearFilters"
+						class="projects-home__clear"
+						:aria-label="'Clear filters'"
+						@click="clearFilters">
+						<template #icon>
+							<FilterRemove :size="16" />
+						</template>
 					</NcButton>
 				</div>
 
 				<div v-if="!loading" class="projects-home__count-row">
-					{{ visibleProjects.length }} / {{ projects.length }} projects
+					{{ visibleProjects.length }} of {{ projects.length }} projects
 				</div>
 			</div>
 
+			<!-- Collapsed sidebar: minimal controls -->
+			<div v-else class="projects-home__sidebar-collapsed-controls">
+				<NcButton
+					type="tertiary"
+					:title="'Search projects'"
+					@click="isSidebarCollapsed = false">
+					<template #icon>
+						<Magnify :size="18" />
+					</template>
+				</NcButton>
+				<NcButton
+					type="tertiary"
+					:title="'Create new project'"
+					@click="startCreateProject">
+					<template #icon>
+						<Plus :size="18" />
+					</template>
+				</NcButton>
+			</div>
+
 			<div class="projects-home__list">
-				<div v-if="loading" class="projects-home__centered">Loading projects...</div>
-				<NcEmptyContent v-else-if="visibleProjects.length === 0" name="No projects yet" description="Create a project to get started.">
+				<div v-if="loading" class="projects-home__centered">
+					<NcLoadingIcon :size="24" />
+					<span>Loading projects...</span>
+				</div>
+				<NcEmptyContent
+					v-else-if="visibleProjects.length === 0"
+					name="No projects found"
+					:description="canClearFilters ? 'Try adjusting your filters' : 'Create a project to get started.'">
 					<template #icon>
 						<FolderOutline :size="36" />
 					</template>
@@ -111,193 +161,340 @@
 							type="button"
 							class="projects-home__project-item"
 							:class="{ 'projects-home__project-item--active': selectedProjectId === project.id }"
+							:title="project.name"
 							@click="selectProject(project)">
 							<div class="projects-home__project-main">
 								<div class="projects-home__project-title-row">
-									<FolderOutline :size="20" />
-									<span class="projects-home__project-name">{{ project.name }}</span>
-									<span class="projects-home__status-pill" :class="statusPillClass(project.status)">{{ statusLabel(project.status) }}</span>
+									<FolderOutline :size="isSidebarCollapsed && !isNarrow ? 20 : 18" />
+									<span
+										class="projects-home__project-name"
+										:class="{ 'projects-home__project-name--collapsed': isSidebarCollapsed && !isNarrow }">
+										{{ isSidebarCollapsed && !isNarrow ? projectInitials(project) : project.name }}
+									</span>
+									<span
+										v-if="!isSidebarCollapsed || isNarrow"
+										class="projects-home__status-pill"
+										:class="statusPillClass(project.status)">
+										{{ statusLabelShort(project.status) }}
+									</span>
 								</div>
-								<div class="projects-home__project-meta">
-									<span>{{ project.number || 'No project number' }}</span>
-									<span>•</span>
-									<span>{{ typeLabel(project.type) }}</span>
+								<div v-if="!isSidebarCollapsed || isNarrow" class="projects-home__project-meta">
+									<span>{{ project.number || 'No number' }}</span>
+									<span class="projects-home__meta-dot">•</span>
+									<span>{{ typeLabelShort(project.type) }}</span>
 								</div>
-							</div>
-							<div class="projects-home__quick-actions">
-								<button
-									type="button"
-									class="projects-home__quick-action"
-									:title="project.boardId ? 'Open Deck board' : 'No Deck board linked'"
-									:disabled="!project.boardId"
-									@click.stop="openDeck(project)">
-									<EyeOutline :size="16" />
-								</button>
-								<button
-									type="button"
-									class="projects-home__quick-action"
-									:title="project.folderPath ? 'Download project files' : 'No project folder linked'"
-									:disabled="!project.folderPath"
-									@click.stop="downloadProject(project)">
-									<Download :size="16" />
-								</button>
 							</div>
 						</button>
 					</li>
 				</ul>
 			</div>
-		</section>
+		</aside>
 
-		<section class="projects-home__details-pane" v-show="!isNarrow || mobilePane === 'details'">
-			<div v-if="selectedProject" class="projects-home__details-content">
-				<div class="projects-home__hero">
+		<!-- Main Content Area -->
+		<main class="projects-home__main" v-show="!isNarrow || mobilePane === 'details'">
+			<div v-if="selectedProject" class="projects-home__main-content">
+				<!-- Hero Section -->
+				<header class="projects-home__hero">
 					<div v-if="isNarrow" class="projects-home__hero-mobile">
 						<NcButton type="tertiary" class="projects-home__back" @click="mobilePane = 'list'">
 							<template #icon>
 								<ChevronLeft :size="18" />
 							</template>
-							Back
+							Back to projects
 						</NcButton>
 					</div>
 					<div class="projects-home__hero-main">
-						<div>
-							<h2 class="projects-home__details-title">{{ selectedProject.name || 'Unnamed project' }}</h2>
-							<p class="projects-home__details-subtitle">{{ selectedProject.description || 'No description provided yet.' }}</p>
+						<div class="projects-home__hero-info">
+							<div class="projects-home__hero-title-row">
+								<h2 class="projects-home__details-title">{{ selectedProject.name || 'Unnamed project' }}</h2>
+								<div class="projects-home__hero-badges">
+									<span class="projects-home__badge" :class="statusBadgeClass(selectedProject.status)">
+										{{ statusLabel(selectedProject.status) }}
+									</span>
+									<span class="projects-home__badge projects-home__badge--secondary">
+										{{ typeLabel(selectedProject.type) }}
+									</span>
+									<span class="projects-home__badge projects-home__badge--muted">
+										#{{ selectedProject.number || 'N/A' }}
+									</span>
+								</div>
+							</div>
+							<p class="projects-home__details-subtitle">
+								{{ selectedProject.description || 'No description provided' }}
+							</p>
 						</div>
-						<div class="projects-home__hero-aside">
-							<div class="projects-home__hero-badges">
-								<span class="projects-home__badge">{{ statusLabel(selectedProject.status) }}</span>
-								<span class="projects-home__badge">{{ typeLabel(selectedProject.type) }}</span>
-								<span class="projects-home__badge">#{{ selectedProject.number || 'N/A' }}</span>
-							</div>
-							<div v-if="canManageProjects" class="projects-home__hero-actions">
-								<NcActions>
+						<div v-if="canManageProjects" class="projects-home__hero-actions">
+							<NcActions :force-menu="true">
+								<template #icon>
+									<DotsHorizontal :size="18" />
+								</template>
+								<NcActionButton
+									:icon="isArchivedStatus(selectedProject.status) ? 'icon-history' : 'icon-archive'"
+									@click="openArchiveDialog">
 									<template #icon>
-										<DotsHorizontal :size="18" />
+										<ArchiveArrowUp v-if="isArchivedStatus(selectedProject.status)" :size="16" />
+										<Archive v-else :size="16" />
 									</template>
-									<NcActionButton
-										:icon="isArchivedStatus(selectedProject.status) ? 'icon-history' : 'icon-archive'"
-										@click="openArchiveDialog">
-										<template #icon>
-											<ArchiveArrowUp v-if="isArchivedStatus(selectedProject.status)" :size="16" />
-											<Archive v-else :size="16" />
-										</template>
-										{{ isArchivedStatus(selectedProject.status) ? 'Restore project' : 'Archive project' }}
-									</NcActionButton>
-								</NcActions>
-							</div>
-							<p v-if="canManageProjects && statusUpdateError" class="projects-home__inline-error">{{ statusUpdateError }}</p>
+									{{ isArchivedStatus(selectedProject.status) ? 'Restore project' : 'Archive project' }}
+								</NcActionButton>
+							</NcActions>
 						</div>
 					</div>
-				</div>
+					<p v-if="canManageProjects && statusUpdateError" class="projects-home__inline-error">
+						{{ statusUpdateError }}
+					</p>
+				</header>
 
-				<div class="projects-home__tabs" role="tablist" aria-label="Project workspace">
-					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'overview' }" @click="setActiveTab('overview')">Overview</button>
-					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'members' }" @click="setActiveTab('members')">Members</button>
-					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'notes' }" @click="setActiveTab('notes')">Notes</button>
-					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'timeline' }" @click="setActiveTab('timeline')">Timeline</button>
-					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'deck' }" @click="setActiveTab('deck')">Deck</button>
-					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'whiteboard' }" @click="setActiveTab('whiteboard')">Whiteboard</button>
-					<button type="button" class="projects-home__tab" :class="{ 'projects-home__tab--active': activeTab === 'files' }" @click="setActiveTab('files')">Files</button>
-				</div>
+				<!-- Navigation Tabs -->
+				<nav class="projects-home__tabs" role="tablist" aria-label="Project workspace">
+					<button
+						type="button"
+						class="projects-home__tab"
+						:class="{ 'projects-home__tab--active': activeTab === 'overview' }"
+						@click="setActiveTab('overview')">
+						<ViewDashboard :size="16" class="projects-home__tab-icon" />
+						<span class="projects-home__tab-label">Overview</span>
+					</button>
+					<button
+						type="button"
+						class="projects-home__tab"
+						:class="{ 'projects-home__tab--active': activeTab === 'whiteboard' }"
+						@click="setActiveTab('whiteboard')">
+						<Draw :size="16" class="projects-home__tab-icon" />
+						<span class="projects-home__tab-label">Whiteboard</span>
+					</button>
+					<button
+						type="button"
+						class="projects-home__tab"
+						:class="{ 'projects-home__tab--active': activeTab === 'files' }"
+						@click="setActiveTab('files')">
+						<FolderOpen :size="16" class="projects-home__tab-icon" />
+						<span class="projects-home__tab-label">Files</span>
+					</button>
+					<button
+						type="button"
+						class="projects-home__tab"
+						:class="{ 'projects-home__tab--active': activeTab === 'members' }"
+						@click="setActiveTab('members')">
+						<AccountMultiple :size="16" class="projects-home__tab-icon" />
+						<span class="projects-home__tab-label">Members</span>
+						<span v-if="projectMembers.length > 0" class="projects-home__tab-badge">
+							{{ projectMembers.length }}
+						</span>
+					</button>
+				</nav>
 
+				<!-- Tab Content -->
 				<div class="projects-home__tab-panel" role="tabpanel">
-					<div v-if="activeTab === 'overview'" class="projects-home__detail-grid">
-						<article class="projects-home__card">
-							<h3 class="projects-home__card-title">Project details</h3>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">Name</span>
-								<span>{{ selectedProject.name || '-' }}</span>
-							</div>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">Number</span>
-								<span>{{ selectedProject.number || '-' }}</span>
-							</div>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">External ref</span>
-								<span>{{ selectedProject.external_ref || '-' }}</span>
-							</div>
-						</article>
+					<!-- Overview Tab - Combined: Project Address, Client Information, Notes, Timeline & Deck -->
+					<div v-if="activeTab === 'overview'" class="projects-home__tab-section projects-home__tab-section--full">
+						<div class="projects-home__overview">
+							<!-- Project Address Section -->
+							<section class="projects-home__overview-section">
+								<div class="projects-home__tab-section-header">
+									<h3 class="projects-home__section-title">
+										<MapMarker :size="20" />
+										Project Location
+									</h3>
+									<NcButton
+										v-if="canEditSelectedProjectDetails"
+										type="tertiary"
+										@click="startProjectProfileEdit">
+										<template #icon>
+											<Pencil :size="16" />
+										</template>
+										Edit
+									</NcButton>
+								</div>
+								<div class="projects-home__detail-grid projects-home__detail-grid--single">
+									<article class="projects-home__card">
+										<div class="projects-home__card-header">
+											<h4 class="projects-home__card-subtitle">Address Details</h4>
+										</div>
+										<div class="projects-home__kv-list">
+											<div class="projects-home__kv">
+												<span class="projects-home__label">Street</span>
+												<span class="projects-home__value">{{ selectedProject.loc_street || '-' }}</span>
+											</div>
+											<div class="projects-home__kv">
+												<span class="projects-home__label">City</span>
+												<span class="projects-home__value">{{ selectedProject.loc_city || '-' }}</span>
+											</div>
+											<div class="projects-home__kv">
+												<span class="projects-home__label">ZIP Code</span>
+												<span class="projects-home__value">{{ selectedProject.loc_zip || '-' }}</span>
+											</div>
+											<div class="projects-home__kv">
+												<span class="projects-home__label">Full Address</span>
+												<span class="projects-home__value">{{ selectedProject.client_address || '-' }}</span>
+											</div>
+										</div>
+										<p v-if="projectProfileError" class="projects-home__inline-error projects-home__inline-error--left">
+											{{ projectProfileError }}
+										</p>
+										<p v-if="projectProfileMessage" class="projects-home__inline-success">
+											{{ projectProfileMessage }}
+										</p>
+									</article>
+								</div>
+							</section>
 
-						<article class="projects-home__card">
-							<div class="projects-home__card-head">
-								<h3 class="projects-home__card-title">Client information</h3>
-								<NcButton
-									v-if="canManageProjects"
-									type="tertiary"
-									@click="startProjectProfileEdit">
-									Edit details
-								</NcButton>
-							</div>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">Client name</span>
-								<span>{{ selectedProject.client_name || '-' }}</span>
-							</div>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">Role</span>
-								<span>{{ selectedProject.client_role || '-' }}</span>
-							</div>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">Phone</span>
-								<span>{{ selectedProject.client_phone || '-' }}</span>
-							</div>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">Email</span>
-								<span>{{ selectedProject.client_email || '-' }}</span>
-							</div>
-						</article>
+							<!-- Client Information Section -->
+							<section class="projects-home__overview-section">
+								<div class="projects-home__tab-section-header">
+									<h3 class="projects-home__section-title">
+										<Account :size="20" />
+										Client Information
+									</h3>
+									<NcButton
+										v-if="canEditSelectedProjectDetails"
+										type="tertiary"
+										@click="startProjectProfileEdit">
+										<template #icon>
+											<Pencil :size="16" />
+										</template>
+										Edit
+									</NcButton>
+								</div>
+								<div class="projects-home__detail-grid">
+									<article class="projects-home__card">
+										<div class="projects-home__card-header">
+											<h4 class="projects-home__card-subtitle">Contact Information</h4>
+										</div>
+										<div class="projects-home__kv-list">
+											<div class="projects-home__kv">
+												<span class="projects-home__label">Client Name</span>
+												<span class="projects-home__value">{{ selectedProject.client_name || '-' }}</span>
+											</div>
+											<div class="projects-home__kv">
+												<span class="projects-home__label">Role / Title</span>
+												<span class="projects-home__value">{{ selectedProject.client_role || '-' }}</span>
+											</div>
+										</div>
+									</article>
+									<article class="projects-home__card">
+										<div class="projects-home__card-header">
+											<h4 class="projects-home__card-subtitle">Contact Methods</h4>
+										</div>
+										<div class="projects-home__kv-list">
+											<div class="projects-home__kv">
+												<span class="projects-home__label">Phone</span>
+												<span class="projects-home__value">{{ selectedProject.client_phone || '-' }}</span>
+											</div>
+											<div class="projects-home__kv">
+												<span class="projects-home__label">Email</span>
+												<span class="projects-home__value">{{ selectedProject.client_email || '-' }}</span>
+											</div>
+										</div>
+									</article>
+								</div>
+							</section>
 
-						<article class="projects-home__card">
-							<h3 class="projects-home__card-title">Location</h3>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">Street</span>
-								<span>{{ selectedProject.loc_street || '-' }}</span>
-							</div>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">City</span>
-								<span>{{ selectedProject.loc_city || '-' }}</span>
-							</div>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">ZIP</span>
-								<span>{{ selectedProject.loc_zip || '-' }}</span>
-							</div>
-							<div class="projects-home__kv">
-								<span class="projects-home__label">Address</span>
-								<span>{{ selectedProject.client_address || '-' }}</span>
-							</div>
-							<p v-if="projectProfileError" class="projects-home__inline-error projects-home__inline-error--left">{{ projectProfileError }}</p>
-							<p v-if="projectProfileMessage" class="projects-home__inline-success">{{ projectProfileMessage }}</p>
-						</article>
+							<!-- Notes Section -->
+							<section class="projects-home__overview-section">
+								<div class="projects-home__tab-section-header">
+									<h3 class="projects-home__section-title">
+										<NoteText :size="20" />
+										Notes
+									</h3>
+								</div>
+								<ProjectNotesList :project-id="selectedProject.id" />
+							</section>
 
-						<article class="projects-home__card">
-							<h3 class="projects-home__card-title">Project links</h3>
-							<div class="projects-home__links">
-								<NcButton type="secondary" :disabled="!selectedProject.boardId" @click="openDeck(selectedProject)">
-									<template #icon>
-										<EyeOutline :size="18" />
-									</template>
-									Open Deck board
-								</NcButton>
-								<NcButton type="secondary" :disabled="!selectedProject.folderPath" @click="openFolder(selectedProject)">
-									<template #icon>
-										<FolderOutline :size="18" />
-									</template>
-									Open folder
-								</NcButton>
-								<NcButton type="secondary" :disabled="!selectedProject.white_board_id" @click="openWhiteboard(selectedProject)">
-									<template #icon>
-										<Details :size="18" />
-									</template>
-									Open whiteboard
-								</NcButton>
-							</div>
-						</article>
+							<!-- Timeline & Deck Section -->
+							<section class="projects-home__overview-section">
+								<div class="projects-home__tab-section-header">
+									<h3 class="projects-home__section-title">
+										<ChartGantt :size="20" />
+										Timeline & Deck
+									</h3>
+								</div>
+								<div class="projects-home__split-view">
+									<div class="projects-home__split-panel projects-home__split-panel--timeline">
+										<div class="projects-home__panel-header">
+											<h3 class="projects-home__panel-title">
+												<ChartGantt :size="18" />
+												Timeline
+											</h3>
+										</div>
+										<div class="projects-home__panel-content">
+											<GanttChart :project-id="selectedProject.id" :is-admin="true" />
+										</div>
+									</div>
+									<div class="projects-home__split-panel projects-home__split-panel--deck">
+										<div class="projects-home__panel-header">
+											<h3 class="projects-home__panel-title">
+												<ViewDashboard :size="18" />
+												Deck Board
+											</h3>
+											<NcButton
+												type="tertiary"
+												:disabled="!selectedProject.boardId"
+												@click="openDeck(selectedProject)">
+												<template #icon>
+													<OpenInNew :size="14" />
+												</template>
+												Open
+											</NcButton>
+										</div>
+										<div class="projects-home__panel-content">
+											<DeckBoard
+												:board-id="selectedProject.boardId"
+												:project-id="selectedProject.id"
+												:organization-id="Number(selectedProject.organization_id) || Number(context?.organizationId) || null"
+												:can-manage-profiles="canManageProjects" />
+										</div>
+									</div>
+								</div>
+							</section>
+						</div>
 					</div>
 
+					<!-- Whiteboard Tab -->
+					<div v-else-if="activeTab === 'whiteboard'" class="projects-home__tab-section projects-home__tab-section--full">
+						<WhiteboardBoard
+							ref="whiteboardBoard"
+							:project-id="selectedProject.id"
+							:user-id="context?.userId || ''"
+							:key="String(selectedProject.id || '') + ':' + String(selectedProject.white_board_id || '')" />
+					</div>
+
+					<!-- Files Tab -->
+					<div v-else-if="activeTab === 'files'" class="projects-home__tab-section projects-home__tab-section--full">
+						<div class="projects-home__tab-toolbar">
+							<div class="projects-home__tab-toolbar-left">
+								<h3 class="projects-home__section-title">
+									<FolderOpen :size="20" />
+									Project Files
+								</h3>
+							</div>
+							<NcButton
+								type="secondary"
+								:disabled="!selectedProject.folderPath"
+								@click.stop.prevent="downloadProject(selectedProject)">
+								<template #icon>
+									<Download :size="18" />
+								</template>
+								Download ZIP
+							</NcButton>
+						</div>
+						<ProjectFilesBrowser
+							:shared-roots="projectFiles.shared"
+							:private-roots="projectFiles.private"
+							:loading="filesLoading"
+							:error="filesError" />
+					</div>
+
+					<!-- Members Tab -->
 					<div v-else-if="activeTab === 'members'" class="projects-home__tab-section">
-						<div class="projects-home__tab-section-head">
-							<h3 class="projects-home__section-title">Members</h3>
-							<p class="projects-home__muted">Anyone in this project can invite organization members.</p>
+						<div class="projects-home__tab-section-header">
+							<div>
+								<h3 class="projects-home__section-title">
+									<AccountMultiple :size="20" />
+									Project Members
+								</h3>
+								<p class="projects-home__section-subtitle">Anyone in this project can invite organization members</p>
+							</div>
 						</div>
 
 						<div class="projects-home__member-invite-row">
@@ -317,6 +514,9 @@
 								type="primary"
 								:disabled="memberInviteLoading || !memberInviteSelection || !selectedProject.id"
 								@click="inviteSelectedMember">
+								<template #icon>
+									<Plus :size="16" />
+								</template>
 								{{ memberInviteLoading ? 'Inviting...' : 'Invite' }}
 							</NcButton>
 						</div>
@@ -324,77 +524,48 @@
 						<p v-if="memberInviteMessage" class="projects-home__inline-success">{{ memberInviteMessage }}</p>
 						<p v-if="membersError" class="projects-home__inline-error projects-home__inline-error--left">{{ membersError }}</p>
 
-						<div v-if="membersLoading" class="projects-home__muted">Loading members...</div>
-						<div v-else-if="projectMembers.length === 0" class="projects-home__muted">No members found.</div>
+						<div v-if="membersLoading" class="projects-home__loading-state">
+							<NcLoadingIcon :size="24" />
+							<span>Loading members...</span>
+						</div>
+						<div v-else-if="projectMembers.length === 0" class="projects-home__empty-state">
+							<AccountOff :size="32" />
+							<p>No members found</p>
+						</div>
 						<ul v-else class="projects-home__members-list">
 							<li v-for="member in projectMembers" :key="member.id" class="projects-home__member-item">
+								<div class="projects-home__member-avatar">
+									<span class="projects-home__avatar-placeholder">
+										{{ memberInitials(member) }}
+									</span>
+								</div>
 								<div class="projects-home__member-main">
 									<span class="projects-home__member-name">{{ member.displayName || member.id }}</span>
 									<span class="projects-home__member-meta">{{ member.id }}</span>
 								</div>
 								<div class="projects-home__member-badges">
-									<span v-if="member.isOwner" class="projects-home__member-badge">Owner</span>
+									<span v-if="member.isOwner" class="projects-home__member-badge projects-home__member-badge--owner">Owner</span>
 									<span v-if="member.email" class="projects-home__member-badge projects-home__member-badge--muted">{{ member.email }}</span>
 								</div>
 							</li>
 						</ul>
 					</div>
-
-					<div v-else-if="activeTab === 'notes'" class="projects-home__tab-section">
-						<ProjectNotesList :project-id="selectedProject.id" />
-					</div>
-
-					<div v-else-if="activeTab === 'timeline'" class="projects-home__tab-section">
-						<GanttChart :project-id="selectedProject.id" :is-admin="true" />
-					</div>
-
-					<div v-else-if="activeTab === 'deck'" class="projects-home__tab-section">
-						<DeckBoard
-							:board-id="selectedProject.boardId"
-							:project-id="selectedProject.id"
-							:organization-id="Number(selectedProject.organization_id) || Number(context?.organizationId) || null"
-							:can-manage-profiles="canManageProjects"
-						/>
-					</div>
-
-					<div v-else-if="activeTab === 'whiteboard'" class="projects-home__tab-section">
-						<WhiteboardBoard
-							ref="whiteboardBoard"
-							:project-id="selectedProject.id"
-							:user-id="context?.userId || ''"
-							:key="String(selectedProject.id || '') + ':' + String(selectedProject.white_board_id || '')"
-						/>
-					</div>
-
-					<div v-else-if="activeTab === 'files'" class="projects-home__tab-section">
-						<div class="projects-home__tab-top">
-							<NcButton
-								type="secondary"
-								:disabled="!selectedProject.folderPath"
-								@click.stop.prevent="downloadProject(selectedProject)">
-								<template #icon>
-									<Download :size="18" />
-								</template>
-								Project ZIP
-							</NcButton>
-						</div>
-						<ProjectFilesBrowser
-							:shared-roots="projectFiles.shared"
-							:private-roots="projectFiles.private"
-							:loading="filesLoading"
-							:error="filesError"
-						/>
-					</div>
 				</div>
 			</div>
 
-			<NcEmptyContent v-else name="Select a project" description="Choose a project from the list to view details.">
+			<!-- Empty State -->
+			<NcEmptyContent
+				v-else
+				class="projects-home__empty-main"
+				name="Select a project"
+				description="Choose a project from the sidebar to view its details and manage resources.">
 				<template #icon>
-					<Details :size="36" />
+					<FolderOpen :size="48" />
 				</template>
 			</NcEmptyContent>
-		</section>
+		</main>
 
+		<!-- Archive Dialog -->
 		<NcDialog
 			v-if="showArchiveDialog && selectedProject"
 			:name="archiveDialogAction === 'archive' ? 'Archive project' : 'Restore project'"
@@ -409,73 +580,86 @@
 				},
 				{
 					label: archiveDialogAction === 'archive' ? 'Archive' : 'Restore',
-					type: 'primary',
+					type: archiveDialogAction === 'archive' ? 'error' : 'primary',
 					nativeType: archiveDialogAction === 'archive' ? 'error' : 'submit',
 					callback: () => { executeArchiveAction() },
 				},
 			]"
 			@close="showArchiveDialog = false" />
 
+		<!-- Create Project Modal -->
 		<NcModal :show="showCreateModal" size="large" @close="closeCreateModal">
 			<ProjectCreator embedded @created="handleProjectCreated" @cancel="closeCreateModal" />
 		</NcModal>
 
+		<!-- Edit Profile Modal -->
 		<NcModal :show="showProjectProfileModal" size="normal" @close="cancelProjectProfileEdit">
 			<div class="projects-home__profile-modal">
-				<h3 class="projects-home__profile-modal-title">Edit client and location details</h3>
-				<p class="projects-home__muted projects-home__profile-modal-subtitle">
-					Update project client and location metadata.
+				<h3 class="projects-home__profile-modal-title">Edit Project Details</h3>
+				<p class="projects-home__profile-modal-subtitle">
+					Update client information and project location details.
 				</p>
 
-				<div class="projects-home__profile-grid">
-					<NcTextField
-						v-model="projectProfileDraft.client_name"
-						label="Client name"
-						:show-label="true"
-						input-label="Client name"
-						placeholder="Client name" />
-					<NcTextField
-						v-model="projectProfileDraft.client_role"
-						label="Client role"
-						:show-label="true"
-						input-label="Client role"
-						placeholder="Client role" />
-					<NcTextField
-						v-model="projectProfileDraft.client_phone"
-						label="Client phone"
-						:show-label="true"
-						input-label="Client phone"
-						placeholder="Client phone" />
-					<NcTextField
-						v-model="projectProfileDraft.client_email"
-						label="Client email"
-						:show-label="true"
-						input-label="Client email"
-						placeholder="Client email" />
-					<NcTextField
-						v-model="projectProfileDraft.loc_street"
-						label="Location street"
-						:show-label="true"
-						input-label="Location street"
-						placeholder="Location street" />
-					<NcTextField
-						v-model="projectProfileDraft.loc_city"
-						label="Location city"
-						:show-label="true"
-						input-label="Location city"
-						placeholder="Location city" />
-					<NcTextField
-						v-model="projectProfileDraft.loc_zip"
-						label="Location ZIP"
-						:show-label="true"
-						input-label="Location ZIP"
-						placeholder="Location ZIP" />
-					<NcTextField
-						v-model="projectProfileDraft.client_address"
-						label="Client address"
-						:show-label="true"
-						input-label="Client address"
-						placeholder="Client address" />
+				<div class="projects-home__profile-sections">
+					<div class="projects-home__profile-section">
+						<h4 class="projects-home__profile-section-title">Client Information</h4>
+						<div class="projects-home__profile-grid">
+							<NcTextField
+								v-model="projectProfileDraft.client_name"
+								label="Client name"
+								:show-label="true"
+								input-label="Client name"
+								placeholder="e.g., Acme Corporation" />
+							<NcTextField
+								v-model="projectProfileDraft.client_role"
+								label="Role / Title"
+								:show-label="true"
+								input-label="Role / Title"
+								placeholder="e.g., Project Manager" />
+							<NcTextField
+								v-model="projectProfileDraft.client_phone"
+								label="Phone number"
+								:show-label="true"
+								input-label="Phone number"
+								placeholder="e.g., +1 555-0123" />
+							<NcTextField
+								v-model="projectProfileDraft.client_email"
+								label="Email address"
+								:show-label="true"
+								input-label="Email address"
+								placeholder="e.g., contact@example.com" />
+						</div>
+					</div>
+
+					<div class="projects-home__profile-section">
+						<h4 class="projects-home__profile-section-title">Project Location</h4>
+						<div class="projects-home__profile-grid">
+							<NcTextField
+								v-model="projectProfileDraft.loc_street"
+								label="Street address"
+								:show-label="true"
+								input-label="Street address"
+								placeholder="e.g., 123 Main Street" />
+							<NcTextField
+								v-model="projectProfileDraft.loc_city"
+								label="City"
+								:show-label="true"
+								input-label="City"
+								placeholder="e.g., New York" />
+							<NcTextField
+								v-model="projectProfileDraft.loc_zip"
+								label="ZIP / Postal code"
+								:show-label="true"
+								input-label="ZIP / Postal code"
+								placeholder="e.g., 10001" />
+							<NcTextField
+								v-model="projectProfileDraft.client_address"
+								label="Full address"
+								:show-label="true"
+								input-label="Full address"
+								placeholder="Complete mailing address" />
+						</div>
+					</div>
 				</div>
 
 				<p v-if="projectProfileError" class="projects-home__inline-error projects-home__inline-error--left">{{ projectProfileError }}</p>
@@ -491,7 +675,7 @@
 						type="primary"
 						:disabled="projectProfileSaving"
 						@click="saveProjectProfile">
-						{{ projectProfileSaving ? 'Saving...' : 'Save details' }}
+						{{ projectProfileSaving ? 'Saving...' : 'Save changes' }}
 					</NcButton>
 				</div>
 			</div>
@@ -508,24 +692,39 @@ import NcActions from '@nextcloud/vue/components/NcActions'
 import NcActionButton from '@nextcloud/vue/components/NcActionButton'
 import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcModal from '@nextcloud/vue/components/NcModal'
+import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 
-import Details from 'vue-material-design-icons/Details.vue'
-import Download from 'vue-material-design-icons/Download.vue'
-import EyeOutline from 'vue-material-design-icons/EyeOutline.vue'
-import FolderOutline from 'vue-material-design-icons/FolderOutline.vue'
-import Magnify from 'vue-material-design-icons/Magnify.vue'
-import OfficeBuilding from 'vue-material-design-icons/OfficeBuilding.vue'
-import Plus from 'vue-material-design-icons/Plus.vue'
+import Account from 'vue-material-design-icons/Account.vue'
+import AccountMultiple from 'vue-material-design-icons/AccountMultiple.vue'
+import AccountOff from 'vue-material-design-icons/AccountOff.vue'
+import AlertCircle from 'vue-material-design-icons/AlertCircle.vue'
 import Archive from 'vue-material-design-icons/Archive.vue'
 import ArchiveArrowUp from 'vue-material-design-icons/ArchiveArrowUp.vue'
-import DotsHorizontal from 'vue-material-design-icons/DotsHorizontal.vue'
+import ChartGantt from 'vue-material-design-icons/ChartGantt.vue'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
+import DotsHorizontal from 'vue-material-design-icons/DotsHorizontal.vue'
+import Draw from 'vue-material-design-icons/Draw.vue'
+import Download from 'vue-material-design-icons/Download.vue'
+import EyeOutline from 'vue-material-design-icons/EyeOutline.vue'
+import FilterRemove from 'vue-material-design-icons/FilterRemove.vue'
+import FolderOpen from 'vue-material-design-icons/FolderOpen.vue'
+import FolderOutline from 'vue-material-design-icons/FolderOutline.vue'
+import Magnify from 'vue-material-design-icons/Magnify.vue'
+import MapMarker from 'vue-material-design-icons/MapMarker.vue'
+import MenuClose from 'vue-material-design-icons/MenuClose.vue'
+import MenuOpen from 'vue-material-design-icons/MenuOpen.vue'
+import NoteText from 'vue-material-design-icons/NoteText.vue'
+import OfficeBuilding from 'vue-material-design-icons/OfficeBuilding.vue'
+import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
+import Pencil from 'vue-material-design-icons/Pencil.vue'
+import Plus from 'vue-material-design-icons/Plus.vue'
+import ViewDashboard from 'vue-material-design-icons/ViewDashboard.vue'
 
 import { generateRemoteUrl, generateUrl } from '@nextcloud/router'
 import { createClient } from 'webdav'
 
-import { PROJECT_TYPES } from '../macros/project-types'
-import { ProjectsService } from '../Services/projects'
+import { PROJECT_TYPES } from '../macros/project-types.js'
+import { ProjectsService } from '../Services/projects.js'
 
 import DeckBoard from './ProjectDeck/DeckBoard.vue'
 import GanttChart from './ProjectTimeline/GanttChart.vue'
@@ -540,13 +739,27 @@ const webdavClient = createClient(generateRemoteUrl('dav'))
 export default {
 	name: 'ProjectsHome',
 	components: {
+		Account,
+		AccountMultiple,
+		AccountOff,
+		AlertCircle,
+		Archive,
+		ArchiveArrowUp,
+		ChartGantt,
+		ChevronLeft,
 		DeckBoard,
-		Details,
+		DotsHorizontal,
+		Draw,
 		Download,
 		EyeOutline,
+		FilterRemove,
+		FolderOpen,
 		FolderOutline,
 		GanttChart,
 		Magnify,
+		MapMarker,
+		MenuClose,
+		MenuOpen,
 		NcButton,
 		NcEmptyContent,
 		NcTextField,
@@ -555,16 +768,17 @@ export default {
 		NcActionButton,
 		NcDialog,
 		NcModal,
+		NcLoadingIcon,
+		NoteText,
 		OfficeBuilding,
+		OpenInNew,
+		Pencil,
 		Plus,
-		Archive,
-		ArchiveArrowUp,
-		DotsHorizontal,
-		ChevronLeft,
 		ProjectFilesBrowser,
 		WhiteboardBoard,
 		ProjectCreator,
 		ProjectNotesList,
+		ViewDashboard,
 	},
 	data() {
 		return {
@@ -579,6 +793,7 @@ export default {
 			sortKey: 'default',
 			isNarrow: false,
 			mobilePane: 'list',
+			isSidebarCollapsed: false,
 			loadedMembersProjectId: null,
 			loadedFilesProjectId: null,
 			loading: false,
@@ -624,7 +839,6 @@ export default {
 			if (this.context === null) {
 				return true
 			}
-
 			return this.context.isGlobalAdmin || this.context.organizationId !== null
 		},
 		isOrganizationAdmin() {
@@ -633,15 +847,16 @@ export default {
 		canManageProjects() {
 			return !!(this.context?.isGlobalAdmin || this.context?.organizationRole === 'admin')
 		},
+		canEditSelectedProjectDetails() {
+			return this.hasProjectAccess && !!this.selectedProject
+		},
 		scopeLabel() {
 			if (this.context?.isGlobalAdmin) {
 				return 'Global admin view'
 			}
-
 			if (this.context?.organizationRole === 'admin') {
 				return 'Organization admin view'
 			}
-
 			return 'My projects view'
 		},
 		filteredProjects() {
@@ -694,6 +909,54 @@ export default {
 		window.removeEventListener('resize', this.updateNarrowState)
 	},
 	methods: {
+		// Sidebar collapse toggle
+		toggleSidebar() {
+			this.isSidebarCollapsed = !this.isSidebarCollapsed
+		},
+		// Get project initials for collapsed sidebar
+		projectInitials(project) {
+			const name = project.name || ''
+			return name
+				.split(' ')
+				.map(word => word.charAt(0).toUpperCase())
+				.slice(0, 2)
+				.join('')
+		},
+		// Get member initials
+		memberInitials(member) {
+			const name = member.displayName || member.id || ''
+			return name
+				.split(' ')
+				.map(word => word.charAt(0).toUpperCase())
+				.slice(0, 2)
+				.join('')
+		},
+		// Short status label for sidebar
+		statusLabelShort(status) {
+			const normalized = Number(status)
+			if (normalized === 1) return 'Active'
+			if (normalized === 0) return 'Archived'
+			return 'Unknown'
+		},
+		// Short type label
+		typeLabelShort(typeId) {
+			const match = PROJECT_TYPES.find((type) => type.id === typeId)
+			if (!match) return 'Unknown'
+			// Return abbreviated version
+			const abbreviations = {
+				Construction: 'Const.',
+				Renovation: 'Reno.',
+				Consulting: 'Consult.',
+			}
+			return abbreviations[match.label] || match.label
+		},
+		// Status badge class
+		statusBadgeClass(status) {
+			const normalized = Number(status)
+			if (normalized === 1) return 'projects-home__badge--success'
+			if (normalized === 0) return 'projects-home__badge--muted'
+			return ''
+		},
 		getProjectProfileDraftFromSelected() {
 			const selected = this.selectedProject || {}
 			return {
@@ -726,10 +989,9 @@ export default {
 			}
 		},
 		startProjectProfileEdit() {
-			if (!this.canManageProjects || !this.selectedProject) {
+			if (!this.canEditSelectedProjectDetails) {
 				return
 			}
-
 			this.projectProfileError = ''
 			this.projectProfileMessage = ''
 			this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
@@ -743,16 +1005,13 @@ export default {
 			if (!this.selectedProject) {
 				return
 			}
-
 			const projectId = Number(this.selectedProject.id)
 			if (!Number.isFinite(projectId) || projectId <= 0) {
 				return
 			}
-
 			this.projectProfileSaving = true
 			this.projectProfileError = ''
 			this.projectProfileMessage = ''
-
 			const payload = {
 				client_name: this.projectProfileDraft.client_name,
 				client_role: this.projectProfileDraft.client_role,
@@ -763,10 +1022,8 @@ export default {
 				loc_city: this.projectProfileDraft.loc_city,
 				loc_zip: this.projectProfileDraft.loc_zip,
 			}
-
 			try {
 				const updated = await projectsService.update(projectId, payload)
-
 				if (updated && typeof updated === 'object') {
 					this.selectedProject = {
 						...this.selectedProject,
@@ -778,7 +1035,6 @@ export default {
 						...payload,
 					}
 				}
-
 				const projectIndex = this.projects.findIndex((project) => Number(project.id) === projectId)
 				if (projectIndex !== -1) {
 					this.projects.splice(projectIndex, 1, {
@@ -786,12 +1042,11 @@ export default {
 						...this.selectedProject,
 					})
 				}
-
 				this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
 				this.showProjectProfileModal = false
-				this.projectProfileMessage = 'Client and location details updated.'
+				this.projectProfileMessage = 'Project details updated successfully.'
 			} catch (error) {
-				this.projectProfileError = error?.response?.data?.message || 'Could not update client and location details.'
+				this.projectProfileError = error?.response?.data?.message || 'Could not update project details.'
 			} finally {
 				this.projectProfileSaving = false
 			}
@@ -870,10 +1125,8 @@ export default {
 				this.showArchiveDialog = false
 				return
 			}
-
 			const currentlyArchived = this.isArchivedStatus(this.selectedProject.status)
 			const nextStatus = currentlyArchived ? 1 : 0
-
 			this.showArchiveDialog = false
 			this.statusUpdateError = ''
 			this.statusUpdating = true
@@ -906,7 +1159,6 @@ export default {
 				} else {
 					this.projects = await projectsService.list()
 				}
-
 				if (previousSelectedProjectId !== null) {
 					const stillExists = this.projects.some((project) => project.id === previousSelectedProjectId)
 					if (!stillExists) {
@@ -1012,12 +1264,10 @@ export default {
 			if (Number.isFinite(selectedProjectOrg) && selectedProjectOrg > 0) {
 				return selectedProjectOrg
 			}
-
 			const contextOrg = Number(this.context?.organizationId)
 			if (Number.isFinite(contextOrg) && contextOrg > 0) {
 				return contextOrg
 			}
-
 			return null
 		},
 		async loadProjectMembers(projectId) {
@@ -1036,13 +1286,11 @@ export default {
 			if (this.memberSearchTimeout) {
 				clearTimeout(this.memberSearchTimeout)
 			}
-
 			if (!query || !this.selectedProject?.id) {
 				this.memberInviteOptions = []
 				this.memberSearchLoading = false
 				return
 			}
-
 			this.memberSearchLoading = true
 			this.memberSearchTimeout = setTimeout(async () => {
 				try {
@@ -1072,15 +1320,12 @@ export default {
 			if (!this.selectedProject?.id || !this.memberInviteSelection) {
 				return
 			}
-
 			const userId = typeof this.memberInviteSelection === 'string'
 				? this.memberInviteSelection
 				: this.memberInviteSelection.id
-
 			if (!userId) {
 				return
 			}
-
 			this.memberInviteLoading = true
 			this.memberInviteMessage = ''
 			this.membersError = ''
@@ -1117,21 +1362,11 @@ export default {
 			window.open(url, '_blank')
 		},
 		openWhiteboard(project) {
-			if (!project?.white_board_id) {
+			if (!project?.id) {
 				return
 			}
-			if (this.activeTab !== 'whiteboard') {
-				this.setActiveTab('whiteboard')
-			}
-			this.$nextTick(() => {
-				const component = this.$refs.whiteboardBoard
-				if (component && typeof component.openOverlay === 'function') {
-					component.openOverlay()
-					return
-				}
-				const url = generateUrl(`/apps/files/f/${encodeURIComponent(String(project.white_board_id))}?openfile=true`)
-				window.open(url, '_blank')
-			})
+			const url = generateUrl(`/apps/projectcreatoraio/?popout=whiteboard&projectId=${encodeURIComponent(String(project.id))}`)
+			window.open(url, '_blank', 'noopener')
 		},
 		downloadProject(project) {
 			if (!project.folderPath) {
@@ -1164,6 +1399,7 @@ export default {
 </script>
 
 <style scoped>
+/* Layout Base */
 .projects-home-empty {
 	display: flex;
 	align-items: center;
@@ -1174,86 +1410,125 @@ export default {
 
 .projects-home {
 	display: grid;
-	grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
-	gap: 16px;
+	grid-template-columns: 360px minmax(0, 1fr);
+	gap: 0;
 	width: 100%;
-	padding: 16px;
+	height: calc(100vh - 90px);
 	min-height: calc(100vh - 90px);
 	box-sizing: border-box;
-}
-
-.projects-home__list-pane,
-.projects-home__details-pane {
-	border: 1px solid var(--color-border);
-	border-radius: 12px;
-	background: var(--color-main-background);
+	background: var(--color-background-plain, var(--color-main-background));
 	overflow: hidden;
 }
 
-.projects-home__list-pane {
+/* Collapsed Sidebar State */
+.projects-home--sidebar-collapsed {
+	grid-template-columns: 64px minmax(0, 1fr);
+}
+
+/* Sidebar */
+.projects-home__sidebar {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	background: var(--color-main-background);
+	border-right: 1px solid var(--color-border);
+	overflow: hidden;
+	position: sticky;
+	top: 0;
+	transition: width 0.2s ease;
+}
+
+.projects-home__sidebar--collapsed {
+	width: 64px;
+}
+
+.projects-home__sidebar-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 8px;
+	padding: 16px;
+	border-bottom: 1px solid var(--color-border);
+	min-height: 60px;
+}
+
+.projects-home__sidebar-brand {
+	min-width: 0;
+	flex: 1;
+}
+
+.projects-home__sidebar-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.projects-home__sidebar-collapsed-controls {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 12px 0;
+}
+
+/* Main Content Area */
+.projects-home__main {
+	height: 100%;
+	min-height: 0;
+	padding: 20px;
+	overflow: auto;
 	display: flex;
 	flex-direction: column;
 }
 
-.projects-home__header {
+.projects-home__main-content {
 	display: flex;
-	justify-content: space-between;
-	align-items: flex-start;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.projects-home__empty-main {
+	margin: auto;
+}
+
+/* Typography */
+.projects-home__title {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 700;
+	line-height: 1.3;
+}
+
+.projects-home__subtitle {
+	margin: 2px 0 0;
+	color: var(--color-text-maxcontrast);
+	font-size: 12px;
+	line-height: 1.4;
+}
+
+/* Controls */
+.projects-home__controls {
+	display: flex;
+	flex-direction: column;
 	gap: 12px;
 	padding: 16px;
 	border-bottom: 1px solid var(--color-border);
 }
 
-.projects-home__header-left {
-	min-width: 0;
-}
-
-.projects-home__header-meta {
-	margin-top: 10px;
-	display: flex;
-	gap: 8px;
-	flex-wrap: wrap;
-}
-
-.projects-home__title {
-	margin: 0;
-	font-size: 20px;
-}
-
-.projects-home__subtitle {
-	margin: 4px 0 0;
-	color: var(--color-text-maxcontrast);
-	font-size: 13px;
-}
-
-.projects-home__controls {
-	display: grid;
-	gap: 10px;
-	padding: 12px 16px;
-	border-bottom: 1px solid var(--color-border);
-}
-
-.projects-home__control-label {
-	font-size: 12px;
-	color: var(--color-text-maxcontrast);
-}
-
-.projects-home__scope-row {
+.projects-home__control-row {
 	display: grid;
 	grid-template-columns: auto 1fr;
 	align-items: center;
 	gap: 10px;
 }
 
-.projects-home__scope-pill {
-	display: inline-flex;
-	align-items: center;
-	padding: 4px 10px;
-	border-radius: 999px;
-	background: var(--color-background-hover);
-	border: 1px solid var(--color-border-dark);
+.projects-home__control-label {
 	font-size: 12px;
+	font-weight: 600;
 	color: var(--color-text-maxcontrast);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
 }
 
 .projects-home__filters-row {
@@ -1264,17 +1539,9 @@ export default {
 }
 
 .projects-home__filter {
-	display: grid;
+	display: flex;
+	flex-direction: column;
 	gap: 6px;
-}
-
-.projects-home__clear {
-	height: 36px;
-}
-
-.projects-home__count-row {
-	font-size: 12px;
-	color: var(--color-text-maxcontrast);
 }
 
 .projects-home__filter-select {
@@ -1282,10 +1549,30 @@ export default {
 	border-radius: 8px;
 	padding: 8px 10px;
 	font: inherit;
+	font-size: 13px;
 	background: var(--color-main-background);
 	color: var(--color-main-text);
+	cursor: pointer;
 }
 
+.projects-home__filter-select:focus {
+	outline: 2px solid var(--color-primary-element);
+	outline-offset: -2px;
+}
+
+.projects-home__clear {
+	height: 36px;
+	width: 36px;
+	padding: 0;
+}
+
+.projects-home__count-row {
+	font-size: 12px;
+	color: var(--color-text-maxcontrast);
+	padding-top: 4px;
+}
+
+/* Project List */
 .projects-home__list {
 	flex: 1;
 	min-height: 0;
@@ -1307,10 +1594,11 @@ export default {
 	align-items: center;
 	justify-content: space-between;
 	gap: 12px;
-	padding: 12px 14px;
+	padding: 12px 16px;
 	cursor: pointer;
 	border-bottom: 1px solid var(--color-border);
 	position: relative;
+	transition: background 0.15s ease;
 }
 
 .projects-home__project-item:hover {
@@ -1330,17 +1618,19 @@ export default {
 	content: '';
 	position: absolute;
 	left: 0;
-	top: 10px;
-	bottom: 10px;
+	top: 8px;
+	bottom: 8px;
 	width: 3px;
-	border-radius: 99px;
+	border-radius: 0 99px 99px 0;
 	background: var(--color-primary-element);
 }
 
 .projects-home__project-main {
 	min-width: 0;
-	display: grid;
-	gap: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	flex: 1;
 }
 
 .projects-home__project-title-row {
@@ -1352,27 +1642,39 @@ export default {
 
 .projects-home__project-name {
 	font-weight: 600;
+	font-size: 14px;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	flex: 1;
+}
+
+.projects-home__project-name--collapsed {
+	font-size: 12px;
+	font-weight: 700;
+	text-align: center;
 }
 
 .projects-home__status-pill {
 	padding: 2px 8px;
 	border-radius: 999px;
-	font-size: 11px;
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.02em;
 	background: var(--color-background-dark);
 	color: var(--color-main-text);
+	flex-shrink: 0;
 }
 
 .projects-home__status-pill--active {
 	background: rgba(30, 127, 45, 0.12);
-	border: 1px solid rgba(30, 127, 45, 0.25);
+	color: #1e7f2d;
 }
 
 .projects-home__status-pill--archived {
 	background: rgba(120, 120, 120, 0.14);
-	border: 1px solid rgba(120, 120, 120, 0.22);
+	color: var(--color-text-maxcontrast);
 }
 
 .projects-home__project-meta {
@@ -1383,57 +1685,20 @@ export default {
 	color: var(--color-text-maxcontrast);
 }
 
-.projects-home__quick-actions {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	opacity: 0.8;
-}
-
-.projects-home__project-item:hover .projects-home__quick-actions,
-.projects-home__project-item:focus-within .projects-home__quick-actions {
-	opacity: 1;
-}
-
-.projects-home__quick-action {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	border-radius: 8px;
-	border: 1px solid var(--color-border-dark);
-	background: var(--color-main-background);
-	color: var(--color-main-text);
-	cursor: pointer;
-}
-
-.projects-home__quick-action:disabled {
+.projects-home__meta-dot {
 	opacity: 0.5;
-	cursor: not-allowed;
 }
 
-.projects-home__details-pane {
-	padding: 16px;
-	display: flex;
-	flex-direction: column;
-	overflow: auto;
-}
-
-.projects-home__details-content {
+/* Hero Section */
+.projects-home__hero {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
-}
-
-.projects-home__hero {
-	display: grid;
-	gap: 10px;
-	padding: 16px;
-	border-radius: 14px;
+	padding: 20px;
+	border-radius: 12px;
 	background:
-		radial-gradient(circle at 0% 0%, rgba(36, 153, 255, 0.18), transparent 55%),
-		radial-gradient(circle at 100% 20%, rgba(255, 166, 0, 0.2), transparent 40%),
+		radial-gradient(circle at 0% 0%, rgba(36, 153, 255, 0.12), transparent 50%),
+		radial-gradient(circle at 100% 20%, rgba(255, 166, 0, 0.15), transparent 35%),
 		var(--color-main-background);
 	border: 1px solid var(--color-border-dark);
 }
@@ -1450,272 +1715,46 @@ export default {
 	display: flex;
 	justify-content: space-between;
 	align-items: flex-start;
-	gap: 14px;
+	gap: 16px;
+}
+
+.projects-home__hero-info {
+	flex: 1;
+	min-width: 0;
+}
+
+.projects-home__hero-title-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+	margin-bottom: 6px;
 }
 
 .projects-home__details-title {
 	margin: 0;
 	font-size: 22px;
+	font-weight: 700;
+	line-height: 1.3;
 }
 
 .projects-home__details-subtitle {
 	margin: 0;
 	color: var(--color-text-maxcontrast);
-}
-
-.projects-home__tabs {
-	display: flex;
-	gap: 6px;
-	flex-wrap: wrap;
-	padding: 8px 2px 0;
-}
-
-.projects-home__tab {
-	appearance: none;
-	border: 1px solid var(--color-border-dark);
-	background: var(--color-main-background);
-	color: var(--color-main-text);
-	border-radius: 999px;
-	padding: 6px 10px;
-	font: inherit;
-	font-size: 13px;
-	cursor: pointer;
-}
-
-.projects-home__tab:hover {
-	background: var(--color-background-hover);
-}
-
-.projects-home__tab--active {
-	border-color: rgba(0, 0, 0, 0);
-	background: var(--color-primary-element-light);
-}
-
-.projects-home__tab-panel {
-	padding-top: 4px;
-}
-
-.projects-home__tab-section {
-	border: 1px solid var(--color-border-dark);
-	border-radius: 12px;
-	background: var(--color-main-background);
-	padding: 14px;
-}
-
-.projects-home__tab-section-head {
-	margin-bottom: 10px;
-}
-
-.projects-home__section-title {
-	margin: 0;
-	font-size: 15px;
-	font-weight: 700;
-}
-
-.projects-home__tab-top {
-	display: flex;
-	justify-content: flex-end;
-	margin-bottom: 10px;
-}
-
-.projects-home__detail-grid {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 14px;
-}
-
-.projects-home__card {
-	display: grid;
-	gap: 10px;
-	padding: 14px;
-	background: var(--color-main-background);
-	border: 1px solid var(--color-border-dark);
-	border-radius: 12px;
-	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
-}
-
-.projects-home__card-title {
-	margin: 0;
-	font-size: 15px;
-	font-weight: 700;
-}
-
-.projects-home__card-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-}
-
-.projects-home__kv {
-	display: grid;
-	gap: 4px;
-}
-
-.projects-home__label {
-	font-size: 12px;
-	color: var(--color-text-maxcontrast);
-	margin-bottom: 0;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
-}
-
-.projects-home__links {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-}
-
-.projects-home__profile-actions {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex-wrap: wrap;
-	margin-top: 4px;
-}
-
-.projects-home__profile-modal {
-	display: grid;
-	gap: 14px;
-	padding: 16px;
-}
-
-.projects-home__profile-modal-title {
-	margin: 0;
-	font-size: 18px;
-	font-weight: 700;
-}
-
-.projects-home__profile-modal-subtitle {
-	margin: -6px 0 0;
-	font-size: 13px;
-}
-
-.projects-home__profile-grid {
-	display: grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
-	gap: 10px;
-}
-
-.projects-home__member-invite-row {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	gap: 8px;
-	align-items: end;
-}
-
-.projects-home__members-list {
-	list-style: none;
-	padding: 0;
-	margin: 12px 0 0;
-	display: grid;
-	gap: 8px;
-}
-
-.projects-home__member-item {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	gap: 10px;
-	padding: 8px 10px;
-	border: 1px solid var(--color-border-dark);
-	border-radius: 10px;
-	background: var(--color-background-hover);
-}
-
-.projects-home__member-main {
-	display: grid;
-	gap: 2px;
-	min-width: 0;
-}
-
-.projects-home__member-name {
-	font-weight: 600;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.projects-home__member-meta {
-	font-size: 12px;
-	color: var(--color-text-maxcontrast);
-}
-
-.projects-home__member-badges {
-	display: flex;
-	gap: 6px;
-	flex-wrap: wrap;
-	justify-content: flex-end;
-}
-
-.projects-home__member-badge {
-	padding: 2px 8px;
-	border-radius: 999px;
-	border: 1px solid var(--color-border-dark);
-	background: var(--color-main-background);
-	font-size: 11px;
-	font-weight: 600;
-}
-
-.projects-home__member-badge--muted {
-	font-weight: 500;
-	color: var(--color-text-maxcontrast);
-}
-
-.projects-home__muted {
-	color: var(--color-text-maxcontrast);
+	font-size: 14px;
+	line-height: 1.5;
 }
 
 .projects-home__hero-badges {
 	display: flex;
+	align-items: center;
 	gap: 8px;
 	flex-wrap: wrap;
-	justify-content: flex-end;
-}
-
-.projects-home__hero-aside {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-end;
-	gap: 10px;
 }
 
 .projects-home__hero-actions {
 	display: flex;
-	justify-content: flex-end;
-}
-
-.projects-home__inline-error {
-	margin: 0;
-	font-size: 12px;
-	color: var(--color-error-text);
-	text-align: right;
-	max-width: 320px;
-}
-
-.projects-home__inline-error--left {
-	text-align: left;
-	max-width: none;
-}
-
-.projects-home__inline-success {
-	margin: 10px 0 0;
-	font-size: 12px;
-	color: var(--color-success, #1e7f2d);
-}
-
-.projects-home__badge {
-	padding: 5px 10px;
-	border-radius: 999px;
-	border: 1px solid var(--color-border-dark);
-	background: var(--color-main-background);
-	font-size: 12px;
-	font-weight: 600;
-}
-
-.projects-home__centered {
-	padding: 24px;
-	color: var(--color-text-maxcontrast);
+	flex-shrink: 0;
 }
 
 .projects-home__hero-actions :deep(.action-item) {
@@ -1733,48 +1772,577 @@ export default {
 	background: var(--color-background-hover);
 }
 
+/* Badges */
+.projects-home__badge {
+	padding: 4px 10px;
+	border-radius: 999px;
+	border: 1px solid var(--color-border-dark);
+	background: var(--color-main-background);
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.projects-home__badge--success {
+	background: rgba(30, 127, 45, 0.12);
+	border-color: rgba(30, 127, 45, 0.25);
+	color: #1e7f2d;
+}
+
+.projects-home__badge--secondary {
+	background: rgba(36, 153, 255, 0.1);
+	border-color: rgba(36, 153, 255, 0.2);
+	color: var(--color-primary-element);
+}
+
+.projects-home__badge--muted {
+	background: var(--color-background-dark);
+	color: var(--color-text-maxcontrast);
+}
+
+/* Tabs */
+.projects-home__tabs {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+	padding: 4px;
+	background: var(--color-background-dark);
+	border-radius: 10px;
+}
+
+.projects-home__tab {
+	appearance: none;
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--color-main-text);
+	border-radius: 8px;
+	padding: 8px 14px;
+	font: inherit;
+	font-size: 13px;
+	font-weight: 500;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	transition: all 0.15s ease;
+	position: relative;
+}
+
+.projects-home__tab:hover {
+	background: var(--color-background-hover);
+}
+
+.projects-home__tab:focus-visible {
+	outline: 2px solid var(--color-primary-element);
+	outline-offset: -2px;
+}
+
+.projects-home__tab--active {
+	background: var(--color-main-background);
+	border-color: var(--color-border-dark);
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.projects-home__tab-icon {
+	flex-shrink: 0;
+	opacity: 0.7;
+}
+
+.projects-home__tab--active .projects-home__tab-icon {
+	opacity: 1;
+}
+
+.projects-home__tab-badge {
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: var(--color-primary-element);
+	color: var(--color-primary-element-text);
+	font-size: 10px;
+	font-weight: 700;
+	margin-left: 2px;
+}
+
+/* Tab Panel */
+.projects-home__tab-panel {
+	flex: 1;
+	min-height: 0;
+}
+
+.projects-home__tab-section {
+	border: 1px solid var(--color-border-dark);
+	border-radius: 12px;
+	background: var(--color-main-background);
+	padding: 20px;
+}
+
+.projects-home__tab-section--full {
+	padding: 0;
+	border: none;
+	background: transparent;
+}
+
+.projects-home__tab-section-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 16px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.projects-home__section-title {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 700;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.projects-home__section-subtitle {
+	margin: 4px 0 0;
+	font-size: 13px;
+	color: var(--color-text-maxcontrast);
+}
+
+.projects-home__tab-toolbar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 16px;
+}
+
+/* Detail Grid */
+.projects-home__detail-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 16px;
+}
+
+.projects-home__detail-grid--single {
+	grid-template-columns: minmax(0, 1fr);
+	max-width: 600px;
+}
+
+.projects-home__card {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 16px;
+	background: var(--color-main-background);
+	border: 1px solid var(--color-border-dark);
+	border-radius: 10px;
+}
+
+.projects-home__card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.projects-home__card-subtitle {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--color-text-maxcontrast);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.projects-home__kv-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.projects-home__kv {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.projects-home__label {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--color-text-maxcontrast);
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+
+.projects-home__value {
+	font-size: 14px;
+	color: var(--color-main-text);
+	word-break: break-word;
+}
+
+/* Split View for Timeline & Deck */
+.projects-home__split-view {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+	height: 100%;
+	min-height: 500px;
+}
+
+.projects-home__split-panel {
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--color-border-dark);
+	border-radius: 12px;
+	background: var(--color-main-background);
+	overflow: hidden;
+}
+
+.projects-home__panel-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--color-border);
+	background: var(--color-background-dark);
+}
+
+.projects-home__panel-title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.projects-home__panel-content {
+	flex: 1;
+	overflow: auto;
+	padding: 12px;
+}
+
+/* Members */
+.projects-home__member-invite-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 12px;
+	align-items: end;
+	margin-bottom: 16px;
+}
+
+.projects-home__members-list {
+	list-style: none;
+	padding: 0;
+	margin: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.projects-home__member-item {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 12px;
+	border: 1px solid var(--color-border-dark);
+	border-radius: 10px;
+	background: var(--color-main-background);
+	transition: background 0.15s ease;
+}
+
+.projects-home__member-item:hover {
+	background: var(--color-background-hover);
+}
+
+.projects-home__member-avatar {
+	flex-shrink: 0;
+}
+
+.projects-home__avatar-placeholder {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	background: var(--color-primary-element-light);
+	color: var(--color-primary-element);
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.projects-home__member-main {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.projects-home__member-name {
+	font-weight: 600;
+	font-size: 14px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.projects-home__member-meta {
+	font-size: 12px;
+	color: var(--color-text-maxcontrast);
+}
+
+.projects-home__member-badges {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.projects-home__member-badge {
+	padding: 3px 10px;
+	border-radius: 999px;
+	border: 1px solid var(--color-border-dark);
+	background: var(--color-main-background);
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.projects-home__member-badge--owner {
+	background: rgba(36, 153, 255, 0.1);
+	border-color: rgba(36, 153, 255, 0.2);
+	color: var(--color-primary-element);
+}
+
+.projects-home__member-badge--muted {
+	font-weight: 500;
+	color: var(--color-text-maxcontrast);
+}
+
+/* States */
+.projects-home__centered {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	padding: 32px;
+	color: var(--color-text-maxcontrast);
+}
+
+.projects-home__loading-state,
+.projects-home__empty-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12px;
+	padding: 40px;
+	color: var(--color-text-maxcontrast);
+	text-align: center;
+}
+
+.projects-home__empty-state p {
+	margin: 0;
+}
+
+/* Messages */
+.projects-home__inline-error {
+	margin: 8px 0 0;
+	font-size: 13px;
+	color: var(--color-error-text);
+	text-align: right;
+}
+
+.projects-home__inline-error--left {
+	text-align: left;
+}
+
+.projects-home__inline-success {
+	margin: 8px 0 0;
+	font-size: 13px;
+	color: var(--color-success, #1e7f2d);
+}
+
+/* Profile Modal */
+.projects-home__profile-modal {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+	padding: 24px;
+	max-width: 600px;
+}
+
+/* Overview Tab - Combined Sections */
+.projects-home__overview {
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+}
+
+.projects-home__overview-section {
+	border: 1px solid var(--color-border-dark);
+	border-radius: 12px;
+	background: var(--color-main-background);
+	padding: 20px;
+}
+
+.projects-home__overview-section .projects-home__tab-section-header {
+	margin-bottom: 16px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.projects-home__overview-section .projects-home__split-view {
+	grid-template-columns: 1fr;
+	min-height: 400px;
+}
+
+.projects-home__profile-modal-title {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 700;
+}
+
+.projects-home__profile-modal-subtitle {
+	margin: -12px 0 0;
+	font-size: 14px;
+	color: var(--color-text-maxcontrast);
+}
+
+.projects-home__profile-sections {
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+}
+
+.projects-home__profile-section {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.projects-home__profile-section-title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--color-text-maxcontrast);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.projects-home__profile-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.projects-home__profile-actions {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 10px;
+	margin-top: 8px;
+	padding-top: 16px;
+	border-top: 1px solid var(--color-border);
+}
+
+/* Mobile Responsive */
 @media (max-width: 900px) {
 	.projects-home {
 		grid-template-columns: 1fr;
+		height: auto;
 		min-height: auto;
+		overflow: visible;
+	}
+
+	.projects-home__sidebar {
+		position: static;
+		height: auto;
+		border-right: none;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.projects-home__main {
+		padding: 16px;
+		overflow: visible;
+	}
+
+	.projects-home__hero-main {
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.projects-home__hero-title-row {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 8px;
+	}
+
+	.projects-home__hero-badges {
+		justify-content: flex-start;
+	}
+
+	.projects-home__tabs {
+		gap: 2px;
+	}
+
+	.projects-home__tab {
+		padding: 6px 10px;
+		font-size: 12px;
+	}
+
+	.projects-home__tab-label {
+		display: none;
+	}
+
+	.projects-home__tab-icon {
+		margin: 0;
 	}
 
 	.projects-home__detail-grid {
 		grid-template-columns: 1fr;
 	}
 
-	.projects-home__hero-main {
-		flex-direction: column;
-	}
-
-	.projects-home__hero-aside {
-		align-items: flex-start;
-	}
-
-	.projects-home__hero-badges,
-	.projects-home__hero-actions {
-		justify-content: flex-start;
-	}
-
-	.projects-home__inline-error {
-		text-align: left;
+	.projects-home__split-view {
+		grid-template-columns: 1fr;
 	}
 
 	.projects-home__member-invite-row {
 		grid-template-columns: 1fr;
 	}
 
+	.projects-home__member-item {
+		flex-wrap: wrap;
+	}
+
+	.projects-home__member-badges {
+		width: 100%;
+		justify-content: flex-start;
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px solid var(--color-border);
+	}
+
 	.projects-home__profile-grid {
 		grid-template-columns: 1fr;
 	}
 
-	.projects-home__member-item {
-		flex-direction: column;
-		align-items: flex-start;
+	.projects-home__inline-error {
+		text-align: left;
+	}
+}
+
+@media (max-width: 480px) {
+	.projects-home__tabs {
+		overflow-x: auto;
+		flex-wrap: nowrap;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: none;
 	}
 
-	.projects-home__member-badges {
-		justify-content: flex-start;
+	.projects-home__tabs::-webkit-scrollbar {
+		display: none;
+	}
+
+	.projects-home__tab {
+		white-space: nowrap;
+		flex-shrink: 0;
 	}
 }
 </style>

@@ -100,7 +100,9 @@ class TimelineApiController extends Controller
                 return new JSONResponse(['error' => 'Item does not belong to this project'], Http::STATUS_FORBIDDEN);
             }
 
-            if ($label !== null) {
+            $isSystemItem = (string) ($item->getSystemKey() ?? '') !== '';
+
+            if (!$isSystemItem && $label !== null) {
                 $item->setLabel($label);
             }
             if ($startDate !== null) {
@@ -112,7 +114,10 @@ class TimelineApiController extends Controller
             if ($color !== null) {
                 $item->setColor($color);
             }
-            if ($orderIndex !== null) {
+            if (!$isSystemItem && $orderIndex !== null) {
+                if (in_array($orderIndex, [0, 1, 2], true)) {
+                    return new JSONResponse(['error' => 'Order index is reserved for system timeline items'], Http::STATUS_FORBIDDEN);
+                }
                 $item->setOrderIndex($orderIndex);
             }
 
@@ -138,6 +143,10 @@ class TimelineApiController extends Controller
 
             if ($item->getProjectId() !== $projectId) {
                 return new JSONResponse(['error' => 'Item does not belong to this project'], Http::STATUS_FORBIDDEN);
+            }
+
+            if ((string) ($item->getSystemKey() ?? '') !== '') {
+                return new JSONResponse(['error' => 'System timeline items cannot be deleted'], Http::STATUS_FORBIDDEN);
             }
 
             $this->mapper->delete($item);

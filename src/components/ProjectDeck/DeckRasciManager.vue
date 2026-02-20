@@ -758,7 +758,7 @@ export default {
 
 .form-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	grid-template-columns: repeat(3, minmax(0, 1fr));
 	gap: 14px;
 	align-items: end;
 }
@@ -988,6 +988,10 @@ export default {
 }
 
 @media (max-width: 1100px) {
+	.form-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
 	.table-header,
 	.table-row {
 		grid-template-columns: 1fr;
@@ -996,6 +1000,12 @@ export default {
 
 	.details-modal-content {
 		min-width: auto;
+	}
+}
+
+@media (max-width: 760px) {
+	.form-grid {
+		grid-template-columns: 1fr;
 	}
 }
 </style>

@@ -7,11 +7,11 @@
 					<span v-if="whiteboardInfo" class="whiteboard-board__badge">#{{ whiteboardInfo.fileId }}</span>
 				</div>
 				<div class="whiteboard-board__subtitle">
-					Opens in the Nextcloud Viewer overlay (same as Files).
+					{{ isPopoutWindow ? 'Autosaves while you work.' : 'Opens in a new window and autosaves while you work.' }}
 				</div>
 			</div>
 			<div class="whiteboard-board__actions">
-				<NcButton type="primary" :disabled="!canOpenOverlay" @click="openOverlay">
+				<NcButton type="primary" :disabled="!canOpenWhiteboard" @click="openPopout">
 					<template #icon>
 						<EyeOutline :size="18" />
 					</template>
@@ -57,8 +57,8 @@
 				<button
 					type="button"
 					class="whiteboard-board__preview-overlay"
-					:disabled="!canOpenOverlay"
-					@click="openOverlay">
+					:disabled="!canOpenWhiteboard"
+					@click="openPopout">
 					<span class="whiteboard-board__preview-overlay-label">Open whiteboard</span>
 				</button>
 			</div>
@@ -107,11 +107,14 @@ export default {
 			handler: null,
 			viewerReady: false,
 			previewKey: 0,
+			autosaveTimer: null,
+			lastSyncAttemptAt: 0,
+			isPopoutWindow: false,
 		}
 	},
 	computed: {
-		canOpenOverlay() {
-			return !!this.whiteboardInfo && !this.loading && !this.syncing
+		canOpenWhiteboard() {
+			return !!this.normalizedProjectId && !this.syncing
 		},
 		normalizedProjectId() {
 			if (this.projectId === null || this.projectId === undefined || this.projectId === '') {
@@ -148,7 +151,33 @@ export default {
 			},
 		},
 	},
+	created() {
+		try {
+			const params = new URLSearchParams(window.location.search || '')
+			this.isPopoutWindow = params.get('popout') === 'whiteboard'
+		} catch (e) {
+			this.isPopoutWindow = false
+		}
+	},
+	beforeDestroy() {
+		this.stopAutosave()
+	},
 	methods: {
+		startAutosave() {
+			if (this.autosaveTimer) {
+				return
+			}
+			this.autosaveTimer = window.setInterval(() => {
+				this.syncLocalSnapshotToServer({ force: false })
+			}, 10000)
+		},
+		stopAutosave() {
+			if (!this.autosaveTimer) {
+				return
+			}
+			window.clearInterval(this.autosaveTimer)
+			this.autosaveTimer = null
+		},
 		async initialize() {
 			this.error = ''
 			this.whiteboardInfo = null
@@ -264,8 +293,15 @@ export default {
 				}
 			})
 		},
-		async syncLocalSnapshotToServer() {
+		async syncLocalSnapshotToServer(options = {}) {
+			const force = options?.force === true
 			if (!this.whiteboardInfo?.fileId) {
+				return
+			}
+			if (this.syncing) {
+				return
+			}
+			if (!force && this.lastSyncAttemptAt && Date.now() - this.lastSyncAttemptAt < 8000) {
 				return
 			}
 
@@ -276,9 +312,24 @@ export default {
 				return
 			}
 
-			if (!snapshot || !Array.isArray(snapshot.elements) || snapshot.elements.length === 0) {
+			if (!snapshot || !Array.isArray(snapshot.elements)) {
 				return
 			}
+
+			const hasPendingFlag = typeof snapshot.hasPendingLocalChanges === 'boolean'
+			const hasPendingLocalChanges = hasPendingFlag ? snapshot.hasPendingLocalChanges : null
+			if (hasPendingFlag && hasPendingLocalChanges === false) {
+				return
+			}
+			if (!hasPendingFlag && !force) {
+				const hasSomethingToSave = (snapshot.elements.length > 0)
+					|| (snapshot.files && typeof snapshot.files === 'object' && Object.keys(snapshot.files).length > 0)
+				if (!hasSomethingToSave) {
+					return
+				}
+			}
+
+			this.lastSyncAttemptAt = Date.now()
 
 			this.syncing = true
 			try {
@@ -413,16 +464,34 @@ export default {
 				type: 'file',
 			}
 
+			this.startAutosave()
 			viewer.openWith('whiteboard', {
 				fileInfo,
 				list: [fileInfo],
 				enableSidebar: false,
 				canLoop: false,
 				onClose: async () => {
-					await this.syncLocalSnapshotToServer()
+					this.stopAutosave()
+					await this.syncLocalSnapshotToServer({ force: true })
 					await this.refreshInfo()
 				},
 			})
+		},
+		openPopout() {
+			this.error = ''
+			if (this.isPopoutWindow) {
+				this.openOverlay()
+				return
+			}
+			if (!this.normalizedProjectId) {
+				this.error = 'No project selected.'
+				return
+			}
+			const url = generateUrl(`/apps/projectcreatoraio/?popout=whiteboard&projectId=${encodeURIComponent(this.normalizedProjectId)}`)
+			const w = window.open(url, '_blank', 'noopener')
+			if (!w) {
+				this.error = 'Popup blocked. Please allow popups for this site.'
+			}
 		},
 		openInFiles() {
 			if (!this.whiteboardInfo) {

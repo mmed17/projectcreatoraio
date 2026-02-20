@@ -26,6 +26,8 @@ use JsonSerializable;
  * @method void setCreatedAt(DateTime $createdAt)
  * @method DateTime getUpdatedAt()
  * @method void setUpdatedAt(DateTime $updatedAt)
+ * @method string|null getSystemKey()
+ * @method void setSystemKey(?string $systemKey)
  */
 class TimelineItem extends Entity implements JsonSerializable
 {
@@ -35,6 +37,7 @@ class TimelineItem extends Entity implements JsonSerializable
     protected $endDate;
     protected $color;
     protected $orderIndex;
+    protected $systemKey;
     protected $createdAt;
     protected $updatedAt;
 
@@ -44,6 +47,7 @@ class TimelineItem extends Entity implements JsonSerializable
         $this->addType('orderIndex', Types::INTEGER);
         $this->addType('startDate', Types::DATE);
         $this->addType('endDate', Types::DATE);
+        $this->addType('systemKey', Types::STRING);
         $this->addType('createdAt', Types::DATETIME);
         $this->addType('updatedAt', Types::DATETIME);
     }
@@ -63,6 +67,7 @@ class TimelineItem extends Entity implements JsonSerializable
                 : $this->endDate,
             'color' => $this->getColor(),
             'orderIndex' => $this->getOrderIndex(),
+            'systemKey' => $this->getSystemKey(),
             'createdAt' => $this->createdAt instanceof DateTime
                 ? $this->createdAt->format('Y-m-d H:i:s')
                 : $this->createdAt,

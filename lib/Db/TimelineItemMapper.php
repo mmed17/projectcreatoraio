@@ -61,7 +61,8 @@ class TimelineItemMapper extends QBMapper
         ?string $startDate,
         ?string $endDate,
         string $color,
-        int $orderIndex
+        int $orderIndex,
+        ?string $systemKey = null
     ): TimelineItem {
         $item = new TimelineItem();
         $item->setProjectId($projectId);
@@ -77,11 +78,35 @@ class TimelineItemMapper extends QBMapper
         $item->setColor($color);
         $item->setOrderIndex($orderIndex);
 
+        if ($systemKey !== null && trim($systemKey) !== '') {
+            $item->setSystemKey($systemKey);
+        }
+
         $now = new DateTime();
         $item->setCreatedAt($now);
         $item->setUpdatedAt($now);
 
         return $this->insert($item);
+    }
+
+    public function findByProjectAndSystemKey(int $projectId, string $systemKey): ?TimelineItem
+    {
+        $systemKey = trim($systemKey);
+        if ($systemKey === '') {
+            return null;
+        }
+
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')
+            ->from($this->getTableName())
+            ->where($qb->expr()->eq('project_id', $qb->createNamedParameter($projectId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('system_key', $qb->createNamedParameter($systemKey)));
+
+        try {
+            return $this->findEntity($qb);
+        } catch (DoesNotExistException $e) {
+            return null;
+        }
     }
 
     /**

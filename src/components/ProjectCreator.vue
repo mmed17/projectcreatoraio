@@ -41,6 +41,38 @@
 
 				<div class="form-row">
 					<NcTextField
+						v-model="project.request_date"
+						type="date"
+						label="Request Date"
+						:disabled="true"
+						class="form-row-item"
+						:show-label="true"
+						input-label="Request Date" />
+
+					<NcTextField
+						v-model="project.desired_execution_date"
+						type="date"
+						label="Desired Execution Date"
+						:disabled="true"
+						class="form-row-item"
+						:show-label="true"
+						input-label="Desired Execution Date" />
+				</div>
+
+				<div class="form-row">
+					<NcTextField
+						v-model="project.required_preparation_days"
+						type="number"
+						min="0"
+						label="Required Preparation Time (days)"
+						class="form-row-item"
+						placeholder="e.g., 5"
+						:show-label="true"
+						input-label="Required Preparation Time (days)" />
+				</div>
+
+				<div class="form-row">
+					<NcTextField
 						v-model="project.client_name"
 						label="Client name"
 						class="form-row-item"
@@ -195,12 +227,27 @@ export default {
 	data() {
 		return {
 			project: new Project(),
+			dateSyncLock: false,
 			isCreatingProject: false,
 			submissionStatus: '',
 			statusMessage: '',
 			statusDescription: '', // NEW: To hold the detailed error message
 			PROJECT_TYPES,
 		};
+	},
+	watch: {
+		'project.required_preparation_days': {
+			handler() {
+				this.syncDesiredExecutionDate()
+			},
+			immediate: true,
+		},
+		'project.request_date': {
+			handler() {
+				this.syncDesiredExecutionDate()
+			},
+			immediate: true,
+		},
 	},
 	computed: {
 		containerClasses() {
@@ -233,6 +280,28 @@ export default {
 		},
 	},
 	methods: {
+		syncDesiredExecutionDate() {
+			if (this.dateSyncLock) {
+				return
+			}
+			this.dateSyncLock = true
+			try {
+				const baseStr = String(this.project?.request_date || '').trim()
+				const baseDate = baseStr ? new Date(`${baseStr}T00:00:00`) : new Date()
+				const prepDaysRaw = this.project?.required_preparation_days
+				let prepDays = Number(prepDaysRaw)
+				if (!Number.isFinite(prepDays)) {
+					prepDays = 0
+				}
+				prepDays = Math.max(0, Math.floor(prepDays))
+
+				const desired = new Date(baseDate)
+				desired.setDate(desired.getDate() + prepDays)
+				this.project.desired_execution_date = Project.toLocalISODate(desired)
+			} finally {
+				this.dateSyncLock = false
+			}
+		},
 		handleDependencyError(error) {
 			this.showProjectCreationErrorMessage(error)
 		},
@@ -261,6 +330,7 @@ export default {
 		},
 		resetProjectForm() {
 			this.project = new Project();
+			this.syncDesiredExecutionDate()
 		},
 		showProjectCreationSuccessMessage() {
 			this.submissionStatus = 'success';

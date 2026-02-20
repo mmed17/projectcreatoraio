@@ -358,7 +358,28 @@ class ProjectApiController extends Controller
         ?string $loc_street = null,
         ?string $loc_city = null,
         ?string $loc_zip = null,
+        ?string $request_date = null,
+        ?string $desired_execution_date = null,
+        ?int $required_preparation_days = null,
     ): DataResponse {
+
+        $params = $this->request->getParams();
+        if (is_array($params)) {
+            if (array_key_exists('request_date', $params)) {
+                $request_date = is_string($params['request_date']) ? $params['request_date'] : null;
+            }
+            if (array_key_exists('desired_execution_date', $params)) {
+                $desired_execution_date = is_string($params['desired_execution_date']) ? $params['desired_execution_date'] : null;
+            }
+            if (array_key_exists('required_preparation_days', $params)) {
+                $raw = $params['required_preparation_days'];
+                if (is_int($raw)) {
+                    $required_preparation_days = $raw;
+                } elseif (is_string($raw) && $raw !== '' && is_numeric($raw)) {
+                    $required_preparation_days = (int) $raw;
+                }
+            }
+        }
 
         if ($organizationId === null && $groupId !== '' && ctype_digit($groupId)) {
             $organizationId = (int) $groupId;
@@ -380,6 +401,9 @@ class ProjectApiController extends Controller
                 $loc_street,
                 $loc_city,
                 $loc_zip,
+                $request_date,
+                $desired_execution_date,
+                $required_preparation_days,
             );
 
             return new DataResponse([
@@ -632,7 +656,25 @@ class ProjectApiController extends Controller
             throw new OCSNotFoundException("Project with ID $id not found");
         }
 
-        $this->assertCanManageProject($existingProject);
+        $this->assertCanAccessProject($existingProject);
+
+        $isAdminForProject = $this->canAdministerProject($existingProject);
+        if (!$isAdminForProject) {
+            $restrictedFields = [
+                'name',
+                'number',
+                'type',
+                'description',
+                'external_ref',
+                'status',
+            ];
+
+            $providedFields = array_keys($this->request->getParams());
+            $attemptedRestrictedFields = array_values(array_intersect($restrictedFields, $providedFields));
+            if ($attemptedRestrictedFields !== []) {
+                throw new OCSForbiddenException('Project members can only update client and location details');
+            }
+        }
 
         $updatedProject = $this->projectService->updateProjectDetails(
             $id,
@@ -652,6 +694,29 @@ class ProjectApiController extends Controller
             $status,
         );
         return new DataResponse($updatedProject);
+    }
+
+    private function canAdministerProject(Project $project): bool
+    {
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            return false;
+        }
+
+        if ($this->iGroupManager->isAdmin($currentUser->getUID())) {
+            return true;
+        }
+
+        $membership = $this->organizationUserMapper->getOrganizationMembership($currentUser->getUID());
+        if ($membership === null) {
+            return false;
+        }
+
+        if ((int) $membership['organization_id'] !== (int) $project->getOrganizationId()) {
+            return false;
+        }
+
+        return $membership['role'] === 'admin';
     }
 
     private function assertCanAccessProject(Project $project): void
@@ -679,27 +744,6 @@ class ProjectApiController extends Controller
         }
 
         if (!$this->isProjectGroupMember($currentUser->getUID(), $project->getProjectGroupGid())) {
-            throw new OCSNotFoundException('Project not found');
-        }
-    }
-
-    private function assertCanManageProject(Project $project): void
-    {
-        $currentUser = $this->userSession->getUser();
-        if ($currentUser === null) {
-            throw new OCSForbiddenException('Authentication required');
-        }
-
-        if ($this->iGroupManager->isAdmin($currentUser->getUID())) {
-            return;
-        }
-
-        $membership = $this->organizationUserMapper->getOrganizationMembership($currentUser->getUID());
-        if ($membership === null || $membership['role'] !== 'admin') {
-            throw new OCSForbiddenException('Only organization admins can manage projects');
-        }
-
-        if ((int) $membership['organization_id'] !== (int) $project->getOrganizationId()) {
             throw new OCSNotFoundException('Project not found');
         }
     }

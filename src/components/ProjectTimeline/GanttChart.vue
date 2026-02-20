@@ -16,6 +16,11 @@
 						</template>
 					</NcButton>
 				</div>
+				<div class="timeline-zoom">
+					<NcButton type="tertiary" aria-label="Zoom out" @click="zoomOut">-</NcButton>
+					<span class="zoom-label">Zoom</span>
+					<NcButton type="tertiary" aria-label="Zoom in" @click="zoomIn">+</NcButton>
+				</div>
 				<NcButton v-if="isAdmin" type="primary" @click="openAddModal">
 					<template #icon>
 						<Plus :size="16" />
@@ -36,79 +41,96 @@
 				<p class="empty-hint">Click "Add Phase" in the top right to get started.</p>
 			</div>
 
-			<div v-else class="gantt-container" ref="ganttContainer">
-				<div class="gantt-header">
-					<div class="gantt-label-col">Phase</div>
-					<div class="gantt-timeline-col" ref="timelineCol">
-						<div class="timeline-content" :style="{ width: totalTimelineWidth + 'px', transform: `translateX(${scrollOffset}px)` }">
-							<div v-if="spanMultipleYears" class="year-row">
-								<span
-									v-for="year in visibleYears"
-									:key="year.key"
-									class="year-label"
-									:style="{ width: year.width + 'px' }">{{ year.label }}</span>
+			<div v-else class="gantt-container">
+				<div class="gantt-grid" :class="{ 'gantt-grid--with-actions': isAdmin }">
+					<div class="gantt-fixed">
+						<div class="gantt-fixed-header" :style="{ height: timelineHeaderHeight + 'px' }">Phase</div>
+						<div v-for="item in items" :key="`fixed-${item.id}`" class="gantt-fixed-row">
+							<div class="phase-name-line">
+								<span class="phase-name">{{ item.label }}</span>
+								<span class="phase-duration" :title="formatWeeksLabel(item)">{{ formatWeeks(item) }}</span>
 							</div>
-							<div class="month-row">
-								<span
-									v-for="month in visibleMonths"
-									:key="month.key"
-									class="month-label"
-									:class="{ compact: month.width < 60 }"
-									:style="{ width: month.width + 'px' }">
-									{{ month.width < 40 ? '' : month.label }}
-								</span>
+							<span class="phase-dates">{{ formatDate(item.startDate) }} - {{ formatDate(item.endDate) }}</span>
+						</div>
+					</div>
+
+					<div
+						ref="scrollEl"
+						class="gantt-scroll"
+						:class="{ 'gantt-scroll--dragging': isDragging }"
+						@pointerdown="onPointerDown"
+						@pointermove="onPointerMove"
+						@pointerup="onPointerUp"
+						@pointercancel="onPointerUp"
+						@pointerleave="onPointerUp">
+						<div class="gantt-timeline" :style="{ width: totalTimelineWidth + 'px' }">
+							<div class="gantt-timeline-header" :style="{ height: timelineHeaderHeight + 'px' }">
+								<div v-if="spanMultipleYears" class="year-row">
+									<span
+										v-for="year in visibleYears"
+										:key="year.key"
+										class="year-label"
+										:style="{ width: year.width + 'px' }">{{ year.label }}</span>
+								</div>
+								<div class="month-row">
+									<span
+										v-for="month in visibleMonths"
+										:key="month.key"
+										class="month-label"
+										:class="{ compact: month.width < 60 }"
+										:style="{ width: month.width + 'px' }">
+										{{ month.width < 40 ? '' : month.label }}
+									</span>
+								</div>
 							</div>
-							<div v-if="showTodayMarker" class="today-marker" :style="{ left: todayOffset + 'px' }">
+
+							<div class="today-marker" :style="{ left: todayOffset + 'px' }">
 								<div class="today-line"></div>
 								<span class="today-label">Today</span>
 							</div>
-						</div>
-					</div>
-				</div>
 
-				<div v-for="item in items" :key="item.id" class="gantt-row">
-					<div class="gantt-label-col">
-						<span class="phase-name">{{ item.label }}</span>
-						<span class="phase-dates">{{ formatDate(item.startDate) }} - {{ formatDate(item.endDate) }}</span>
-					</div>
-					<div class="gantt-timeline-col">
-						<div class="timeline-content" :style="{ width: totalTimelineWidth + 'px', transform: `translateX(${scrollOffset}px)` }">
-							<div class="timeline-track">
-								<div class="timeline-bar" :style="getBarStyle(item)" :title="`${item.label}: ${formatDate(item.startDate)} - ${formatDate(item.endDate)}`"></div>
+							<div v-for="item in items" :key="`bar-${item.id}`" class="gantt-timeline-row">
+								<div class="timeline-track">
+									<div class="timeline-bar" :style="getBarStyle(item)" :title="`${item.label}: ${formatDate(item.startDate)} - ${formatDate(item.endDate)} (${formatWeeksLabel(item)})`"></div>
+								</div>
 							</div>
 						</div>
 					</div>
-					<div v-if="isAdmin" class="gantt-actions-col">
-						<div class="reorder-buttons">
-							<NcButton
-								type="tertiary"
-								aria-label="Move up"
-								:disabled="getItemIndex(item) === 0"
-								@click="movePhaseUp(item)">
+
+					<div v-if="isAdmin" class="gantt-actions">
+						<div class="gantt-actions-header" :style="{ height: timelineHeaderHeight + 'px' }"></div>
+						<div v-for="item in items" :key="`actions-${item.id}`" class="gantt-actions-row">
+							<div v-if="!isSystemItem(item)" class="reorder-buttons">
+								<NcButton
+									type="tertiary"
+									aria-label="Move up"
+									:disabled="!canMoveUp(item)"
+									@click="movePhaseUp(item)">
+									<template #icon>
+										<ChevronUp :size="16" />
+									</template>
+								</NcButton>
+								<NcButton
+									type="tertiary"
+									aria-label="Move down"
+									:disabled="!canMoveDown(item)"
+									@click="movePhaseDown(item)">
+									<template #icon>
+										<ChevronDown :size="16" />
+									</template>
+								</NcButton>
+							</div>
+							<NcButton type="tertiary" aria-label="Edit" @click="openEditModal(item)">
 								<template #icon>
-									<ChevronUp :size="16" />
+									<Pencil :size="16" />
 								</template>
 							</NcButton>
-							<NcButton
-								type="tertiary"
-								aria-label="Move down"
-								:disabled="getItemIndex(item) === items.length - 1"
-								@click="movePhaseDown(item)">
+							<NcButton v-if="!isSystemItem(item)" type="error" aria-label="Delete" @click="confirmDelete(item)">
 								<template #icon>
-									<ChevronDown :size="16" />
+									<Delete :size="16" />
 								</template>
 							</NcButton>
 						</div>
-						<NcButton type="tertiary" aria-label="Edit" @click="openEditModal(item)">
-							<template #icon>
-								<Pencil :size="16" />
-							</template>
-						</NcButton>
-						<NcButton type="error" aria-label="Delete" @click="confirmDelete(item)">
-							<template #icon>
-								<Delete :size="16" />
-							</template>
-						</NcButton>
 					</div>
 				</div>
 
@@ -132,7 +154,7 @@
 				<h3>{{ editingItem ? 'Edit Phase' : 'Add Phase' }}</h3>
 				<div class="form-field">
 					<label>Phase Name</label>
-					<NcTextField :value.sync="form.label" placeholder="e.g., Development, QA, Production" />
+					<NcTextField :value.sync="form.label" :disabled="isEditingSystemItem" placeholder="e.g., Development, QA, Production" />
 				</div>
 				<div class="form-row">
 					<div class="form-field">
@@ -217,13 +239,18 @@ export default {
 			},
 			colorOptions: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'],
 			dayWidth: 3,
-			scrollOffset: 0,
 			currentPhaseIndex: 0,
+			isDragging: false,
+			dragStartX: 0,
+			dragStartScrollLeft: 0,
 		}
 	},
 	computed: {
 		canSave() {
 			return this.form.label.trim() !== '' && this.form.startDate !== '' && this.form.endDate !== ''
+		},
+		isEditingSystemItem() {
+			return !!(this.editingItem && this.editingItem.systemKey)
 		},
 		timelineRange() {
 			if (this.items.length === 0) {
@@ -232,12 +259,15 @@ export default {
 			}
 			let minDate = null
 			let maxDate = null
+			const today = this.toDateOnly(new Date())
 			for (const item of this.items) {
-				const start = new Date(item.startDate)
-				const end = new Date(item.endDate)
+				const start = this.parseDateOnly(item.startDate)
+				const end = this.parseDateOnly(item.endDate)
 				if (!minDate || start < minDate) minDate = start
 				if (!maxDate || end > maxDate) maxDate = end
 			}
+			if (today < minDate) minDate = today
+			if (today > maxDate) maxDate = today
 			const paddedStart = new Date(minDate)
 			paddedStart.setMonth(paddedStart.getMonth() - 1)
 			paddedStart.setDate(1)
@@ -279,6 +309,10 @@ export default {
 			const { start, end } = this.timelineRange
 			return start.getFullYear() !== end.getFullYear()
 		},
+		timelineHeaderHeight() {
+			// Must match CSS heights for year/month rows.
+			return this.spanMultipleYears ? 60 : 28
+		},
 		visibleYears() {
 			if (!this.spanMultipleYears) return []
 			const years = []
@@ -291,16 +325,10 @@ export default {
 			}
 			return years
 		},
-		showTodayMarker() {
-			if (this.items.length === 0) return false
-			const { start, end } = this.timelineRange
-			const today = new Date()
-			return today >= start && today <= end
-		},
 		todayOffset() {
 			const { start } = this.timelineRange
-			const today = new Date()
-			const days = Math.ceil((today - start) / (1000 * 60 * 60 * 24))
+			const today = this.toDateOnly(new Date())
+			const days = Math.floor((today - start) / (1000 * 60 * 60 * 24))
 			return days * this.dayWidth
 		},
 	},
@@ -313,6 +341,19 @@ export default {
 		},
 	},
 	methods: {
+		isSystemItem(item) {
+			return !!(item && item.systemKey)
+		},
+		canMoveUp(item) {
+			const index = this.getItemIndex(item)
+			if (index <= 0) return false
+			return !this.isSystemItem(this.items[index - 1])
+		},
+		canMoveDown(item) {
+			const index = this.getItemIndex(item)
+			if (index < 0 || index >= this.items.length - 1) return false
+			return !this.isSystemItem(this.items[index + 1])
+		},
 		async loadItems() {
 			this.loading = true
 			try {
@@ -328,20 +369,46 @@ export default {
 		},
 		formatDate(dateStr) {
 			if (!dateStr) return '-'
-			const date = new Date(dateStr)
+			const date = this.parseDateOnly(dateStr)
 			const day = date.getDate().toString().padStart(2, '0')
 			const month = (date.getMonth() + 1).toString().padStart(2, '0')
 			const year = date.getFullYear()
 			return `${day}/${month}/${year}`
 		},
+		parseDateOnly(value) {
+			if (!value) return this.toDateOnly(new Date())
+			return new Date(`${value}T00:00:00`)
+		},
+		toDateOnly(date) {
+			const d = new Date(date)
+			d.setHours(0, 0, 0, 0)
+			return d
+		},
 		getBarStyle(item) {
 			const { start } = this.timelineRange
-			const itemStart = new Date(item.startDate)
-			const itemEnd = new Date(item.endDate)
-			const offsetDays = Math.ceil((itemStart - start) / (1000 * 60 * 60 * 24))
-			const durationDays = Math.ceil((itemEnd - itemStart) / (1000 * 60 * 60 * 24)) + 1
+			const itemStart = this.parseDateOnly(item.startDate)
+			const itemEnd = this.parseDateOnly(item.endDate)
+			const offsetDays = Math.floor((itemStart - start) / (1000 * 60 * 60 * 24))
+			const durationDays = Math.floor((itemEnd - itemStart) / (1000 * 60 * 60 * 24)) + 1
 			const leftPx = offsetDays * this.dayWidth
 			return { left: `${leftPx}px`, width: `${durationDays * this.dayWidth}px`, backgroundColor: item.color || '#3b82f6' }
+		},
+		getDurationDays(item) {
+			const start = this.parseDateOnly(item.startDate)
+			const end = this.parseDateOnly(item.endDate)
+			return Math.max(1, Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1)
+		},
+		formatWeeks(item) {
+			const days = this.getDurationDays(item)
+			const weeks = days / 7
+			const fixed = Math.abs(weeks - Math.round(weeks)) < 1e-9 ? String(Math.round(weeks)) : weeks.toFixed(1)
+			return `${fixed}w`
+		},
+		formatWeeksLabel(item) {
+			const days = this.getDurationDays(item)
+			const weeks = days / 7
+			const fixed = Math.abs(weeks - Math.round(weeks)) < 1e-9 ? String(Math.round(weeks)) : weeks.toFixed(1)
+			return `${fixed} week${weeks === 1 ? '' : 's'} (${days} day${days === 1 ? '' : 's'})`
 		},
 		openAddModal() {
 			this.editingItem = null
@@ -376,6 +443,7 @@ export default {
 			}
 		},
 		async confirmDelete(item) {
+			if (this.isSystemItem(item)) return
 			if (!confirm(`Are you sure you want to delete "${item.label}"?`)) return
 			try {
 				const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${this.projectId}/timeline/${item.id}`)
@@ -387,52 +455,105 @@ export default {
 		},
 		navigatePrev() {
 			const monthPx = 30 * this.dayWidth
-			this.scrollOffset = Math.min(0, this.scrollOffset + monthPx)
+			this.scrollBy(-monthPx)
 		},
 		navigateNext() {
 			const monthPx = 30 * this.dayWidth
-			const maxScroll = -(this.totalDays * this.dayWidth - 400)
-			this.scrollOffset = Math.max(maxScroll, this.scrollOffset - monthPx)
+			this.scrollBy(monthPx)
 		},
 		navigateToday() {
-			if (!this.showTodayMarker) {
-				this.scrollOffset = 0
-				return
-			}
-			const containerWidth = this.$refs.timelineCol?.offsetWidth || 400
-			this.scrollOffset = -(this.todayOffset - containerWidth / 2)
-			const maxScroll = -(this.totalDays * this.dayWidth - 400)
-			this.scrollOffset = Math.max(maxScroll, Math.min(0, this.scrollOffset))
+			const el = this.$refs.scrollEl
+			if (!el) return
+			const containerWidth = el.clientWidth || 400
+			const target = Math.max(0, this.todayOffset - containerWidth / 2)
+			el.scrollLeft = target
 		},
 		navigateToPhase(index) {
 			if (index < 0 || index >= this.items.length) return
 			this.currentPhaseIndex = index
 			const item = this.items[index]
 			const { start } = this.timelineRange
-			const itemStart = new Date(item.startDate)
-			const offsetDays = Math.ceil((itemStart - start) / (1000 * 60 * 60 * 24))
+			const itemStart = this.parseDateOnly(item.startDate)
+			const offsetDays = Math.floor((itemStart - start) / (1000 * 60 * 60 * 24))
 			const offsetPx = offsetDays * this.dayWidth
-			this.scrollOffset = -(offsetPx - 50)
-			const maxScroll = -(this.totalDays * this.dayWidth - 400)
-			this.scrollOffset = Math.max(maxScroll, Math.min(0, this.scrollOffset))
+			const el = this.$refs.scrollEl
+			if (!el) return
+			el.scrollLeft = Math.max(0, offsetPx - 50)
+		},
+		scrollBy(px) {
+			const el = this.$refs.scrollEl
+			if (!el) return
+			el.scrollLeft = Math.max(0, el.scrollLeft + px)
+		},
+		setZoom(nextDayWidth) {
+			const el = this.$refs.scrollEl
+			if (!el) {
+				this.dayWidth = nextDayWidth
+				return
+			}
+			const oldDayWidth = this.dayWidth
+			const centerPx = el.scrollLeft + el.clientWidth / 2
+			const centerDays = oldDayWidth > 0 ? centerPx / oldDayWidth : 0
+			this.dayWidth = nextDayWidth
+			this.$nextTick(() => {
+				const target = Math.max(0, centerDays * this.dayWidth - el.clientWidth / 2)
+				el.scrollLeft = target
+			})
+		},
+		zoomIn() {
+			const levels = [1, 2, 3, 4, 6, 8, 12]
+			const idx = Math.max(0, levels.indexOf(this.dayWidth))
+			const next = levels[Math.min(levels.length - 1, idx + 1)]
+			this.setZoom(next)
+		},
+		zoomOut() {
+			const levels = [1, 2, 3, 4, 6, 8, 12]
+			const idx = Math.max(0, levels.indexOf(this.dayWidth))
+			const next = levels[Math.max(0, idx - 1)]
+			this.setZoom(next)
+		},
+		onPointerDown(e) {
+			if (e.button !== undefined && e.button !== 0) return
+			const el = this.$refs.scrollEl
+			if (!el) return
+			this.isDragging = true
+			this.dragStartX = e.clientX
+			this.dragStartScrollLeft = el.scrollLeft
+			try {
+				e.currentTarget.setPointerCapture(e.pointerId)
+			} catch (err) {
+				// ignore
+			}
+		},
+		onPointerMove(e) {
+			if (!this.isDragging) return
+			const el = this.$refs.scrollEl
+			if (!el) return
+			e.preventDefault()
+			const dx = e.clientX - this.dragStartX
+			el.scrollLeft = Math.max(0, this.dragStartScrollLeft - dx)
+		},
+		onPointerUp() {
+			this.isDragging = false
 		},
 		getItemIndex(item) {
 			return this.items.findIndex((i) => i.id === item.id)
 		},
 		async movePhaseUp(item) {
 			const index = this.getItemIndex(item)
-			if (index <= 0) return
+			if (!this.canMoveUp(item)) return
 			await this.swapPhaseOrder(index, index - 1)
 		},
 		async movePhaseDown(item) {
 			const index = this.getItemIndex(item)
-			if (index < 0 || index >= this.items.length - 1) return
+			if (!this.canMoveDown(item)) return
 			await this.swapPhaseOrder(index, index + 1)
 		},
 		async swapPhaseOrder(indexA, indexB) {
 			const itemA = this.items[indexA]
 			const itemB = this.items[indexB]
 			if (!itemA || !itemB) return
+			if (this.isSystemItem(itemA) || this.isSystemItem(itemB)) return
 			try {
 				const baseUrl = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${this.projectId}/timeline`)
 				await Promise.all([
@@ -455,31 +576,44 @@ export default {
 .gantt-chart-section { margin-top: 24px; }
 .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .section-header .modern-header { margin: 0; font-size: 18px; font-weight: 600; }
-.detail-card { background: var(--color-main-background); border: 1px solid var(--color-border); border-radius: 12px; padding: 20px; overflow-x: auto; }
+.detail-card { background: var(--color-main-background); border: 1px solid var(--color-border); border-radius: 12px; padding: 20px; overflow: hidden; }
 .loading-state, .empty-state { text-align: center; padding: 32px; color: var(--color-text-maxcontrast); }
 .loading-state p, .empty-state p { margin: 0 0 16px; }
 .gantt-container { min-width: 100%; }
-.gantt-header, .gantt-row { display: flex; align-items: stretch; }
-.gantt-label-col { width: 180px; min-width: 180px; padding: 12px; display: flex; flex-direction: column; justify-content: center; border-right: 1px solid var(--color-border); }
-.gantt-label-col .phase-name { font-weight: 600; font-size: 14px; }
-.gantt-label-col .phase-dates { font-size: 11px; color: var(--color-text-maxcontrast); margin-top: 4px; }
-.gantt-timeline-col { flex: 1; overflow: hidden; position: relative; }
-.gantt-actions-col { display: flex; gap: 4px; padding: 8px; align-items: center; }
+.gantt-grid { display: grid; grid-template-columns: 220px 1fr; border: 1px solid var(--color-border); border-radius: 10px; overflow: hidden; }
+.gantt-grid--with-actions { grid-template-columns: 220px 1fr 132px; }
+
+.gantt-fixed { background: var(--color-main-background); border-right: 1px solid var(--color-border); }
+.gantt-fixed-header { display: flex; align-items: center; padding: 12px; font-weight: 600; font-size: 13px; color: var(--color-text-maxcontrast); background: var(--color-background-dark); border-bottom: 1px solid var(--color-border); }
+.gantt-fixed-row { display: flex; flex-direction: column; justify-content: center; padding: 10px 12px; min-height: 56px; border-bottom: 1px solid var(--color-border); }
+.gantt-fixed-row:last-child { border-bottom: none; }
+.phase-name-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.phase-name { font-weight: 600; font-size: 14px; }
+.phase-duration { font-size: 11px; font-weight: 700; color: var(--color-text-maxcontrast); background: var(--color-background-hover); border: 1px solid var(--color-border); padding: 2px 6px; border-radius: 999px; white-space: nowrap; }
+.phase-dates { font-size: 11px; color: var(--color-text-maxcontrast); margin-top: 4px; }
+
+.gantt-scroll { overflow-x: auto; overflow-y: hidden; position: relative; cursor: grab; touch-action: pan-y; background: var(--color-main-background); }
+.gantt-scroll--dragging { cursor: grabbing; user-select: none; }
+.gantt-timeline { position: relative; }
+.gantt-timeline-header { background: var(--color-background-dark); border-bottom: 1px solid var(--color-border); }
+
+.gantt-timeline-row { min-height: 56px; border-bottom: 1px solid var(--color-border); display: flex; align-items: center; }
+.gantt-timeline-row:last-child { border-bottom: none; }
+
+.gantt-actions { background: var(--color-main-background); border-left: 1px solid var(--color-border); }
+.gantt-actions-header { background: var(--color-background-dark); border-bottom: 1px solid var(--color-border); }
+.gantt-actions-row { display: flex; align-items: center; gap: 6px; padding: 8px; min-height: 56px; border-bottom: 1px solid var(--color-border); }
+.gantt-actions-row:last-child { border-bottom: none; }
+
 .reorder-buttons { display: flex; flex-direction: column; gap: 2px; margin-right: 4px; }
 .reorder-buttons button { padding: 0; min-height: 24px; min-width: 24px; }
 .reorder-buttons button:disabled { opacity: 0.3; cursor: not-allowed; }
-.gantt-header { background: var(--color-background-dark); border-bottom: 1px solid var(--color-border); }
-.gantt-header .gantt-label-col { font-weight: 600; font-size: 13px; color: var(--color-text-maxcontrast); }
-.timeline-content { display: flex; flex-direction: column; transition: transform 0.3s ease; position: relative; }
-.year-row { display: flex; border-bottom: 1px solid var(--color-border); background: var(--color-background-darker, #e5e7eb); }
+.year-row { display: flex; height: 32px; border-bottom: 1px solid var(--color-border); background: var(--color-background-darker, #e5e7eb); }
 .year-label { display: flex; align-items: center; justify-content: center; padding: 6px 8px; font-size: 13px; font-weight: 700; color: var(--color-main-text); border-right: 1px solid var(--color-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.month-row { display: flex; }
+.month-row { display: flex; height: 28px; }
 .month-label { display: flex; align-items: center; justify-content: center; padding: 6px 4px; font-size: 11px; font-weight: 500; color: var(--color-text-maxcontrast); border-right: 1px solid var(--color-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 28px; }
 .month-label.compact { font-size: 10px; padding: 4px 2px; }
-.gantt-row { border-bottom: 1px solid var(--color-border); }
-.gantt-row:last-child { border-bottom: none; }
-.gantt-row:hover { background: var(--color-background-hover); }
-.timeline-track { position: relative; height: 32px; margin: 8px 0; transition: transform 0.3s ease; }
+.timeline-track { position: relative; height: 32px; width: 100%; margin: 8px 0; }
 .timeline-bar { position: absolute; top: 0; height: 100%; border-radius: 4px; min-width: 6px; cursor: pointer; transition: transform 0.2s ease; }
 .timeline-bar:hover { transform: scaleY(1.1); }
 .phase-form { padding: 20px; min-width: 400px; }
@@ -496,9 +630,12 @@ export default {
 .header-actions { display: flex; align-items: center; gap: 12px; }
 .timeline-nav { display: flex; align-items: center; gap: 4px; background: var(--color-background-dark); border-radius: 8px; padding: 4px; }
 .timeline-nav .today-btn { min-width: auto; padding: 6px 12px; font-weight: 500; }
-.today-marker { position: absolute; top: 0; bottom: -100%; z-index: 10; pointer-events: none; transition: left 0.3s ease; }
-.today-line { width: 2px; height: 100%; background: var(--color-error); position: absolute; left: 0; }
-.today-label { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 600; color: var(--color-error); background: var(--color-main-background); padding: 2px 6px; border-radius: 4px; white-space: nowrap; }
+.timeline-zoom { display: flex; align-items: center; gap: 6px; background: var(--color-background-dark); border-radius: 8px; padding: 4px; }
+.zoom-label { font-size: 12px; font-weight: 600; color: var(--color-text-maxcontrast); padding: 0 6px; }
+
+.today-marker { position: absolute; top: 0; bottom: 0; z-index: 10; pointer-events: none; }
+.today-line { width: 2px; height: 100%; background: #dc2626; position: absolute; left: 0; opacity: 0.98; }
+.today-label { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 700; color: #dc2626; background: var(--color-main-background); padding: 2px 6px; border-radius: 4px; white-space: nowrap; box-shadow: 0 1px 0 rgba(0,0,0,0.06); border: 1px solid rgba(220, 38, 38, 0.35); }
 .phase-jumper { display: flex; align-items: center; gap: 8px; padding: 16px 12px; border-top: 1px solid var(--color-border); flex-wrap: wrap; }
 .jumper-label { font-size: 12px; font-weight: 500; color: var(--color-text-maxcontrast); }
 .phase-chip { padding: 6px 12px; border-radius: 16px; font-size: 12px; font-weight: 500; border: 1px solid var(--color-border); background: var(--color-main-background); color: var(--color-main-text); cursor: pointer; transition: all 0.2s ease; }
@@ -508,5 +645,8 @@ export default {
 @media (max-width: 900px) {
 	.header-actions { flex-direction: column; align-items: stretch; }
 	.form-row { flex-direction: column; gap: 0; }
+	.gantt-grid, .gantt-grid--with-actions { grid-template-columns: 1fr; }
+	.gantt-fixed { border-right: none; border-bottom: 1px solid var(--color-border); }
+	.gantt-actions { border-left: none; border-top: 1px solid var(--color-border); }
 }
 </style>
