@@ -194,26 +194,22 @@ class ProjectService
 
         $timelineMapper = new TimelineItemMapper($this->db);
 
-        // Seed defaults relative to today, so every new project starts with
-        // a consistent planning baseline (can be edited later in the Gantt UI).
-        $request = new \DateTime('today');
+        $request = $this->parseDateOrNull($requestDate) ?? new \DateTime('today');
 
         $prepDays = (int) ($requiredPreparationDays ?? 0);
         if ($prepDays < 0) {
             $prepDays = 0;
         }
 
-        $desired = clone $request;
-        if ($prepDays > 0) {
-            $desired->modify('+' . $prepDays . ' days');
-        }
+        $desired = $this->parseDateOrNull($desiredExecutionDate) ?? clone $request;
 
         $requestStr = $request->format('Y-m-d');
         $desiredStr = $desired->format('Y-m-d');
 
-        $prepStart = clone $request;
+        $prepStart = clone $desired;
         $prepEnd = clone $desired;
         if ($prepDays > 0) {
+            $prepStart->modify('-' . $prepDays . ' days');
             $prepEnd->modify('-1 day');
         }
 
