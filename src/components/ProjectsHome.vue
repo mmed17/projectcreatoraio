@@ -597,11 +597,48 @@
 			<div class="projects-home__profile-modal">
 				<h3 class="projects-home__profile-modal-title">Edit Project Details</h3>
 				<p class="projects-home__profile-modal-subtitle">
-					Update client information and project location details.
+					Update project name, client information, and project location in separate sections.
 				</p>
 
+				<div class="projects-home__profile-nav" role="tablist" aria-label="Project detail sections">
+					<button
+						v-if="canManageProjects"
+						type="button"
+						class="projects-home__profile-nav-btn"
+						:class="{ 'projects-home__profile-nav-btn--active': projectProfileSection === 'project' }"
+						@click="projectProfileSection = 'project'">
+						Project Name
+					</button>
+					<button
+						type="button"
+						class="projects-home__profile-nav-btn"
+						:class="{ 'projects-home__profile-nav-btn--active': projectProfileSection === 'client' }"
+						@click="projectProfileSection = 'client'">
+						Client Info
+					</button>
+					<button
+						type="button"
+						class="projects-home__profile-nav-btn"
+						:class="{ 'projects-home__profile-nav-btn--active': projectProfileSection === 'location' }"
+						@click="projectProfileSection = 'location'">
+						Location Info
+					</button>
+				</div>
+
 				<div class="projects-home__profile-sections">
-					<div class="projects-home__profile-section">
+					<div v-if="canManageProjects && projectProfileSection === 'project'" class="projects-home__profile-section">
+						<h4 class="projects-home__profile-section-title">Project Name</h4>
+						<div class="projects-home__profile-grid projects-home__profile-grid--single">
+							<NcTextField
+								v-model="projectProfileDraft.name"
+								label="Project name"
+								:show-label="true"
+								input-label="Project name"
+								placeholder="e.g., Riverside Renovation" />
+						</div>
+					</div>
+
+					<div v-else-if="projectProfileSection === 'client'" class="projects-home__profile-section">
 						<h4 class="projects-home__profile-section-title">Client Information</h4>
 						<div class="projects-home__profile-grid">
 							<NcTextField
@@ -628,12 +665,18 @@
 								:show-label="true"
 								input-label="Email address"
 								placeholder="e.g., contact@example.com" />
+							<NcTextField
+								v-model="projectProfileDraft.client_address"
+								label="Client address"
+								:show-label="true"
+								input-label="Client address"
+								placeholder="Complete mailing address" />
 						</div>
 					</div>
 
-					<div class="projects-home__profile-section">
+					<div v-else class="projects-home__profile-section">
 						<h4 class="projects-home__profile-section-title">Project Location</h4>
-						<div class="projects-home__profile-grid">
+						<div class="projects-home__profile-grid projects-home__profile-grid--single">
 							<NcTextField
 								v-model="projectProfileDraft.loc_street"
 								label="Street address"
@@ -652,12 +695,6 @@
 								:show-label="true"
 								input-label="ZIP / Postal code"
 								placeholder="e.g., 10001" />
-							<NcTextField
-								v-model="projectProfileDraft.client_address"
-								label="Full address"
-								:show-label="true"
-								input-label="Full address"
-								placeholder="Complete mailing address" />
 						</div>
 					</div>
 				</div>
@@ -820,6 +857,7 @@ export default {
 			memberSearchTimeout: null,
 			showProjectProfileModal: false,
 			projectProfileDraft: {
+				name: '',
 				client_name: '',
 				client_role: '',
 				client_phone: '',
@@ -829,6 +867,7 @@ export default {
 				loc_city: '',
 				loc_zip: '',
 			},
+			projectProfileSection: 'project',
 			projectProfileSaving: false,
 			projectProfileError: '',
 			projectProfileMessage: '',
@@ -960,6 +999,7 @@ export default {
 		getProjectProfileDraftFromSelected() {
 			const selected = this.selectedProject || {}
 			return {
+				name: selected.name || '',
 				client_name: selected.client_name || '',
 				client_role: selected.client_role || '',
 				client_phone: selected.client_phone || '',
@@ -978,6 +1018,7 @@ export default {
 				this.projectProfileMessage = ''
 			}
 			this.projectProfileDraft = {
+				name: '',
 				client_name: '',
 				client_role: '',
 				client_phone: '',
@@ -987,6 +1028,7 @@ export default {
 				loc_city: '',
 				loc_zip: '',
 			}
+			this.projectProfileSection = this.canManageProjects ? 'project' : 'client'
 		},
 		startProjectProfileEdit() {
 			if (!this.canEditSelectedProjectDetails) {
@@ -995,10 +1037,12 @@ export default {
 			this.projectProfileError = ''
 			this.projectProfileMessage = ''
 			this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
+			this.projectProfileSection = this.canManageProjects ? 'project' : 'client'
 			this.showProjectProfileModal = true
 		},
 		cancelProjectProfileEdit() {
 			this.projectProfileError = ''
+			this.projectProfileSection = this.canManageProjects ? 'project' : 'client'
 			this.showProjectProfileModal = false
 		},
 		async saveProjectProfile() {
@@ -1021,6 +1065,9 @@ export default {
 				loc_street: this.projectProfileDraft.loc_street,
 				loc_city: this.projectProfileDraft.loc_city,
 				loc_zip: this.projectProfileDraft.loc_zip,
+			}
+			if (this.canManageProjects) {
+				payload.name = this.projectProfileDraft.name
 			}
 			try {
 				const updated = await projectsService.update(projectId, payload)
@@ -2205,6 +2252,37 @@ export default {
 	color: var(--color-text-maxcontrast);
 }
 
+.projects-home__profile-nav {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px;
+	border: 1px solid var(--color-border);
+	border-radius: 12px;
+	background: var(--color-background-hover);
+}
+
+.projects-home__profile-nav-btn {
+	border: 1px solid transparent;
+	background: transparent;
+	color: var(--color-text-maxcontrast);
+	padding: 8px 12px;
+	border-radius: 8px;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.projects-home__profile-nav-btn:hover {
+	background: var(--color-background-dark);
+}
+
+.projects-home__profile-nav-btn--active {
+	background: var(--color-main-background);
+	border-color: var(--color-border-dark);
+}
+
 .projects-home__profile-sections {
 	display: flex;
 	flex-direction: column;
@@ -2230,6 +2308,10 @@ export default {
 	display: grid;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 	gap: 12px;
+}
+
+.projects-home__profile-grid--single {
+	grid-template-columns: 1fr;
 }
 
 .projects-home__profile-actions {
@@ -2321,6 +2403,10 @@ export default {
 
 	.projects-home__profile-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.projects-home__profile-nav {
+		flex-wrap: wrap;
 	}
 
 	.projects-home__inline-error {

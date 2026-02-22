@@ -82,6 +82,16 @@
 										{{ month.width < 40 ? '' : month.label }}
 									</span>
 								</div>
+								<div class="week-row">
+									<span
+										v-for="week in visibleIsoWeeks"
+										:key="week.key"
+										class="week-label"
+										:style="{ width: week.width + 'px' }"
+										:title="week.tooltip">
+										{{ week.width < 16 ? '' : week.label }}
+									</span>
+								</div>
 							</div>
 
 							<div class="today-marker" :style="{ left: todayOffset + 'px' }">
@@ -310,8 +320,8 @@ export default {
 			return start.getFullYear() !== end.getFullYear()
 		},
 		timelineHeaderHeight() {
-			// Must match CSS heights for year/month rows.
-			return this.spanMultipleYears ? 60 : 28
+			// Must match CSS heights for year/month/week rows.
+			return this.spanMultipleYears ? 84 : 52
 		},
 		visibleYears() {
 			if (!this.spanMultipleYears) return []
@@ -324,6 +334,25 @@ export default {
 				years.push({ key: `year-${year}`, label: year.toString(), width: days * this.dayWidth })
 			}
 			return years
+		},
+		visibleIsoWeeks() {
+			const weeks = []
+			const { start, end } = this.timelineRange
+			let cursor = this.toDateOnly(start)
+			while (cursor.getTime() <= end.getTime()) {
+				const weekInfo = this.getIsoWeekInfo(cursor)
+				const effectiveStart = cursor < start ? start : cursor
+				const spanDays = Math.min(7, Math.floor((end - effectiveStart) / (1000 * 60 * 60 * 24)) + 1)
+				weeks.push({
+					key: `${weekInfo.isoYear}-W${weekInfo.isoWeek}`,
+					label: `W${weekInfo.isoWeek}`,
+					tooltip: `ISO Week ${weekInfo.isoWeek}, ${weekInfo.isoYear}`,
+					width: spanDays * this.dayWidth,
+				})
+				cursor = new Date(cursor)
+				cursor.setDate(cursor.getDate() + spanDays)
+			}
+			return weeks
 		},
 		todayOffset() {
 			const { start } = this.timelineRange
@@ -383,6 +412,16 @@ export default {
 			const d = new Date(date)
 			d.setHours(0, 0, 0, 0)
 			return d
+		},
+		getIsoWeekInfo(date) {
+			const d = this.toDateOnly(date)
+			const utcDate = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+			const day = utcDate.getUTCDay() || 7
+			utcDate.setUTCDate(utcDate.getUTCDate() + 4 - day)
+			const isoYear = utcDate.getUTCFullYear()
+			const yearStart = new Date(Date.UTC(isoYear, 0, 1))
+			const isoWeek = Math.ceil(((utcDate - yearStart) / (1000 * 60 * 60 * 24) + 1) / 7)
+			return { isoWeek, isoYear }
 		},
 		getBarStyle(item) {
 			const { start } = this.timelineRange
@@ -501,13 +540,13 @@ export default {
 			})
 		},
 		zoomIn() {
-			const levels = [1, 2, 3, 4, 6, 8, 12]
+			const levels = [3, 4, 6, 8, 12]
 			const idx = Math.max(0, levels.indexOf(this.dayWidth))
 			const next = levels[Math.min(levels.length - 1, idx + 1)]
 			this.setZoom(next)
 		},
 		zoomOut() {
-			const levels = [1, 2, 3, 4, 6, 8, 12]
+			const levels = [3, 4, 6, 8, 12]
 			const idx = Math.max(0, levels.indexOf(this.dayWidth))
 			const next = levels[Math.max(0, idx - 1)]
 			this.setZoom(next)
@@ -610,9 +649,11 @@ export default {
 .reorder-buttons button:disabled { opacity: 0.3; cursor: not-allowed; }
 .year-row { display: flex; height: 32px; border-bottom: 1px solid var(--color-border); background: var(--color-background-darker, #e5e7eb); }
 .year-label { display: flex; align-items: center; justify-content: center; padding: 6px 8px; font-size: 13px; font-weight: 700; color: var(--color-main-text); border-right: 1px solid var(--color-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.month-row { display: flex; height: 28px; }
+.month-row { display: flex; height: 28px; border-bottom: 1px solid var(--color-border); }
 .month-label { display: flex; align-items: center; justify-content: center; padding: 6px 4px; font-size: 11px; font-weight: 500; color: var(--color-text-maxcontrast); border-right: 1px solid var(--color-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 28px; }
 .month-label.compact { font-size: 10px; padding: 4px 2px; }
+.week-row { display: flex; height: 24px; }
+.week-label { display: flex; align-items: center; justify-content: center; padding: 3px 2px; font-size: 10px; font-weight: 700; color: var(--color-text-lighter); border-right: 1px solid var(--color-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 24px; letter-spacing: 0.02em; }
 .timeline-track { position: relative; height: 32px; width: 100%; margin: 8px 0; }
 .timeline-bar { position: absolute; top: 0; height: 100%; border-radius: 4px; min-width: 6px; cursor: pointer; transition: transform 0.2s ease; }
 .timeline-bar:hover { transform: scaleY(1.1); }

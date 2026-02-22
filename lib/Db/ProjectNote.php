@@ -9,13 +9,13 @@ use JsonSerializable;
 class ProjectNote extends Entity implements JsonSerializable {
     public $id;
 
-    protected int $projectId;
-    protected string $userId;
-    protected string $title;
-    protected string $content;
-    protected string $visibility; // 'public' or 'private'
-    protected DateTime|null $createdAt = null;
-    protected DateTime|null $updatedAt = null;
+    protected ?int $projectId = null;
+    protected ?string $userId = null;
+    protected ?string $title = null;
+    protected ?string $content = null;
+    protected ?string $visibility = null; // 'public' or 'private'
+    protected ?DateTime $createdAt = null;
+    protected ?DateTime $updatedAt = null;
 
     public function __construct() {
         $this->addType('projectId', Types::INTEGER);
