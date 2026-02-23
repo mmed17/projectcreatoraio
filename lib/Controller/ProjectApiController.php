@@ -897,6 +897,7 @@ class ProjectApiController extends Controller
         $this->assertCanAccessProject($existingProject);
 
         $isAdminForProject = $this->canAdministerProject($existingProject);
+        $canEditPreparationWeeks = $this->canEditPreparationWeeks($existingProject);
         if (!$isAdminForProject) {
             $restrictedFields = [
                 'name',
@@ -911,7 +912,15 @@ class ProjectApiController extends Controller
             $providedFields = array_keys($this->request->getParams());
             $attemptedRestrictedFields = array_values(array_intersect($restrictedFields, $providedFields));
             if ($attemptedRestrictedFields !== []) {
-                throw new OCSForbiddenException('Project members can only update client and location details');
+                if (
+                    $canEditPreparationWeeks
+                    && count($attemptedRestrictedFields) === 1
+                    && $attemptedRestrictedFields[0] === 'required_preparation_weeks'
+                ) {
+                    // Project owners may only edit required preparation weeks.
+                } else {
+                    throw new OCSForbiddenException('Project members can only update client and location details');
+                }
             }
         }
 
@@ -957,6 +966,21 @@ class ProjectApiController extends Controller
         }
 
         return $membership['role'] === 'admin';
+    }
+
+    private function canEditPreparationWeeks(Project $project): bool
+    {
+        if ($this->canAdministerProject($project)) {
+            return true;
+        }
+
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            return false;
+        }
+
+        $ownerId = trim((string) $project->getOwnerId());
+        return $ownerId !== '' && $ownerId === $currentUser->getUID();
     }
 
     private function assertCanAccessProject(Project $project): void

@@ -479,7 +479,7 @@
 											</h3>
 										</div>
 										<div class="projects-home__panel-content">
-											<TimelineSummary :project-id="selectedProject.id" :can-edit="canManageProjects" />
+											<TimelineSummary :project-id="selectedProject.id" :can-edit="canEditPreparationWeeks" />
 											<GanttChart :project-id="selectedProject.id" :is-admin="canManageProjects" />
 										</div>
 									</div>
@@ -542,7 +542,7 @@
 						</div>
 						<div class="projects-home__split-panel projects-home__split-panel--timeline">
 							<div class="projects-home__panel-content">
-								<TimelineSummary :project-id="selectedProject.id" :can-edit="canManageProjects" />
+								<TimelineSummary :project-id="selectedProject.id" :can-edit="canEditPreparationWeeks" />
 								<GanttChart :project-id="selectedProject.id" :is-admin="canManageProjects" />
 							</div>
 						</div>
@@ -1050,6 +1050,14 @@ export default {
 		},
 		canManageProjects() {
 			return !!(this.context?.isGlobalAdmin || this.context?.organizationRole === 'admin')
+		},
+		canEditPreparationWeeks() {
+			if (this.canManageProjects) {
+				return true
+			}
+			const ownerId = String(this.selectedProject?.ownerId || '').trim()
+			const currentUserId = String(this.context?.userId || '').trim()
+			return ownerId !== '' && currentUserId !== '' && ownerId === currentUserId
 		},
 		canEditSelectedProjectDetails() {
 			return this.hasProjectAccess && !!this.selectedProject
