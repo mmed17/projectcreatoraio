@@ -480,7 +480,7 @@
 										</div>
 										<div class="projects-home__panel-content">
 											<TimelineSummary :project-id="selectedProject.id" :can-edit="canEditPreparationWeeks" />
-											<GanttChart :project-id="selectedProject.id" :is-admin="canManageProjects" />
+											<GanttChart :project-id="selectedProject.id" :is-admin="canManageTimelineItems" />
 										</div>
 									</div>
 									<div class="projects-home__split-panel projects-home__split-panel--deck">
@@ -540,13 +540,13 @@
 								Timeline
 							</h3>
 						</div>
-						<div class="projects-home__split-panel projects-home__split-panel--timeline">
-							<div class="projects-home__panel-content">
-								<TimelineSummary :project-id="selectedProject.id" :can-edit="canEditPreparationWeeks" />
-								<GanttChart :project-id="selectedProject.id" :is-admin="canManageProjects" />
+							<div class="projects-home__split-panel projects-home__split-panel--timeline">
+								<div class="projects-home__panel-content">
+									<TimelineSummary :project-id="selectedProject.id" :can-edit="canEditPreparationWeeks" />
+									<GanttChart :project-id="selectedProject.id" :is-admin="canManageTimelineItems" />
+								</div>
 							</div>
 						</div>
-					</div>
 
 					<!-- Deck Tab -->
 					<div v-else-if="activeTab === 'deck'" class="projects-home__tab-section projects-home__tab-section--full">
@@ -1050,6 +1050,9 @@ export default {
 		},
 		canManageProjects() {
 			return !!(this.context?.isGlobalAdmin || this.context?.organizationRole === 'admin')
+		},
+		canManageTimelineItems() {
+			return this.hasProjectAccess && !!this.selectedProject
 		},
 		canEditPreparationWeeks() {
 			if (this.canManageProjects) {
