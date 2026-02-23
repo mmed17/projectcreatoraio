@@ -41,32 +41,14 @@
 
 				<div class="form-row">
 					<NcTextField
-						v-model="project.request_date"
-						type="date"
-						label="Request Date"
-						class="form-row-item"
-						:show-label="true"
-						input-label="Request Date" />
-
-					<NcTextField
-						v-model="project.desired_execution_date"
-						type="date"
-						label="Desired Execution Date"
-						class="form-row-item"
-						:show-label="true"
-						input-label="Desired Execution Date" />
-				</div>
-
-				<div class="form-row">
-					<NcTextField
-						v-model="project.required_preparation_days"
+						v-model="project.required_preparation_weeks"
 						type="number"
 						min="0"
-						label="Required Preparation Time (days)"
+						label="Required Preparation Time (weeks)"
 						class="form-row-item"
-						placeholder="e.g., 5"
+						placeholder="e.g., 2"
 						:show-label="true"
-						input-label="Required Preparation Time (days)" />
+						input-label="Required Preparation Time (weeks)" />
 				</div>
 
 				<div class="form-row">

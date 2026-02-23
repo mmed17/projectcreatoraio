@@ -4,7 +4,6 @@ namespace OCA\ProjectCreatorAIO\Service;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Db\ProjectNoteMapper;
-use OCA\ProjectCreatorAIO\Db\TimelineItemMapper;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
 use OCA\Deck\Service\BoardService;
@@ -15,6 +14,7 @@ use OCP\IUserSession;
 use OCP\Files\Folder;
 use OCP\IUser;
 use OCA\Deck\Db\Board;
+use OCA\ProjectCreatorAIO\Service\DeckDefaultCardsService;
 use Throwable;
 use Exception;
 use OCA\Organization\Db\OrganizationMapper;
@@ -31,13 +31,21 @@ use OCA\Organization\Db\Plan;
 use OCP\IDBConnection;
 use OCP\IUserManager;
 use OCP\Files\File;
+use OCA\Deck\Db\ChangeHelper;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 
 class ProjectService
 {
+    private const CV_FIELD_OBJECT_OWNERSHIP = 'cv_object_ownership';
+    private const CV_FIELD_TRACE_OWNERSHIP = 'cv_trace_ownership';
+    private const CV_FIELD_BUILDING_TYPE = 'cv_building_type';
+    private const CV_FIELD_AVP_LOCATION = 'cv_avp_location';
+
     public function __construct(
         protected IUserSession $userSession,
         protected IShareManager $shareManager,
         protected BoardService $boardService,
+        private readonly DeckDefaultCardsService $deckDefaultCardsService,
         protected IRootFolder $rootFolder,
         protected ProjectMapper $projectMapper,
         protected ProjectNoteMapper $noteMapper,
@@ -51,6 +59,7 @@ class ProjectService
         protected IDBConnection $db,
         protected IUserManager $userManager,
         private readonly FolderStorageManager $folderStorageManager,
+        private readonly ChangeHelper $changeHelper,
     ) {
     }
 
@@ -73,9 +82,7 @@ class ProjectService
         ?string $locStreet = null,
         ?string $locCity = null,
         ?string $locZip = null,
-        ?string $requestDate = null,
-        ?string $desiredExecutionDate = null,
-        ?int $requiredPreparationDays = null,
+        ?int $requiredPreparationWeeks = null,
     ): Project {
 
         $createdBoard = null;
@@ -149,6 +156,7 @@ class ProjectService
                 $createdFolders['shared']['name'],
                 $createdFolders['private'],
                 $whiteBoardId,
+                $requiredPreparationWeeks,
                 $clientName,
                 $clientRole,
                 $clientPhone,
@@ -159,13 +167,18 @@ class ProjectService
                 $locZip,
             );
 
-            $this->seedDefaultPlanningTimelineItems(
-                (int) $project->getId(),
-                $requestDate,
-                $desiredExecutionDate,
-                $requiredPreparationDays,
+            $this->deckDefaultCardsService->seedForProjectType(
+                $type,
+                $createdBoard,
+                $owner,
             );
 
+            // On creation, conditional sets start hidden by default until the
+            // questionnaire is explicitly saved.
+            $this->applyCardVisibilityToDeckCards(
+                $project,
+                $this->extractCardVisibilityAnswers($project),
+            );
 
             return $project;
 
@@ -179,105 +192,6 @@ class ProjectService
             );
 
             throw $e;
-        }
-    }
-
-    private function seedDefaultPlanningTimelineItems(
-        int $projectId,
-        ?string $requestDate,
-        ?string $desiredExecutionDate,
-        ?int $requiredPreparationDays,
-    ): void {
-        if ($projectId <= 0) {
-            return;
-        }
-
-        $timelineMapper = new TimelineItemMapper($this->db);
-
-        $request = $this->parseDateOrNull($requestDate) ?? new \DateTime('today');
-
-        $prepDays = (int) ($requiredPreparationDays ?? 0);
-        if ($prepDays < 0) {
-            $prepDays = 0;
-        }
-
-        $desired = $this->parseDateOrNull($desiredExecutionDate) ?? clone $request;
-
-        $requestStr = $request->format('Y-m-d');
-        $desiredStr = $desired->format('Y-m-d');
-
-        $prepStart = clone $desired;
-        $prepEnd = clone $desired;
-        if ($prepDays > 0) {
-            $prepStart->modify('-' . $prepDays . ' days');
-            $prepEnd->modify('-1 day');
-        }
-
-        $items = [
-            [
-                'key' => 'request_date',
-                'label' => 'Request Date',
-                'start' => $requestStr,
-                'end' => $requestStr,
-                'color' => '#64748b',
-                'order' => 0,
-            ],
-            [
-                'key' => 'desired_execution_date',
-                'label' => 'Desired Execution Date',
-                'start' => $desiredStr,
-                'end' => $desiredStr,
-                'color' => '#f59e0b',
-                'order' => 1,
-            ],
-            [
-                'key' => 'required_preparation',
-                'label' => 'Required Preparation',
-                'start' => $prepStart->format('Y-m-d'),
-                'end' => $prepEnd->format('Y-m-d'),
-                'color' => '#10b981',
-                'order' => 2,
-            ],
-        ];
-
-        foreach ($items as $def) {
-            $existing = $timelineMapper->findByProjectAndSystemKey($projectId, $def['key']);
-            if ($existing === null) {
-                $timelineMapper->createItem(
-                    $projectId,
-                    $def['label'],
-                    $def['start'],
-                    $def['end'],
-                    $def['color'],
-                    (int) $def['order'],
-                    $def['key'],
-                );
-                continue;
-            }
-
-            $existing->setStartDate(new \DateTime($def['start']));
-            $existing->setEndDate(new \DateTime($def['end']));
-            $existing->setColor($def['color']);
-            $existing->setOrderIndex((int) $def['order']);
-            $timelineMapper->updateItem($existing);
-        }
-    }
-
-    private function parseDateOrNull(?string $value): ?\DateTime
-    {
-        if ($value === null) {
-            return null;
-        }
-
-        $value = trim($value);
-        if ($value === '') {
-            return null;
-        }
-
-        try {
-            return new \DateTime($value);
-        } catch (\Throwable $e) {
-            return null;
         }
     }
 
@@ -1111,6 +1025,350 @@ class ProjectService
         return $this->projectMapper->findByBoardId($boardId);
     }
 
+    /**
+     * @return array{
+     *   project_id: int,
+     *   project_type: int,
+     *   questions: array<int, array{field: string, category: string, question: string, options: array<int, array{label: string, show: int}>>>,
+     *   answers: array{cv_object_ownership: ?int, cv_trace_ownership: ?int, cv_building_type: ?int, cv_avp_location: ?int},
+     *   enabled_sets: int[]
+     * }
+     */
+    public function getProjectCardVisibility(int $projectId): array
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSException("Project with ID $projectId not found", 404);
+        }
+
+        $projectType = (int) ($project->getType() ?? -1);
+        $answers = $this->extractCardVisibilityAnswers($project);
+
+        return [
+            'project_id' => (int) $project->getId(),
+            'project_type' => $projectType,
+            'questions' => $this->getCardVisibilityQuestions(),
+            'answers' => $answers,
+            'enabled_sets' => $this->getEnabledCardVisibilitySets($answers),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array{
+     *   project_id: int,
+     *   project_type: int,
+     *   questions: array<int, array{field: string, category: string, question: string, options: array<int, array{label: string, show: int}>>>,
+     *   answers: array{cv_object_ownership: ?int, cv_trace_ownership: ?int, cv_building_type: ?int, cv_avp_location: ?int},
+     *   enabled_sets: int[],
+     *   deck_cards_updated: int
+     * }
+     */
+    public function updateProjectCardVisibility(int $projectId, array $payload): array
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSException("Project with ID $projectId not found", 404);
+        }
+
+        $projectType = (int) ($project->getType() ?? -1);
+        if ($projectType !== ProjectTypeDeckDefaults::TYPE_COMBI) {
+            throw new OCSException('Form configuration is only available for Combi projects.', 400);
+        }
+
+        if (array_key_exists(self::CV_FIELD_OBJECT_OWNERSHIP, $payload)) {
+            $project->setCvObjectOwnership(
+                $this->normalizeCardVisibilityAnswer($payload[self::CV_FIELD_OBJECT_OWNERSHIP], self::CV_FIELD_OBJECT_OWNERSHIP)
+            );
+        }
+
+        if (array_key_exists(self::CV_FIELD_TRACE_OWNERSHIP, $payload)) {
+            $project->setCvTraceOwnership(
+                $this->normalizeCardVisibilityAnswer($payload[self::CV_FIELD_TRACE_OWNERSHIP], self::CV_FIELD_TRACE_OWNERSHIP)
+            );
+        }
+
+        if (array_key_exists(self::CV_FIELD_BUILDING_TYPE, $payload)) {
+            $project->setCvBuildingType(
+                $this->normalizeCardVisibilityAnswer($payload[self::CV_FIELD_BUILDING_TYPE], self::CV_FIELD_BUILDING_TYPE)
+            );
+        }
+
+        if (array_key_exists(self::CV_FIELD_AVP_LOCATION, $payload)) {
+            $project->setCvAvpLocation(
+                $this->normalizeCardVisibilityAnswer($payload[self::CV_FIELD_AVP_LOCATION], self::CV_FIELD_AVP_LOCATION)
+            );
+        }
+
+        $project = $this->projectMapper->updateProjectDetails($project);
+
+        $answers = $this->extractCardVisibilityAnswers($project);
+        $updatedCount = $this->applyCardVisibilityToDeckCards($project, $answers);
+
+        return [
+            'project_id' => (int) $project->getId(),
+            'project_type' => $projectType,
+            'questions' => $this->getCardVisibilityQuestions(),
+            'answers' => $answers,
+            'enabled_sets' => $this->getEnabledCardVisibilitySets($answers),
+            'deck_cards_updated' => $updatedCount,
+        ];
+    }
+
+    /**
+     * @return array<int, array{field: string, category: string, question: string, options: array<int, array{label: string, show: int}>>>
+     */
+    private function getCardVisibilityQuestions(): array
+    {
+        return [
+            [
+                'field' => self::CV_FIELD_OBJECT_OWNERSHIP,
+                'category' => 'Eigendoms situatie te realiseren object',
+                'question' => 'Wat is de eigendomssituatie van het te realiseren object?',
+                'options' => [
+                    [
+                        'label' => 'Het object komt op openbare grond of op eigen grond direct grenzend aan gemeentegrond.',
+                        'show' => 0,
+                    ],
+                    [
+                        'label' => 'Het object komt op eigen grond (niet direct grenzend aan gemeente) of wordt overgedragen aan de gemeente.',
+                        'show' => 2,
+                    ],
+                ],
+            ],
+            [
+                'field' => self::CV_FIELD_TRACE_OWNERSHIP,
+                'category' => 'Eigendoms situatie kabel en leidingen tracé',
+                'question' => 'Wat is de eigendomssituatie van het kabel- en leidingentracé?',
+                'options' => [
+                    [
+                        'label' => 'Het vrije tracé komt volledig in openbare grond te liggen.',
+                        'show' => 0,
+                    ],
+                    [
+                        'label' => 'Het vrije tracé komt (deels) in eigen grond te liggen of de situatie is nog onbekend.',
+                        'show' => 2,
+                    ],
+                ],
+            ],
+            [
+                'field' => self::CV_FIELD_BUILDING_TYPE,
+                'category' => 'Type bebouwing',
+                'question' => 'Welk type eenheden gaat u realiseren op de locatie?',
+                'options' => [
+                    [
+                        'label' => 'U gaat uitsluitend grondgebonden woningen of bedrijfsunits realiseren.',
+                        'show' => 0,
+                    ],
+                    [
+                        'label' => 'U gaat appartementen realiseren (al dan niet in combinatie met grondgebonden woningen).',
+                        'show' => 1,
+                    ],
+                ],
+            ],
+            [
+                'field' => self::CV_FIELD_AVP_LOCATION,
+                'category' => 'AVP Locatie',
+                'question' => 'Waar wordt de transformator (AVP) gesitueerd?',
+                'options' => [
+                    [
+                        'label' => 'In openbaar gebied (in directe afstemming met de gemeente).',
+                        'show' => 0,
+                    ],
+                    [
+                        'label' => 'De AVP moet op eigen terrein worden gesitueerd (inpandig of op het perceel).',
+                        'show' => 2,
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @return array{cv_object_ownership: ?int, cv_trace_ownership: ?int, cv_building_type: ?int, cv_avp_location: ?int}
+     */
+    private function extractCardVisibilityAnswers(Project $project): array
+    {
+        return [
+            self::CV_FIELD_OBJECT_OWNERSHIP => $this->normalizeCardVisibilityAnswer($project->getCvObjectOwnership(), self::CV_FIELD_OBJECT_OWNERSHIP, true),
+            self::CV_FIELD_TRACE_OWNERSHIP => $this->normalizeCardVisibilityAnswer($project->getCvTraceOwnership(), self::CV_FIELD_TRACE_OWNERSHIP, true),
+            self::CV_FIELD_BUILDING_TYPE => $this->normalizeCardVisibilityAnswer($project->getCvBuildingType(), self::CV_FIELD_BUILDING_TYPE, true),
+            self::CV_FIELD_AVP_LOCATION => $this->normalizeCardVisibilityAnswer($project->getCvAvpLocation(), self::CV_FIELD_AVP_LOCATION, true),
+        ];
+    }
+
+    /**
+     * @param array{cv_object_ownership: ?int, cv_trace_ownership: ?int, cv_building_type: ?int, cv_avp_location: ?int} $answers
+     * @return int[]
+     */
+    private function getEnabledCardVisibilitySets(array $answers): array
+    {
+        $enabled = [];
+        foreach ($answers as $answer) {
+            if ($answer === 1) {
+                $enabled[1] = true;
+            } elseif ($answer === 2) {
+                $enabled[2] = true;
+            }
+        }
+
+        $sets = array_keys($enabled);
+        sort($sets);
+        return array_values($sets);
+    }
+
+    /**
+     * @param mixed $value
+     */
+    private function normalizeCardVisibilityAnswer(mixed $value, string $field, bool $allowNull = false): ?int
+    {
+        if ($value === null) {
+            return $allowNull ? null : 0;
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+            if ($value === '') {
+                return $allowNull ? null : 0;
+            }
+            if (is_numeric($value)) {
+                $value = (int) $value;
+            }
+        }
+
+        if (!is_int($value) || !in_array($value, [0, 1, 2], true)) {
+            throw new OCSException(sprintf('Invalid value for %s. Allowed values: null, 0, 1, 2.', $field), 400);
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param array{cv_object_ownership: ?int, cv_trace_ownership: ?int, cv_building_type: ?int, cv_avp_location: ?int} $answers
+     */
+    private function applyCardVisibilityToDeckCards(Project $project, array $answers): int
+    {
+        $boardId = $this->parseIntOrZero($project->getBoardId());
+        if ($boardId <= 0) {
+            return 0;
+        }
+
+        $projectType = (int) ($project->getType() ?? -1);
+        if ($projectType !== ProjectTypeDeckDefaults::TYPE_COMBI) {
+            return 0;
+        }
+
+        $enabledSets = $this->getEnabledCardVisibilitySets($answers);
+        $isSet1Enabled = in_array(1, $enabledSets, true);
+        $isSet2Enabled = in_array(2, $enabledSets, true);
+
+        $nextPriorityCards = ProjectTypeDeckDefaults::getNextPriorityCards($projectType);
+        $processStepCards = ProjectTypeDeckDefaults::getProcessStepCards($projectType);
+        $defaultTitles = array_values(array_unique(array_filter(array_map(
+            static fn(array $item): string => (string) ($item['title'] ?? ''),
+            array_merge($nextPriorityCards, $processStepCards)
+        ))));
+
+        $set1Titles = ProjectTypeDeckDefaults::getConditionalSet1Titles();
+        $set2Titles = ProjectTypeDeckDefaults::getConditionalSet2Titles();
+        $aliasesByCanonical = ProjectTypeDeckDefaults::getCardTitleAliases();
+
+        $allManagedTitles = [];
+        $canonicalByNormalizedTitle = [];
+        $groupByCanonicalTitle = [];
+
+        foreach ($defaultTitles as $title) {
+            $group = 'always';
+            if (in_array($title, $set1Titles, true)) {
+                $group = 'set1';
+            } elseif (in_array($title, $set2Titles, true)) {
+                $group = 'set2';
+            }
+
+            $groupByCanonicalTitle[$title] = $group;
+
+            $aliases = $aliasesByCanonical[$title] ?? [$title];
+            if (!in_array($title, $aliases, true)) {
+                $aliases[] = $title;
+            }
+
+            foreach ($aliases as $alias) {
+                $alias = trim((string) $alias);
+                if ($alias === '') {
+                    continue;
+                }
+                $allManagedTitles[] = $alias;
+                $canonicalByNormalizedTitle[strtolower($alias)] = $title;
+            }
+        }
+
+        if ($allManagedTitles === []) {
+            return 0;
+        }
+
+        $allManagedTitles = array_values(array_unique($allManagedTitles));
+
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('c.id', 'c.title', 'c.archived')
+            ->from('deck_cards', 'c')
+            ->innerJoin('c', 'deck_stacks', 's', 'c.stack_id = s.id')
+            ->where($qb->expr()->eq('s.board_id', $qb->createNamedParameter($boardId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('c.deleted_at', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('s.deleted_at', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->in('c.title', $qb->createNamedParameter($allManagedTitles, IQueryBuilder::PARAM_STR_ARRAY)));
+
+        $result = $qb->executeQuery();
+
+        $updated = 0;
+        while ($row = $result->fetch()) {
+            $cardId = (int) ($row['id'] ?? 0);
+            $title = trim((string) ($row['title'] ?? ''));
+            if ($cardId <= 0 || $title === '') {
+                continue;
+            }
+
+            $canonicalTitle = $canonicalByNormalizedTitle[strtolower($title)] ?? null;
+            if ($canonicalTitle === null) {
+                continue;
+            }
+
+            $group = $groupByCanonicalTitle[$canonicalTitle] ?? 'always';
+            $targetArchived = false;
+            if ($group === 'set1') {
+                $targetArchived = !$isSet1Enabled;
+            } elseif ($group === 'set2') {
+                $targetArchived = !$isSet2Enabled;
+            }
+
+            $isArchived = (bool) ($row['archived'] ?? false);
+            if ($isArchived === $targetArchived) {
+                continue;
+            }
+
+            $update = $this->db->getQueryBuilder();
+            $update->update('deck_cards')
+                ->set('archived', $update->createNamedParameter($targetArchived, IQueryBuilder::PARAM_BOOL))
+                ->where($update->expr()->eq('id', $update->createNamedParameter($cardId, IQueryBuilder::PARAM_INT)))
+                ->executeStatement();
+
+            $this->changeHelper->cardChanged($cardId, true);
+            $updated++;
+        }
+        $result->closeCursor();
+
+        return $updated;
+    }
+
+    private function parseIntOrZero(?string $value): int
+    {
+        $value = trim((string) ($value ?? ''));
+        if ($value === '' || !ctype_digit($value)) {
+            return 0;
+        }
+
+        return (int) $value;
+    }
+
     public function updateProjectDetails(
         int $id,
         ?string $name = null,
@@ -1126,7 +1384,8 @@ class ProjectService
         ?string $loc_city = null,
         ?string $loc_zip = null,
         ?string $external_ref = null,
-        ?int $status = null
+        ?int $status = null,
+        ?int $required_preparation_weeks = null
     ) {
         // 1. Fetch the existing project
         $project = $this->projectMapper->find($id);
@@ -1168,6 +1427,10 @@ class ProjectService
 
         if ($status !== null)
             $project->setStatus($status);
+
+        if ($required_preparation_weeks !== null) {
+            $project->setRequiredPreparationWeeks(max(0, (int) $required_preparation_weeks));
+        }
 
         // 3. Save via Mapper
         $updatedProject = $this->projectMapper->updateProjectDetails($project);

@@ -144,6 +144,7 @@ class TimelineItemMapper extends QBMapper
         $row = $result->fetch();
         $result->closeCursor();
 
-        return ($row['MAX(order_index)'] ?? 0) + 1;
+        $next = ((int) ($row['MAX(order_index)'] ?? 0)) + 1;
+        return max(3, $next);
     }
 }

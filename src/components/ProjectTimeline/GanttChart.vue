@@ -1,197 +1,279 @@
 <template>
-	<div class="gantt-chart-section">
-		<div class="section-header">
-			<h3 class="modern-header">Project Timeline</h3>
-			<div class="header-actions">
-				<div class="timeline-nav">
+	<div class="timeline-v2">
+		<header class="timeline-v2__header">
+			<div class="timeline-v2__title-group">
+				<h3 class="timeline-v2__title">
+					Project Timeline
+				</h3>
+				<p class="timeline-v2__subtitle">
+					Plan and track project phases
+				</p>
+			</div>
+
+			<div class="timeline-v2__controls">
+				<div class="control-group">
 					<NcButton type="tertiary" aria-label="Previous" @click="navigatePrev">
 						<template #icon>
 							<ChevronLeft :size="20" />
 						</template>
 					</NcButton>
-					<NcButton type="tertiary" class="today-btn" @click="navigateToday">Today</NcButton>
+					<NcButton type="tertiary" class="today-btn" @click="navigateToday">
+						Today
+					</NcButton>
 					<NcButton type="tertiary" aria-label="Next" @click="navigateNext">
 						<template #icon>
 							<ChevronRight :size="20" />
 						</template>
 					</NcButton>
 				</div>
-				<div class="timeline-zoom">
-					<NcButton type="tertiary" aria-label="Zoom out" @click="zoomOut">-</NcButton>
-					<span class="zoom-label">Zoom</span>
-					<NcButton type="tertiary" aria-label="Zoom in" @click="zoomIn">+</NcButton>
+
+				<div class="control-group">
+					<NcButton type="tertiary" title="Zoom out" @click="zoomOut">
+						<template #icon>
+							<MagnifyMinusOutline :size="18" />
+						</template>
+					</NcButton>
+					<span class="zoom-indicator">{{ dayWidth }}px/d</span>
+					<NcButton type="tertiary" title="Zoom in" @click="zoomIn">
+						<template #icon>
+							<MagnifyPlusOutline :size="18" />
+						</template>
+					</NcButton>
 				</div>
+
 				<NcButton v-if="isAdmin" type="primary" @click="openAddModal">
 					<template #icon>
-						<Plus :size="16" />
+						<Plus :size="18" />
 					</template>
 					Add Phase
 				</NcButton>
 			</div>
-		</div>
+		</header>
 
-		<div class="detail-card">
-			<div v-if="loading" class="loading-state">
+		<div class="timeline-v2__container">
+			<div v-if="loading" class="timeline-v2__loading">
 				<NcLoadingIcon :size="32" />
-				<p>Loading timeline...</p>
+				<p>Syncing timeline data...</p>
 			</div>
 
-			<div v-else-if="items.length === 0" class="empty-state">
-				<p>No timeline phases defined yet.</p>
-				<p class="empty-hint">Click "Add Phase" in the top right to get started.</p>
+			<div v-else-if="items.length === 0" class="timeline-v2__empty">
+				<ChartGantt :size="48" class="empty-icon" />
+				<h4>No phases defined</h4>
+				<p>Start by adding your first project phase to visualize the timeline.</p>
+				<NcButton v-if="isAdmin" type="primary" @click="openAddModal">
+					Create first phase
+				</NcButton>
 			</div>
 
-			<div v-else class="gantt-container">
-				<div class="gantt-grid" :class="{ 'gantt-grid--with-actions': isAdmin }">
-					<div class="gantt-fixed">
-						<div class="gantt-fixed-header" :style="{ height: timelineHeaderHeight + 'px' }">Phase</div>
-						<div v-for="item in items" :key="`fixed-${item.id}`" class="gantt-fixed-row">
-							<div class="phase-name-line">
-								<span class="phase-name">{{ item.label }}</span>
-								<span class="phase-duration" :title="formatWeeksLabel(item)">{{ formatWeeks(item) }}</span>
-							</div>
-							<span class="phase-dates">{{ formatDate(item.startDate) }} - {{ formatDate(item.endDate) }}</span>
-						</div>
+			<div v-else class="gantt-v2" :class="{ 'gantt-v2--admin': isAdmin }">
+				<!-- Sidebar: Phase List (Draggable) -->
+				<div class="gantt-v2__sidebar">
+					<div class="gantt-v2__header-cell" :style="{ height: timelineHeaderHeight + 'px' }">
+						Phase details
 					</div>
 
-					<div
-						ref="scrollEl"
-						class="gantt-scroll"
-						:class="{ 'gantt-scroll--dragging': isDragging }"
-						@pointerdown="onPointerDown"
-						@pointermove="onPointerMove"
-						@pointerup="onPointerUp"
-						@pointercancel="onPointerUp"
-						@pointerleave="onPointerUp">
-						<div class="gantt-timeline" :style="{ width: totalTimelineWidth + 'px' }">
-							<div class="gantt-timeline-header" :style="{ height: timelineHeaderHeight + 'px' }">
-								<div v-if="spanMultipleYears" class="year-row">
-									<span
-										v-for="year in visibleYears"
-										:key="year.key"
-										class="year-label"
-										:style="{ width: year.width + 'px' }">{{ year.label }}</span>
+					<draggable
+						v-model="draggableItems"
+						v-bind="dragOptions"
+						handle=".drag-handle"
+						class="gantt-v2__phase-list"
+						@end="onDragEnd">
+						<div v-for="item in draggableItems" :key="item.id" class="phase-row">
+							<div v-if="isAdmin" class="drag-handle" title="Drag to reorder">
+								<DragVariant :size="18" />
+							</div>
+							<div class="phase-row__content">
+								<div class="phase-row__top">
+									<span class="phase-row__name">{{ item.label }}</span>
+									<span class="phase-row__duration">{{ formatWeeks(item) }}</span>
 								</div>
-								<div class="month-row">
-									<span
-										v-for="month in visibleMonths"
-										:key="month.key"
-										class="month-label"
-										:class="{ compact: month.width < 60 }"
-										:style="{ width: month.width + 'px' }">
-										{{ month.width < 40 ? '' : month.label }}
-									</span>
-								</div>
-								<div class="week-row">
-									<span
-										v-for="week in visibleIsoWeeks"
-										:key="week.key"
-										class="week-label"
-										:style="{ width: week.width + 'px' }"
-										:title="week.tooltip">
-										{{ week.width < 16 ? '' : week.label }}
-									</span>
+								<div class="phase-row__dates">
+									{{ formatDate(item.startDate) }} – {{ formatDate(item.endDate) }}
 								</div>
 							</div>
+						</div>
+					</draggable>
+				</div>
 
+				<!-- Timeline: Bars & Grid -->
+				<div
+					ref="scrollEl"
+					class="gantt-v2__main"
+					:class="{ 'gantt-v2__main--dragging': isDragging }"
+					@pointerdown="onPointerDown"
+					@pointermove="onPointerMove"
+					@pointerup="onPointerUp"
+					@pointercancel="onPointerUp"
+					@pointerleave="onPointerUp">
+					<div class="gantt-v2__timeline" :style="{ width: totalTimelineWidth + 'px' }">
+						<!-- Timeline Header -->
+						<div class="gantt-v2__timeline-header" :style="{ height: timelineHeaderHeight + 'px' }">
+							<div v-if="spanMultipleYears" class="year-row">
+								<span
+									v-for="year in visibleYears"
+									:key="year.key"
+									class="year-label"
+									:style="{ width: year.width + 'px' }">{{ year.label }}</span>
+							</div>
+							<div class="month-row">
+								<span
+									v-for="month in visibleMonths"
+									:key="month.key"
+									class="month-label"
+									:class="{ compact: month.width < 60 }"
+									:style="{ width: month.width + 'px' }">
+									{{ month.width < 40 ? '' : month.label }}
+								</span>
+							</div>
+							<div class="week-row">
+								<span
+									v-for="week in visibleIsoWeeks"
+									:key="week.key"
+									class="week-label"
+									:style="{ width: week.width + 'px' }"
+									:title="week.tooltip">
+									{{ week.width < 16 ? '' : week.label }}
+								</span>
+							</div>
+						</div>
+
+						<!-- Content Area -->
+						<div class="gantt-v2__content">
+							<!-- Grid Lines Background -->
+							<div class="gantt-v2__grid-lines">
+								<div
+									v-for="month in visibleMonths"
+									:key="'grid-' + month.key"
+									class="grid-column"
+									:style="{ width: month.width + 'px' }" />
+							</div>
+
+							<!-- Today Marker -->
 							<div class="today-marker" :style="{ left: todayOffset + 'px' }">
-								<div class="today-line"></div>
-								<span class="today-label">Today</span>
+								<div class="today-line" />
+								<div class="today-badge">
+									Today
+								</div>
 							</div>
 
-							<div v-for="item in items" :key="`bar-${item.id}`" class="gantt-timeline-row">
-								<div class="timeline-track">
-									<div class="timeline-bar" :style="getBarStyle(item)" :title="`${item.label}: ${formatDate(item.startDate)} - ${formatDate(item.endDate)} (${formatWeeksLabel(item)})`"></div>
+							<!-- Bars -->
+							<div v-for="item in draggableItems" :key="'bar-' + item.id" class="timeline-row">
+								<div
+									class="timeline-bar"
+									:style="getBarStyle(item)"
+									:title="`${item.label}: ${formatDate(item.startDate)} - ${formatDate(item.endDate)} (${formatWeeksLabel(item)})`"
+									@click="isAdmin ? openEditModal(item) : null">
+									<span v-if="getDurationDays(item) * dayWidth > 60" class="timeline-bar__label">
+										{{ item.label }}
+									</span>
 								</div>
 							</div>
 						</div>
 					</div>
+				</div>
 
-					<div v-if="isAdmin" class="gantt-actions">
-						<div class="gantt-actions-header" :style="{ height: timelineHeaderHeight + 'px' }"></div>
-						<div v-for="item in items" :key="`actions-${item.id}`" class="gantt-actions-row">
-							<div v-if="!isSystemItem(item)" class="reorder-buttons">
-								<NcButton
-									type="tertiary"
-									aria-label="Move up"
-									:disabled="!canMoveUp(item)"
-									@click="movePhaseUp(item)">
-									<template #icon>
-										<ChevronUp :size="16" />
-									</template>
-								</NcButton>
-								<NcButton
-									type="tertiary"
-									aria-label="Move down"
-									:disabled="!canMoveDown(item)"
-									@click="movePhaseDown(item)">
-									<template #icon>
-										<ChevronDown :size="16" />
-									</template>
-								</NcButton>
-							</div>
-							<NcButton type="tertiary" aria-label="Edit" @click="openEditModal(item)">
-								<template #icon>
-									<Pencil :size="16" />
-								</template>
-							</NcButton>
-							<NcButton v-if="!isSystemItem(item)" type="error" aria-label="Delete" @click="confirmDelete(item)">
-								<template #icon>
-									<Delete :size="16" />
-								</template>
-							</NcButton>
-						</div>
+				<!-- Actions Column (Admin only) -->
+				<div v-if="isAdmin" class="gantt-v2__actions">
+					<div class="gantt-v2__header-cell" :style="{ height: timelineHeaderHeight + 'px' }">
+						Actions
+					</div>
+					<div v-for="item in draggableItems" :key="'actions-' + item.id" class="action-row">
+						<NcButton
+							type="tertiary"
+							title="Edit phase"
+							@click="openEditModal(item)">
+							<template #icon>
+								<Pencil :size="16" />
+							</template>
+						</NcButton>
+						<NcButton
+							v-if="!isSystemItem(item)"
+							type="error"
+							title="Delete phase"
+							@click="confirmDelete(item)">
+							<template #icon>
+								<Delete :size="16" />
+							</template>
+						</NcButton>
 					</div>
 				</div>
-
-				<div v-if="items.length > 1" class="phase-jumper">
-					<span class="jumper-label">Jump to:</span>
-					<button
-						v-for="(item, index) in items"
-						:key="item.id"
-						class="phase-chip"
-						:class="{ active: currentPhaseIndex === index }"
-						:style="{ '--phase-color': item.color }"
-						@click="navigateToPhase(index)">
-						{{ item.label }}
-					</button>
-				</div>
 			</div>
+
+			<footer v-if="items.length > 0" class="timeline-v2__footer">
+				<div class="phase-jumper">
+					<span class="jumper-label">Focus on:</span>
+					<div class="jumper-chips">
+						<button
+							v-for="(item, index) in items"
+							:key="'chip-' + item.id"
+							class="phase-chip"
+							:class="{ active: currentPhaseIndex === index }"
+							:style="{ '--phase-color': item.color }"
+							@click="navigateToPhase(index)">
+							{{ item.label }}
+						</button>
+					</div>
+				</div>
+			</footer>
 		</div>
 
-		<NcModal v-if="showModal" @close="closeModal">
+		<!-- Modal for Add/Edit -->
+		<NcModal v-if="showModal" size="normal" @close="closeModal">
 			<div class="phase-form">
-				<h3>{{ editingItem ? 'Edit Phase' : 'Add Phase' }}</h3>
-				<div class="form-field">
-					<label>Phase Name</label>
-					<NcTextField :value.sync="form.label" :disabled="isEditingSystemItem" placeholder="e.g., Development, QA, Production" />
-				</div>
-				<div class="form-row">
+				<header class="phase-form__header">
+					<h3>{{ editingItem ? 'Edit Phase' : 'Add New Phase' }}</h3>
+					<p>{{ editingItem ? 'Update the details for this project phase.' : 'Define a new phase for your project timeline.' }}</p>
+				</header>
+
+				<div class="phase-form__content">
 					<div class="form-field">
-						<label>Start Date</label>
-						<NcTextField type="date" :value.sync="form.startDate" />
+						<NcTextField
+							v-model="form.label"
+							label="Phase Name"
+							:show-label="true"
+							:disabled="isEditingSystemItem"
+							placeholder="e.g., Design Phase, Testing" />
 					</div>
+
+					<div class="form-row">
+						<NcTextField
+							v-model="form.startDate"
+							type="date"
+							label="Start Date"
+							:show-label="true" />
+						<NcTextField
+							v-model="form.endDate"
+							type="date"
+							label="End Date"
+							:show-label="true" />
+					</div>
+
 					<div class="form-field">
-						<label>End Date</label>
-						<NcTextField type="date" :value.sync="form.endDate" />
+						<label class="form-label">Phase Color</label>
+						<div class="color-grid">
+							<button
+								v-for="color in colorOptions"
+								:key="color"
+								type="button"
+								class="color-swatch"
+								:class="{ active: form.color === color }"
+								:style="{ backgroundColor: color }"
+								@click="form.color = color" />
+						</div>
 					</div>
 				</div>
-				<div class="form-field">
-					<label>Color</label>
-					<div class="color-picker">
-						<button
-							v-for="color in colorOptions"
-							:key="color"
-							class="color-option"
-							:class="{ selected: form.color === color }"
-							:style="{ backgroundColor: color }"
-							@click="form.color = color"></button>
-					</div>
-				</div>
-				<div class="form-actions">
-					<NcButton @click="closeModal">Cancel</NcButton>
-					<NcButton type="primary" :disabled="!canSave || saving" @click="saveItem">{{ saving ? 'Saving...' : 'Save' }}</NcButton>
-				</div>
+
+				<footer class="phase-form__footer">
+					<NcButton type="secondary" @click="closeModal">
+						Cancel
+					</NcButton>
+					<NcButton
+						type="primary"
+						:disabled="!canSave || saving"
+						@click="saveItem">
+						{{ saving ? 'Saving...' : (editingItem ? 'Update Phase' : 'Create Phase') }}
+					</NcButton>
+				</footer>
 			</div>
 		</NcModal>
 	</div>
@@ -201,13 +283,17 @@
 import { generateUrl } from '@nextcloud/router'
 import axios from '@nextcloud/axios'
 import { NcButton, NcLoadingIcon, NcModal, NcTextField } from '@nextcloud/vue'
-import Plus from 'vue-material-design-icons/Plus.vue'
-import Pencil from 'vue-material-design-icons/Pencil.vue'
-import Delete from 'vue-material-design-icons/Delete.vue'
+import draggable from 'vuedraggable'
+
+import ChartGantt from 'vue-material-design-icons/ChartGantt.vue'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
 import ChevronRight from 'vue-material-design-icons/ChevronRight.vue'
-import ChevronUp from 'vue-material-design-icons/ChevronUp.vue'
-import ChevronDown from 'vue-material-design-icons/ChevronDown.vue'
+import Delete from 'vue-material-design-icons/Delete.vue'
+import DragVariant from 'vue-material-design-icons/DragVariant.vue'
+import MagnifyMinusOutline from 'vue-material-design-icons/MagnifyMinusOutline.vue'
+import MagnifyPlusOutline from 'vue-material-design-icons/MagnifyPlusOutline.vue'
+import Pencil from 'vue-material-design-icons/Pencil.vue'
+import Plus from 'vue-material-design-icons/Plus.vue'
 
 export default {
 	name: 'GanttChart',
@@ -216,13 +302,16 @@ export default {
 		NcLoadingIcon,
 		NcModal,
 		NcTextField,
-		Plus,
-		Pencil,
-		Delete,
+		draggable,
+		ChartGantt,
 		ChevronLeft,
 		ChevronRight,
-		ChevronUp,
-		ChevronDown,
+		Delete,
+		DragVariant,
+		MagnifyMinusOutline,
+		MagnifyPlusOutline,
+		Pencil,
+		Plus,
 	},
 	props: {
 		projectId: {
@@ -238,7 +327,7 @@ export default {
 		return {
 			loading: true,
 			saving: false,
-			items: [],
+			allItems: [],
 			showModal: false,
 			editingItem: null,
 			form: {
@@ -247,8 +336,12 @@ export default {
 				endDate: '',
 				color: '#3b82f6',
 			},
-			colorOptions: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'],
-			dayWidth: 3,
+			colorOptions: [
+				'#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+				'#8b5cf6', '#ec4899', '#06b6d4', '#84cc16',
+				'#27272a', '#71717a',
+			],
+			dayWidth: 4,
 			currentPhaseIndex: 0,
 			isDragging: false,
 			dragStartX: 0,
@@ -256,6 +349,31 @@ export default {
 		}
 	},
 	computed: {
+		items() {
+			return (this.allItems || [])
+				.filter((item) => !this.isSystemItem(item))
+				.slice()
+				.sort((a, b) => (Number(a.orderIndex) || 0) - (Number(b.orderIndex) || 0))
+		},
+		draggableItems: {
+			get() {
+				return this.items
+			},
+			set(value) {
+				this.allItems = [
+					...this.allItems.filter((item) => this.isSystemItem(item)),
+					...value,
+				]
+			},
+		},
+		dragOptions() {
+			return {
+				animation: 200,
+				group: 'description',
+				disabled: !this.isAdmin,
+				ghostClass: 'phase-row--ghost',
+			}
+		},
 		canSave() {
 			return this.form.label.trim() !== '' && this.form.startDate !== '' && this.form.endDate !== ''
 		},
@@ -320,8 +438,7 @@ export default {
 			return start.getFullYear() !== end.getFullYear()
 		},
 		timelineHeaderHeight() {
-			// Must match CSS heights for year/month/week rows.
-			return this.spanMultipleYears ? 84 : 52
+			return this.spanMultipleYears ? 80 : 54
 		},
 		visibleYears() {
 			if (!this.spanMultipleYears) return []
@@ -373,25 +490,15 @@ export default {
 		isSystemItem(item) {
 			return !!(item && item.systemKey)
 		},
-		canMoveUp(item) {
-			const index = this.getItemIndex(item)
-			if (index <= 0) return false
-			return !this.isSystemItem(this.items[index - 1])
-		},
-		canMoveDown(item) {
-			const index = this.getItemIndex(item)
-			if (index < 0 || index >= this.items.length - 1) return false
-			return !this.isSystemItem(this.items[index + 1])
-		},
 		async loadItems() {
 			this.loading = true
 			try {
 				const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${this.projectId}/timeline`)
 				const response = await axios.get(url)
-				this.items = response.data || []
+				this.allItems = response.data || []
 			} catch (error) {
 				console.error('Error loading timeline:', error)
-				this.items = []
+				this.allItems = []
 			} finally {
 				this.loading = false
 			}
@@ -401,7 +508,7 @@ export default {
 			const date = this.parseDateOnly(dateStr)
 			const day = date.getDate().toString().padStart(2, '0')
 			const month = (date.getMonth() + 1).toString().padStart(2, '0')
-			const year = date.getFullYear()
+			const year = date.getFullYear().toString().slice(-2)
 			return `${day}/${month}/${year}`
 		},
 		parseDateOnly(value) {
@@ -430,7 +537,12 @@ export default {
 			const offsetDays = Math.floor((itemStart - start) / (1000 * 60 * 60 * 24))
 			const durationDays = Math.floor((itemEnd - itemStart) / (1000 * 60 * 60 * 24)) + 1
 			const leftPx = offsetDays * this.dayWidth
-			return { left: `${leftPx}px`, width: `${durationDays * this.dayWidth}px`, backgroundColor: item.color || '#3b82f6' }
+			return {
+				left: `${leftPx}px`,
+				width: `${durationDays * this.dayWidth}px`,
+				backgroundColor: item.color || '#3b82f6',
+				borderColor: 'rgba(0,0,0,0.1)',
+			}
 		},
 		getDurationDays(item) {
 			const start = this.parseDateOnly(item.startDate)
@@ -440,6 +552,7 @@ export default {
 		formatWeeks(item) {
 			const days = this.getDurationDays(item)
 			const weeks = days / 7
+			if (weeks < 1) return `${days}d`
 			const fixed = Math.abs(weeks - Math.round(weeks)) < 1e-9 ? String(Math.round(weeks)) : weeks.toFixed(1)
 			return `${fixed}w`
 		},
@@ -492,6 +605,21 @@ export default {
 				console.error('Error deleting phase:', error)
 			}
 		},
+		async onDragEnd() {
+			try {
+				const baseUrl = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${this.projectId}/timeline`)
+				const updates = this.items.map((item, index) => {
+					// We need to avoid reserved system indices (0, 1, 2)
+					const newOrder = index + 10
+					return axios.put(`${baseUrl}/${item.id}`, { orderIndex: newOrder })
+				})
+				await Promise.all(updates)
+				await this.loadItems()
+			} catch (error) {
+				console.error('Error updating order:', error)
+				await this.loadItems()
+			}
+		},
 		navigatePrev() {
 			const monthPx = 30 * this.dayWidth
 			this.scrollBy(-monthPx)
@@ -540,14 +668,14 @@ export default {
 			})
 		},
 		zoomIn() {
-			const levels = [3, 4, 6, 8, 12]
-			const idx = Math.max(0, levels.indexOf(this.dayWidth))
+			const levels = [3, 4, 6, 8, 12, 16]
+			const idx = levels.findIndex(l => l >= this.dayWidth)
 			const next = levels[Math.min(levels.length - 1, idx + 1)]
 			this.setZoom(next)
 		},
 		zoomOut() {
-			const levels = [3, 4, 6, 8, 12]
-			const idx = Math.max(0, levels.indexOf(this.dayWidth))
+			const levels = [2, 3, 4, 6, 8, 12]
+			const idx = levels.findIndex(l => l >= this.dayWidth)
 			const next = levels[Math.max(0, idx - 1)]
 			this.setZoom(next)
 		},
@@ -575,119 +703,463 @@ export default {
 		onPointerUp() {
 			this.isDragging = false
 		},
-		getItemIndex(item) {
-			return this.items.findIndex((i) => i.id === item.id)
-		},
-		async movePhaseUp(item) {
-			const index = this.getItemIndex(item)
-			if (!this.canMoveUp(item)) return
-			await this.swapPhaseOrder(index, index - 1)
-		},
-		async movePhaseDown(item) {
-			const index = this.getItemIndex(item)
-			if (!this.canMoveDown(item)) return
-			await this.swapPhaseOrder(index, index + 1)
-		},
-		async swapPhaseOrder(indexA, indexB) {
-			const itemA = this.items[indexA]
-			const itemB = this.items[indexB]
-			if (!itemA || !itemB) return
-			if (this.isSystemItem(itemA) || this.isSystemItem(itemB)) return
-			try {
-				const baseUrl = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${this.projectId}/timeline`)
-				await Promise.all([
-					axios.put(`${baseUrl}/${itemA.id}`, { orderIndex: indexB }),
-					axios.put(`${baseUrl}/${itemB.id}`, { orderIndex: indexA }),
-				])
-				const temp = this.items[indexA]
-				this.$set(this.items, indexA, this.items[indexB])
-				this.$set(this.items, indexB, temp)
-			} catch (error) {
-				console.error('Error reordering phases:', error)
-				await this.loadItems()
-			}
-		},
 	},
 }
 </script>
 
 <style scoped>
-.gantt-chart-section { margin-top: 24px; }
-.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.section-header .modern-header { margin: 0; font-size: 18px; font-weight: 600; }
-.detail-card { background: var(--color-main-background); border: 1px solid var(--color-border); border-radius: 12px; padding: 20px; overflow: hidden; }
-.loading-state, .empty-state { text-align: center; padding: 32px; color: var(--color-text-maxcontrast); }
-.loading-state p, .empty-state p { margin: 0 0 16px; }
-.gantt-container { min-width: 100%; }
-.gantt-grid { display: grid; grid-template-columns: 220px 1fr; border: 1px solid var(--color-border); border-radius: 10px; overflow: hidden; }
-.gantt-grid--with-actions { grid-template-columns: 220px 1fr 132px; }
+.timeline-v2 {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+	padding: 8px 0;
+}
 
-.gantt-fixed { background: var(--color-main-background); border-right: 1px solid var(--color-border); }
-.gantt-fixed-header { display: flex; align-items: center; padding: 12px; font-weight: 600; font-size: 13px; color: var(--color-text-maxcontrast); background: var(--color-background-dark); border-bottom: 1px solid var(--color-border); }
-.gantt-fixed-row { display: flex; flex-direction: column; justify-content: center; padding: 10px 12px; min-height: 56px; border-bottom: 1px solid var(--color-border); }
-.gantt-fixed-row:last-child { border-bottom: none; }
-.phase-name-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.phase-name { font-weight: 600; font-size: 14px; }
-.phase-duration { font-size: 11px; font-weight: 700; color: var(--color-text-maxcontrast); background: var(--color-background-hover); border: 1px solid var(--color-border); padding: 2px 6px; border-radius: 999px; white-space: nowrap; }
-.phase-dates { font-size: 11px; color: var(--color-text-maxcontrast); margin-top: 4px; }
+.timeline-v2__header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 20px;
+	flex-wrap: wrap;
+}
 
-.gantt-scroll { overflow-x: auto; overflow-y: hidden; position: relative; cursor: grab; touch-action: pan-y; background: var(--color-main-background); }
-.gantt-scroll--dragging { cursor: grabbing; user-select: none; }
-.gantt-timeline { position: relative; }
-.gantt-timeline-header { background: var(--color-background-dark); border-bottom: 1px solid var(--color-border); }
+.timeline-v2__title {
+	margin: 0;
+	font-size: 22px;
+	font-weight: 700;
+}
 
-.gantt-timeline-row { min-height: 56px; border-bottom: 1px solid var(--color-border); display: flex; align-items: center; }
-.gantt-timeline-row:last-child { border-bottom: none; }
+.timeline-v2__subtitle {
+	margin: 4px 0 0;
+	font-size: 14px;
+	color: var(--color-text-maxcontrast);
+}
 
-.gantt-actions { background: var(--color-main-background); border-left: 1px solid var(--color-border); }
-.gantt-actions-header { background: var(--color-background-dark); border-bottom: 1px solid var(--color-border); }
-.gantt-actions-row { display: flex; align-items: center; gap: 6px; padding: 8px; min-height: 56px; border-bottom: 1px solid var(--color-border); }
-.gantt-actions-row:last-child { border-bottom: none; }
+.timeline-v2__controls {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
 
-.reorder-buttons { display: flex; flex-direction: column; gap: 2px; margin-right: 4px; }
-.reorder-buttons button { padding: 0; min-height: 24px; min-width: 24px; }
-.reorder-buttons button:disabled { opacity: 0.3; cursor: not-allowed; }
-.year-row { display: flex; height: 32px; border-bottom: 1px solid var(--color-border); background: var(--color-background-darker, #e5e7eb); }
-.year-label { display: flex; align-items: center; justify-content: center; padding: 6px 8px; font-size: 13px; font-weight: 700; color: var(--color-main-text); border-right: 1px solid var(--color-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.month-row { display: flex; height: 28px; border-bottom: 1px solid var(--color-border); }
-.month-label { display: flex; align-items: center; justify-content: center; padding: 6px 4px; font-size: 11px; font-weight: 500; color: var(--color-text-maxcontrast); border-right: 1px solid var(--color-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 28px; }
-.month-label.compact { font-size: 10px; padding: 4px 2px; }
-.week-row { display: flex; height: 24px; }
-.week-label { display: flex; align-items: center; justify-content: center; padding: 3px 2px; font-size: 10px; font-weight: 700; color: var(--color-text-lighter); border-right: 1px solid var(--color-border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 24px; letter-spacing: 0.02em; }
-.timeline-track { position: relative; height: 32px; width: 100%; margin: 8px 0; }
-.timeline-bar { position: absolute; top: 0; height: 100%; border-radius: 4px; min-width: 6px; cursor: pointer; transition: transform 0.2s ease; }
-.timeline-bar:hover { transform: scaleY(1.1); }
-.phase-form { padding: 20px; min-width: 400px; }
-.phase-form h3 { margin: 0 0 20px; font-size: 18px; }
-.form-field { margin-bottom: 16px; }
-.form-field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--color-text-maxcontrast); }
-.form-row { display: flex; gap: 16px; }
-.form-row .form-field { flex: 1; }
-.color-picker { display: flex; gap: 8px; flex-wrap: wrap; }
-.color-option { width: 32px; height: 32px; border-radius: 6px; border: 2px solid transparent; cursor: pointer; transition: all 0.2s ease; }
-.color-option:hover { transform: scale(1.1); }
-.color-option.selected { border-color: var(--color-main-text); box-shadow: 0 0 0 2px var(--color-main-background), 0 0 0 4px var(--color-primary-element); }
-.form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-.header-actions { display: flex; align-items: center; gap: 12px; }
-.timeline-nav { display: flex; align-items: center; gap: 4px; background: var(--color-background-dark); border-radius: 8px; padding: 4px; }
-.timeline-nav .today-btn { min-width: auto; padding: 6px 12px; font-weight: 500; }
-.timeline-zoom { display: flex; align-items: center; gap: 6px; background: var(--color-background-dark); border-radius: 8px; padding: 4px; }
-.zoom-label { font-size: 12px; font-weight: 600; color: var(--color-text-maxcontrast); padding: 0 6px; }
+.control-group {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 4px;
+	background: var(--color-background-dark);
+	border-radius: 12px;
+}
 
-.today-marker { position: absolute; top: 0; bottom: 0; z-index: 10; pointer-events: none; }
-.today-line { width: 2px; height: 100%; background: #dc2626; position: absolute; left: 0; opacity: 0.98; }
-.today-label { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); font-size: 10px; font-weight: 700; color: #dc2626; background: var(--color-main-background); padding: 2px 6px; border-radius: 4px; white-space: nowrap; box-shadow: 0 1px 0 rgba(0,0,0,0.06); border: 1px solid rgba(220, 38, 38, 0.35); }
-.phase-jumper { display: flex; align-items: center; gap: 8px; padding: 16px 12px; border-top: 1px solid var(--color-border); flex-wrap: wrap; }
-.jumper-label { font-size: 12px; font-weight: 500; color: var(--color-text-maxcontrast); }
-.phase-chip { padding: 6px 12px; border-radius: 16px; font-size: 12px; font-weight: 500; border: 1px solid var(--color-border); background: var(--color-main-background); color: var(--color-main-text); cursor: pointer; transition: all 0.2s ease; }
-.phase-chip:hover { border-color: var(--phase-color, var(--color-primary-element)); background: var(--color-background-hover); }
-.phase-chip.active { background: var(--phase-color, var(--color-primary-element)); color: #fff; border-color: var(--phase-color, var(--color-primary-element)); }
-.empty-hint { font-size: 13px; color: var(--color-text-lighter); margin-top: 8px; }
+.zoom-indicator {
+	font-size: 11px;
+	font-weight: 700;
+	color: var(--color-text-maxcontrast);
+	padding: 0 8px;
+	min-width: 50px;
+	text-align: center;
+}
+
+.timeline-v2__container {
+	background: var(--color-main-background);
+	border: 1px solid var(--color-border);
+	border-radius: 20px;
+	overflow: hidden;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+}
+
+.timeline-v2__loading,
+.timeline-v2__empty {
+	padding: 80px 40px;
+	text-align: center;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 16px;
+	color: var(--color-text-maxcontrast);
+}
+
+.timeline-v2__empty h4 {
+	margin: 0;
+	font-size: 18px;
+	color: var(--color-main-text);
+}
+
+.timeline-v2__empty p {
+	margin: 0 0 8px;
+	max-width: 300px;
+	line-height: 1.5;
+}
+
+.empty-icon {
+	color: var(--color-background-darker);
+}
+
+/* Gantt V2 Grid Layout */
+.gantt-v2 {
+	display: grid;
+	grid-template-columns: 240px 1fr;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.gantt-v2--admin {
+	grid-template-columns: 240px 1fr 100px;
+}
+
+.gantt-v2__header-cell {
+	display: flex;
+	align-items: center;
+	padding: 0 20px;
+	background: var(--color-background-dark);
+	border-bottom: 1px solid var(--color-border);
+	font-size: 12px;
+	font-weight: 800;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--color-text-maxcontrast);
+}
+
+/* Sidebar / Phase List */
+.gantt-v2__sidebar {
+	border-right: 1px solid var(--color-border);
+}
+
+.phase-row {
+	display: flex;
+	align-items: center;
+	min-height: 64px;
+	padding: 0 16px;
+	border-bottom: 1px solid var(--color-border);
+	background: var(--color-main-background);
+	transition: background 0.2s ease;
+}
+
+.phase-row:hover {
+	background: var(--color-background-hover);
+}
+
+.phase-row--ghost {
+	opacity: 0.5;
+	background: var(--color-primary-element-light) !important;
+}
+
+.drag-handle {
+	cursor: grab;
+	padding: 8px 4px;
+	margin-right: 8px;
+	color: var(--color-text-lighter);
+	display: flex;
+	align-items: center;
+}
+
+.drag-handle:active {
+	cursor: grabbing;
+}
+
+.phase-row__content {
+	flex: 1;
+	min-width: 0;
+}
+
+.phase-row__top {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.phase-row__name {
+	font-weight: 600;
+	font-size: 14px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.phase-row__duration {
+	font-size: 10px;
+	font-weight: 800;
+	background: var(--color-background-darker);
+	padding: 2px 6px;
+	border-radius: 99px;
+	color: var(--color-text-maxcontrast);
+}
+
+.phase-row__dates {
+	font-size: 11px;
+	color: var(--color-text-maxcontrast);
+	margin-top: 2px;
+}
+
+/* Timeline / Main Area */
+.gantt-v2__main {
+	overflow-x: auto;
+	overflow-y: hidden;
+	cursor: grab;
+}
+
+.gantt-v2__main--dragging {
+	cursor: grabbing;
+	user-select: none;
+}
+
+.gantt-v2__timeline {
+	position: relative;
+	min-height: 100%;
+}
+
+.gantt-v2__timeline-header {
+	position: sticky;
+	top: 0;
+	z-index: 20;
+	background: var(--color-background-dark);
+	border-bottom: 1px solid var(--color-border);
+}
+
+.year-row, .month-row, .week-row {
+	display: flex;
+	border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.year-label, .month-label, .week-label {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-right: 1px solid rgba(0,0,0,0.05);
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+.year-label { font-size: 13px; font-weight: 800; height: 32px; background: rgba(0,0,0,0.02); }
+.month-label { font-size: 11px; font-weight: 600; height: 26px; }
+.week-label { font-size: 9px; font-weight: 700; height: 22px; color: var(--color-text-lighter); }
+
+.gantt-v2__content {
+	position: relative;
+	padding-bottom: 1px;
+}
+
+.gantt-v2__grid-lines {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	display: flex;
+	pointer-events: none;
+}
+
+.grid-column {
+	border-right: 1px solid rgba(0,0,0,0.03);
+	height: 100%;
+}
+
+.timeline-row {
+	height: 64px;
+	display: flex;
+	align-items: center;
+	border-bottom: 1px solid var(--color-border);
+	position: relative;
+}
+
+.timeline-bar {
+	position: absolute;
+	height: 32px;
+	border-radius: 8px;
+	display: flex;
+	align-items: center;
+	padding: 0 12px;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+	border: 1px solid rgba(0,0,0,0.08);
+	cursor: pointer;
+	transition: filter 0.2s ease, transform 0.1s ease;
+	z-index: 5;
+}
+
+.timeline-bar:hover {
+	filter: brightness(1.05);
+	transform: scaleY(1.05);
+	z-index: 10;
+}
+
+.timeline-bar__label {
+	font-size: 12px;
+	font-weight: 700;
+	color: #fff;
+	text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.today-marker {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	z-index: 15;
+	pointer-events: none;
+}
+
+.today-line {
+	width: 2px;
+	height: 100%;
+	background: #ef4444;
+	box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+}
+
+.today-badge {
+	position: absolute;
+	top: 4px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: #ef4444;
+	color: #fff;
+	font-size: 9px;
+	font-weight: 800;
+	text-transform: uppercase;
+	padding: 2px 6px;
+	border-radius: 4px;
+	white-space: nowrap;
+}
+
+/* Actions Column */
+.gantt-v2__actions {
+	border-left: 1px solid var(--color-border);
+	background: rgba(0,0,0,0.01);
+}
+
+.action-row {
+	height: 64px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	border-bottom: 1px solid var(--color-border);
+}
+
+/* Footer / Phase Jumper */
+.timeline-v2__footer {
+	padding: 16px 24px;
+	background: var(--color-background-dark);
+}
+
+.phase-jumper {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+.jumper-label {
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--color-text-maxcontrast);
+}
+
+.jumper-chips {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.phase-chip {
+	padding: 6px 14px;
+	border-radius: 12px;
+	font-size: 12px;
+	font-weight: 600;
+	border: 1px solid var(--color-border);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.phase-chip:hover {
+	border-color: var(--phase-color);
+	background: var(--color-background-hover);
+}
+
+.phase-chip.active {
+	background: var(--phase-color);
+	color: #fff;
+	border-color: var(--phase-color);
+	box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Phase Form / Modal */
+.phase-form {
+	padding: 32px;
+}
+
+.phase-form__header {
+	margin-bottom: 24px;
+}
+
+.phase-form__header h3 {
+	margin: 0;
+	font-size: 22px;
+}
+
+.phase-form__header p {
+	margin: 4px 0 0;
+	color: var(--color-text-maxcontrast);
+}
+
+.phase-form__content {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+.form-label {
+	display: block;
+	font-size: 13px;
+	font-weight: 700;
+	margin-bottom: 8px;
+	color: var(--color-text-maxcontrast);
+}
+
+.form-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+}
+
+.color-grid {
+	display: flex;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.color-swatch {
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+	border: 2px solid transparent;
+	cursor: pointer;
+	transition: transform 0.2s ease;
+}
+
+.color-swatch:hover {
+	transform: scale(1.1);
+}
+
+.color-swatch.active {
+	border-color: var(--color-main-text);
+	box-shadow: 0 0 0 2px var(--color-main-background), 0 0 0 4px var(--color-primary-element);
+}
+
+.phase-form__footer {
+	margin-top: 32px;
+	display: flex;
+	justify-content: flex-end;
+	gap: 12px;
+}
+
 @media (max-width: 900px) {
-	.header-actions { flex-direction: column; align-items: stretch; }
-	.form-row { flex-direction: column; gap: 0; }
-	.gantt-grid, .gantt-grid--with-actions { grid-template-columns: 1fr; }
-	.gantt-fixed { border-right: none; border-bottom: 1px solid var(--color-border); }
-	.gantt-actions { border-left: none; border-top: 1px solid var(--color-border); }
+	.gantt-v2, .gantt-v2--admin {
+		grid-template-columns: 1fr;
+	}
+
+	.gantt-v2__sidebar { border-right: none; }
+	.gantt-v2__actions { border-left: none; }
 }
 </style>

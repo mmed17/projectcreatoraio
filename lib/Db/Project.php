@@ -38,6 +38,11 @@ class Project extends Entity implements JsonSerializable {
     protected int|null    $status      = null;
     protected int|null    $organizationId = null;
     protected string|null    $whiteBoardId = null;
+    protected int|null $requiredPreparationWeeks = null;
+    protected int|null $cvObjectOwnership = null;
+    protected int|null $cvTraceOwnership = null;
+    protected int|null $cvBuildingType = null;
+    protected int|null $cvAvpLocation = null;
     protected DateTime|null $createdAt = null;
     protected DateTime|null $updatedAt = null;
 
@@ -70,6 +75,11 @@ class Project extends Entity implements JsonSerializable {
         $this->addType('status',      Types::INTEGER);
         $this->addType('organization_id', Types::INTEGER);
         $this->addType('white_board_id', Types::STRING);
+        $this->addType('requiredPreparationWeeks', Types::INTEGER);
+        $this->addType('cvObjectOwnership', Types::SMALLINT);
+        $this->addType('cvTraceOwnership', Types::SMALLINT);
+        $this->addType('cvBuildingType', Types::SMALLINT);
+        $this->addType('cvAvpLocation', Types::SMALLINT);
         $this->addType('createdAt',   Types::DATETIME);
         $this->addType('updatedAt',   Types::DATETIME);
     }
@@ -104,6 +114,11 @@ class Project extends Entity implements JsonSerializable {
             'status'     => $this->status,
             'organization_id' => $this->organizationId,
             'white_board_id' => $this->whiteBoardId,
+            'required_preparation_weeks' => $this->requiredPreparationWeeks,
+            'cv_object_ownership' => $this->cvObjectOwnership,
+            'cv_trace_ownership' => $this->cvTraceOwnership,
+            'cv_building_type' => $this->cvBuildingType,
+            'cv_avp_location' => $this->cvAvpLocation,
             'createdAt'  => $this->createdAt,
             'updatedAt'  => $this->updatedAt
         ];

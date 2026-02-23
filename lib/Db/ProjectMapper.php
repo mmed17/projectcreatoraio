@@ -32,6 +32,7 @@ class ProjectMapper extends QBMapper
         string $folderPath,
         array $privateFolders,
         ?string $whiteBoardId,
+        ?int $requiredPreparationWeeks = null,
         ?string $clientName = null,
         ?string $clientRole = null,
         ?string $clientPhone = null,
@@ -64,6 +65,7 @@ class ProjectMapper extends QBMapper
         $project->setStatus(1);
         $project->setOrganizationId($organization->getId());
         $project->setWhiteBoardId($whiteBoardId);
+        $project->setRequiredPreparationWeeks((int) ($requiredPreparationWeeks ?? 0));
 
         $now = new DateTime();
         $project->setCreatedAt($now);

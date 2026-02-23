@@ -1,6 +1,8 @@
 <template>
 	<div class="deck-board">
-		<div v-if="!boardId" class="deck-board__empty">No Deck board linked to this project.</div>
+		<div v-if="!boardId" class="deck-board__empty">
+			No Deck board linked to this project.
+		</div>
 
 		<div v-else>
 			<div class="deck-board__top">
@@ -10,7 +12,9 @@
 						<span class="deck-board__badge">#{{ boardId }}</span>
 						<span v-if="!canEdit" class="deck-board__badge deck-board__badge--muted">Read only</span>
 					</div>
-					<div class="deck-board__subtitle">Drag and drop cards between stacks.</div>
+					<div class="deck-board__subtitle">
+						Deck tasks embedded in project workspace.
+					</div>
 				</div>
 				<div class="deck-board__actions">
 					<NcButton type="secondary" @click="openBoard">
@@ -34,71 +38,22 @@
 				:organization-id="normalizedOrganizationId"
 				:members="projectMembers"
 				:stacks="sortedStacks"
-				:can-manage-profiles="canManageProfiles"
-			/>
+				:can-manage-profiles="canManageProfiles" />
 
-			<div v-if="loading" class="deck-board__muted">Loading board...</div>
-			<div v-else-if="error" class="deck-board__muted">{{ error }}</div>
-			<div v-else class="deck-board__lane" @dragover.prevent>
-				<div v-for="stack in sortedStacks" :key="stack.id" class="deck-board__stack">
-					<div class="deck-board__stack-head">
-						<div class="deck-board__stack-title">{{ stack.title }}</div>
-						<div class="deck-board__stack-count">{{ (stack.cards || []).length }}</div>
-					</div>
-
-					<div class="deck-board__cards">
-						<div
-							v-for="(slot, slotIndex) in dropSlots(stack)"
-							:key="`${stack.id}-slot-${slotIndex}`"
-							class="deck-board__slot"
-							:class="slotClass(stack.id, slotIndex)"
-							@dragenter.prevent="setDropTarget(stack.id, slotIndex)"
-							@dragover.prevent="setDropTarget(stack.id, slotIndex)"
-							@drop.prevent="handleDrop(stack.id, slotIndex)"
-						>
-							<div v-if="slotIndex < (stack.cards || []).length" class="deck-board__card-wrap">
-								<div
-									class="deck-board__card"
-									:class="{ 'deck-board__card--dragging': isDraggingCard(slot.id) }"
-									:draggable="canEdit"
-									@dragstart="handleDragStart(slot, stack.id, slotIndex, $event)"
-									@dragend="handleDragEnd"
-									@click="openCard(stack.id, slot)"
-								>
-									<div class="deck-board__card-title">{{ slot.title }}</div>
-									<div v-if="Array.isArray(slot.labels) && slot.labels.length > 0" class="deck-board__labels">
-										<span
-											v-for="label in slot.labels.slice(0, 6)"
-											:key="label.id"
-											class="deck-board__label"
-											:style="{ background: `#${label.color}` }"
-											:title="label.title"
-										/>
-									</div>
-								</div>
-							</div>
-						</div>
-
-					<div v-if="canEdit" class="deck-board__add">
-						<input
-							v-model="newCardTitleByStack[stack.id]"
-							type="text"
-							class="deck-board__input"
-							:placeholder="`Add a card...`"
-							@keydown.enter.prevent="createCard(stack)"
-						/>
-						<NcButton
-							type="secondary"
-							:disabled="creatingStackId === stack.id || !canCreateForStack(stack)"
-							@click="createCard(stack)"
-						>
-							<template #icon>
-								<Plus :size="18" />
-							</template>
-							Add
-						</NcButton>
-					</div>
+			<div v-if="loading" class="deck-board__muted">
+				Loading board...
+			</div>
+			<div v-else-if="error" class="deck-board__muted">
+				{{ error }}
+			</div>
+			<div v-else class="deck-board__embed">
+				<div v-if="embeddedError" class="deck-board__muted">
+					{{ embeddedError }}
 				</div>
+				<div v-else-if="!embeddedReady" class="deck-board__muted">
+					Loading Deck tasks UI...
+				</div>
+				<div ref="deckMount" class="deck-board__mount" />
 			</div>
 		</div>
 	</div>
@@ -106,10 +61,9 @@
 
 <script>
 import NcButton from '@nextcloud/vue/components/NcButton'
-import { generateUrl } from '@nextcloud/router'
+import { generateFilePath, generateUrl } from '@nextcloud/router'
 
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
-import Plus from 'vue-material-design-icons/Plus.vue'
 import Refresh from 'vue-material-design-icons/Refresh.vue'
 
 import { DeckService } from '../../Services/deck.js'
@@ -125,7 +79,6 @@ export default {
 		DeckRasciManager,
 		NcButton,
 		OpenInNew,
-		Plus,
 		Refresh,
 	},
 	props: {
@@ -154,18 +107,9 @@ export default {
 			loading: false,
 			stacks: [],
 			projectMembers: [],
-			creatingStackId: null,
-			newCardTitleByStack: {},
-			drag: {
-				active: false,
-				cardId: null,
-				fromStackId: null,
-				fromIndex: null,
-			},
-			drop: {
-				stackId: null,
-				index: null,
-			},
+			embeddedReady: false,
+			embeddedError: '',
+			embeddedHandle: null,
 		}
 	},
 	computed: {
@@ -191,17 +135,28 @@ export default {
 		sortedStacks() {
 			return (this.stacks || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 		},
+		deckBoardUrl() {
+			if (!this.boardId) {
+				return ''
+			}
+			return generateUrl(`/apps/deck/board/${this.boardId}`)
+		},
 	},
 	watch: {
 		boardId: {
 			immediate: true,
-			handler() {
-				this.load()
+			async handler() {
+				this.unmountEmbedded()
+				await this.load()
+				await this.mountEmbedded({ forceRemount: true })
 			},
 		},
 		projectId() {
 			this.loadProjectMembers()
 		},
+	},
+	beforeDestroy() {
+		this.unmountEmbedded()
 	},
 	methods: {
 		async load() {
@@ -241,6 +196,7 @@ export default {
 		},
 		reload() {
 			this.load()
+			this.mountEmbedded({ forceRemount: true })
 		},
 		resetState() {
 			this.board = null
@@ -248,9 +204,8 @@ export default {
 			this.stacks = []
 			this.projectMembers = []
 			this.error = ''
-			this.creatingStackId = null
-			this.drag = { active: false, cardId: null, fromStackId: null, fromIndex: null }
-			this.drop = { stackId: null, index: null }
+			this.embeddedReady = false
+			this.embeddedError = ''
 		},
 		normalizeStacks(stacks) {
 			const list = Array.isArray(stacks) ? stacks : []
@@ -263,141 +218,92 @@ export default {
 			})
 		},
 		openBoard() {
-			if (!this.boardId) {
+			if (!this.deckBoardUrl) {
 				return
 			}
-			const url = generateUrl(`/apps/deck/#/board/${this.boardId}`)
-			window.open(url, '_blank')
+			window.open(this.deckBoardUrl, '_blank', 'noopener')
 		},
-		openCard(stackId, card) {
-			if (!this.boardId || !card?.id) {
-				return
-			}
-			const url = generateUrl(`/apps/deck/#/board/${this.boardId}/card/${card.id}`)
-			window.open(url, '_blank')
-		},
-		dropSlots(stack) {
-			const len = Array.isArray(stack.cards) ? stack.cards.length : 0
-			return new Array(len + 1).fill(null).map((_, idx) => (idx < len ? stack.cards[idx] : null))
-		},
-		slotClass(stackId, index) {
-			const active = this.drop.stackId !== null && this.drop.index !== null
-			const isTarget = active && String(this.drop.stackId) === String(stackId) && Number(this.drop.index) === Number(index)
-			return {
-				'deck-board__slot--target': isTarget && this.drag.active,
-				'deck-board__slot--disabled': !this.canEdit,
-			}
-		},
-		setDropTarget(stackId, index) {
-			if (!this.canEdit || !this.drag.active) {
-				return
-			}
-			this.drop.stackId = stackId
-			this.drop.index = index
-		},
-		handleDragStart(card, fromStackId, fromIndex, evt) {
-			if (!this.canEdit) {
-				return
-			}
-			this.drag = {
-				active: true,
-				cardId: card.id,
-				fromStackId,
-				fromIndex,
-			}
-			this.drop = { stackId: fromStackId, index: fromIndex }
-			try {
-				evt.dataTransfer.effectAllowed = 'move'
-				evt.dataTransfer.setData('text/plain', String(card.id))
-			} catch (e) {
-				// ignore
-			}
-		},
-		handleDragEnd() {
-			this.drag = { active: false, cardId: null, fromStackId: null, fromIndex: null }
-			this.drop = { stackId: null, index: null }
-		},
-		isDraggingCard(cardId) {
-			return this.drag.active && this.drag.cardId !== null && String(this.drag.cardId) === String(cardId)
-		},
-		async handleDrop(targetStackId, targetIndex) {
-			if (!this.canEdit || !this.drag.active) {
-				return
+		async ensureEmbeddedApiLoaded() {
+			if (window?.OCA?.Deck?.EmbeddedTasks?.mount) {
+				return true
 			}
 
-			const cardId = this.drag.cardId
-			const fromStackId = this.drag.fromStackId
-			const fromIndex = this.drag.fromIndex
-			this.handleDragEnd()
-
-			if (cardId === null || fromStackId === null || fromIndex === null) {
-				return
-			}
-
-			let nextIndex = targetIndex
-			if (String(fromStackId) === String(targetStackId) && Number(fromIndex) < Number(targetIndex)) {
-				nextIndex = Math.max(0, Number(targetIndex) - 1)
-			}
-
-			const snapshot = JSON.parse(JSON.stringify(this.stacks))
-			try {
-				this.moveCardLocal(cardId, fromStackId, fromIndex, targetStackId, nextIndex)
-				await deckService.reorderCard(cardId, targetStackId, nextIndex)
-			} catch (e) {
-				this.stacks = snapshot
-			}
-		},
-		moveCardLocal(cardId, fromStackId, fromIndex, targetStackId, targetIndex) {
-			const fromStack = this.stacks.find((s) => String(s.id) === String(fromStackId))
-			const toStack = this.stacks.find((s) => String(s.id) === String(targetStackId))
-			if (!fromStack || !toStack) {
-				return
-			}
-			const fromCards = Array.isArray(fromStack.cards) ? fromStack.cards.slice() : []
-			const toCards = String(fromStackId) === String(targetStackId) ? fromCards : (Array.isArray(toStack.cards) ? toStack.cards.slice() : [])
-
-			const idx = fromCards.findIndex((c) => String(c.id) === String(cardId))
-			if (idx === -1) {
-				return
-			}
-			const [card] = fromCards.splice(idx, 1)
-			const insertIndex = Math.max(0, Math.min(targetIndex, toCards.length))
-			toCards.splice(insertIndex, 0, { ...card, stackId: targetStackId })
-
-			fromStack.cards = fromCards.map((c, i) => ({ ...c, order: i }))
-			if (String(fromStackId) === String(targetStackId)) {
-				fromStack.cards = toCards.map((c, i) => ({ ...c, order: i }))
-			} else {
-				toStack.cards = toCards.map((c, i) => ({ ...c, order: i }))
-			}
-		},
-		canCreateForStack(stack) {
-			const title = (this.newCardTitleByStack[stack.id] || '').trim()
-			return title.length > 0
-		},
-		async createCard(stack) {
-			if (!this.canEdit || !stack) {
-				return
-			}
-			const title = (this.newCardTitleByStack[stack.id] || '').trim()
-			if (title === '') {
-				return
-			}
-			this.creatingStackId = stack.id
-			try {
-				const order = Array.isArray(stack.cards) ? stack.cards.length : 0
-				const card = await deckService.createCard(stack.id, title, order)
-				this.newCardTitleByStack = { ...this.newCardTitleByStack, [stack.id]: '' }
-				const target = this.stacks.find((s) => String(s.id) === String(stack.id))
-				if (target) {
-					const nextCards = Array.isArray(target.cards) ? target.cards.slice() : []
-					nextCards.push({ ...card, order: nextCards.length })
-					target.cards = nextCards
+			// Must be a static asset URL (no index.php front controller), otherwise Nextcloud returns HTML.
+			const src = generateFilePath('deck', '', 'js/deck-embedded-tasks.js')
+			window.__projectcreatoraioDeckEmbedLoading = window.__projectcreatoraioDeckEmbedLoading || new Promise((resolve, reject) => {
+				const existing = document.querySelector(`script[data-projectcreatoraio-deck-embed="1"][src="${src}"]`)
+				if (existing) {
+					existing.addEventListener('load', resolve, { once: true })
+					existing.addEventListener('error', reject, { once: true })
+					return
 				}
+
+				const script = document.createElement('script')
+				script.dataset.projectcreatoraioDeckEmbed = '1'
+				script.src = src
+				script.async = true
+				script.addEventListener('load', resolve, { once: true })
+				script.addEventListener('error', reject, { once: true })
+				document.head.appendChild(script)
+			})
+
+			try {
+				await window.__projectcreatoraioDeckEmbedLoading
 			} catch (e) {
-				// ignore
-			} finally {
-				this.creatingStackId = null
+				return false
+			}
+
+			return !!window?.OCA?.Deck?.EmbeddedTasks?.mount
+		},
+		unmountEmbedded() {
+			if (this.embeddedHandle && typeof this.embeddedHandle.destroy === 'function') {
+				try {
+					this.embeddedHandle.destroy()
+				} catch (e) {
+					// ignore
+				}
+			}
+			this.embeddedHandle = null
+			this.embeddedReady = false
+		},
+		async mountEmbedded({ forceRemount = false } = {}) {
+			this.embeddedError = ''
+			this.embeddedReady = false
+
+			const boardId = Number(this.boardId)
+			if (!Number.isFinite(boardId) || boardId <= 0) {
+				this.unmountEmbedded()
+				return
+			}
+
+			const ok = await this.ensureEmbeddedApiLoaded()
+			if (!ok) {
+				this.unmountEmbedded()
+				this.embeddedError = 'Deck embedded tasks UI is not available. Build and deploy the Deck app update, then reload.'
+				return
+			}
+
+			if (this.embeddedHandle && !forceRemount && typeof this.embeddedHandle.setBoardId === 'function') {
+				this.embeddedHandle.setBoardId(boardId)
+				this.embeddedReady = true
+				return
+			}
+
+			this.unmountEmbedded()
+
+			const el = this.$refs.deckMount
+			if (!el) {
+				this.embeddedError = 'Could not mount Deck tasks UI.'
+				return
+			}
+			el.innerHTML = ''
+
+			try {
+				this.embeddedHandle = window.OCA.Deck.EmbeddedTasks.mount({ el, boardId })
+				this.embeddedReady = true
+			} catch (e) {
+				this.unmountEmbedded()
+				this.embeddedError = 'Could not mount Deck tasks UI.'
 			}
 		},
 	},
@@ -465,158 +371,25 @@ export default {
 	color: var(--color-text-maxcontrast);
 }
 
-.deck-board__lane {
-	display: grid;
-	grid-auto-flow: column;
-	grid-auto-columns: minmax(260px, 320px);
-	gap: 12px;
-	align-items: stretch;
-	overflow-x: auto;
-	padding-bottom: 6px;
-}
-
-.deck-board__stack {
-	border: 1px solid var(--color-border);
-	border-radius: 14px;
-	background: var(--color-main-background);
-	overflow: hidden;
-	display: flex;
-	flex-direction: column;
-	min-height: 430px;
-	max-height: min(76vh, 860px);
-}
-
-.deck-board__stack-head {
-	padding: 12px 12px 10px;
-	border-bottom: 1px solid var(--color-border);
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 10px;
-}
-
-.deck-board__stack-title {
-	font-weight: 900;
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.deck-board__stack-count {
-	font-size: 12px;
-	font-weight: 900;
-	color: var(--color-text-maxcontrast);
-	border: 1px solid var(--color-border-dark);
-	border-radius: 999px;
-	padding: 2px 9px;
-}
-
-.deck-board__cards {
-	padding: 10px;
+.deck-board__embed {
 	display: grid;
 	gap: 8px;
-	min-height: 0;
-	max-height: min(62vh, 720px);
-	overflow-y: auto;
 }
 
-.deck-board__slot {
-	border-radius: 12px;
-	min-height: 14px;
-}
-
-.deck-board__slot--target {
-	box-shadow: inset 0 0 0 2px var(--color-primary-element);
-	background: rgba(0, 0, 0, 0.03);
-}
-
-.deck-board__slot--disabled {
-	cursor: default;
-}
-
-.deck-board__card {
+.deck-board__mount {
+	width: 100%;
+	min-height: min(78vh, 1000px);
+	height: min(78vh, 1000px);
 	border: 1px solid var(--color-border);
 	border-radius: 12px;
-	padding: 10px 10px 8px;
-	background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.75));
-	color: var(--color-main-text);
-	cursor: pointer;
-	box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
-}
-
-.deck-board__card:hover {
-	background: var(--color-background-hover);
-}
-
-.deck-board__card:active {
-	transform: translateY(1px);
-}
-
-.deck-board__card[draggable='true'] {
-	cursor: grab;
-}
-
-.deck-board__card--dragging {
-	opacity: 0.55;
-}
-
-.deck-board__card-title {
-	font-weight: 800;
-	line-height: 1.2;
-	word-break: break-word;
-}
-
-.deck-board__labels {
-	margin-top: 8px;
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-}
-
-.deck-board__label {
-	width: 14px;
-	height: 6px;
-	border-radius: 999px;
-	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
-}
-
-.deck-board__add {
-	margin-top: 4px;
-	padding: 10px;
-	border-top: 1px solid var(--color-border);
-	display: flex;
-	gap: 8px;
-	align-items: center;
-}
-
-.deck-board__input {
-	flex: 1;
-	min-width: 0;
-	border: 1px solid var(--color-border-dark);
-	border-radius: 10px;
-	padding: 8px 10px;
 	background: var(--color-main-background);
-	color: var(--color-main-text);
-}
-
-.deck-board__input:focus {
-	outline: 2px solid var(--color-primary-element);
-	outline-offset: 1px;
+	overflow: hidden;
 }
 
 @media (max-width: 900px) {
-	.deck-board__lane {
-		grid-auto-columns: minmax(240px, 86vw);
-	}
-
-	.deck-board__stack {
-		min-height: 360px;
-		max-height: min(70vh, 680px);
-	}
-
-	.deck-board__cards {
-		max-height: min(56vh, 560px);
+	.deck-board__mount {
+		min-height: min(74vh, 880px);
+		height: min(74vh, 880px);
 	}
 }
 </style>

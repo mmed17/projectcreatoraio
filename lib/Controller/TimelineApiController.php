@@ -7,6 +7,8 @@ use OCA\Organization\Db\UserMapper as OrganizationUserMapper;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Db\TimelineItemMapper;
+use OCA\ProjectCreatorAIO\Service\DeckDoneSyncService;
+use OCA\ProjectCreatorAIO\Service\TimelinePlanningService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\JSONResponse;
@@ -26,6 +28,8 @@ class TimelineApiController extends Controller
         private IUserSession $userSession,
         private IGroupManager $groupManager,
         private OrganizationUserMapper $organizationUserMapper,
+        private TimelinePlanningService $planningService,
+        private DeckDoneSyncService $doneSyncService,
     ) {
         parent::__construct($appName, $request);
     }
@@ -41,6 +45,37 @@ class TimelineApiController extends Controller
 
             $items = $this->mapper->findByProject($projectId);
             return new JSONResponse($items);
+        } catch (\Throwable $e) {
+            return $this->errorResponse($e);
+        }
+    }
+
+    /**
+     * @NoAdminRequired
+     */
+    public function summary(int $projectId): JSONResponse
+    {
+        try {
+            $project = $this->requireProject($projectId);
+            $this->assertCanAccessProject($project);
+
+            return new JSONResponse($this->planningService->buildSummary($project));
+        } catch (\Throwable $e) {
+            return $this->errorResponse($e);
+        }
+    }
+
+    /**
+     * @NoAdminRequired
+     */
+    public function syncDone(int $projectId): JSONResponse
+    {
+        try {
+            $project = $this->requireProject($projectId);
+            $this->assertCanAccessProject($project);
+
+            $changed = $this->doneSyncService->syncProject($project);
+            return new JSONResponse(['success' => true, 'changed' => $changed]);
         } catch (\Throwable $e) {
             return $this->errorResponse($e);
         }

@@ -98,6 +98,53 @@ export class ProjectsService {
     }
 
     /**
+     * Get Combi card-visibility questionnaire state for a project.
+     *
+     * @param {number} projectId
+     * @returns {Promise<any|null>}
+     */
+    async getCardVisibility(projectId) {
+        try {
+            const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}/card-visibility`)
+            const response = await axios.get(url, {
+                headers: {
+                    'OCS-APIRequest': 'true',
+                    'Content-Type': 'application/json',
+                },
+            })
+
+            return response.data ?? null
+        } catch (e) {
+            console.error('Failed to fetch card visibility config:', e)
+            throw e
+        }
+    }
+
+    /**
+     * Update Combi card-visibility questionnaire answers for a project.
+     *
+     * @param {number} projectId
+     * @param {{cv_object_ownership?: number|null, cv_trace_ownership?: number|null, cv_building_type?: number|null, cv_avp_location?: number|null}} payload
+     * @returns {Promise<any|null>}
+     */
+    async updateCardVisibility(projectId, payload) {
+        try {
+            const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}/card-visibility`)
+            const response = await axios.put(url, payload, {
+                headers: {
+                    'OCS-APIRequest': 'true',
+                    'Content-Type': 'application/json',
+                },
+            })
+
+            return response.data ?? null
+        } catch (e) {
+            console.error('Failed to update card visibility config:', e)
+            throw e
+        }
+    }
+
+    /**
      * List project members.
      *
      * @param {number} projectId

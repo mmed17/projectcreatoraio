@@ -62,6 +62,61 @@ class ProjectApiController extends Controller
 
     #[NoCSRFRequired]
     #[NoAdminRequired]
+    public function getCardVisibility(int $projectId): DataResponse
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        $payload = $this->projectService->getProjectCardVisibility($projectId);
+        $payload['can_edit'] = $this->canAdministerProject($project);
+
+        return new DataResponse($payload);
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function updateCardVisibility(int $projectId): DataResponse
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        if (!$this->canAdministerProject($project)) {
+            throw new OCSForbiddenException('Only project managers can update form settings');
+        }
+
+        $params = $this->request->getParams();
+        $payload = [];
+        $fields = [
+            'cv_object_ownership',
+            'cv_trace_ownership',
+            'cv_building_type',
+            'cv_avp_location',
+        ];
+
+        if (is_array($params)) {
+            foreach ($fields as $field) {
+                if (array_key_exists($field, $params)) {
+                    $payload[$field] = $params[$field];
+                }
+            }
+        }
+
+        $result = $this->projectService->updateProjectCardVisibility($projectId, $payload);
+        $result['can_edit'] = true;
+
+        return new DataResponse($result);
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
     public function listMembers(int $projectId): DataResponse
     {
         $project = $this->projectMapper->find($projectId);
@@ -238,6 +293,8 @@ class ProjectApiController extends Controller
             }
         }
 
+        $content = $this->sanitizeNoteHtml($content);
+
         $note = $this->noteMapper->createNote(
             $projectId,
             $currentUser->getUID(),
@@ -297,12 +354,167 @@ class ProjectApiController extends Controller
             $note->setTitle($title);
         }
         if ($content !== null) {
-            $note->setContent($content);
+            $note->setContent($this->sanitizeNoteHtml($content));
         }
 
         $updatedNote = $this->noteMapper->updateNote($note);
 
         return new DataResponse($updatedNote->jsonSerialize());
+    }
+
+    /**
+     * Sanitize HTML note content to avoid XSS.
+     *
+     * We keep a small allowlist to support basic formatting, links and lists.
+     */
+    private function sanitizeNoteHtml(string $html): string {
+        $html = trim($html);
+        if ($html === '') {
+            return '';
+        }
+
+        // Prefer the Nextcloud sanitizer when available.
+        if (class_exists('\\OCP\\Util') && method_exists('\\OCP\\Util', 'sanitizeHTML')) {
+            try {
+                return (string) \OCP\Util::sanitizeHTML($html);
+            } catch (Throwable $e) {
+                // fall back to local allowlist sanitizer
+            }
+        }
+
+        return $this->sanitizeHtmlAllowlist($html);
+    }
+
+    private function sanitizeHtmlAllowlist(string $html): string {
+        $allowedTags = [
+            'div', 'span',
+            'p', 'br',
+            'strong', 'b',
+            'em', 'i',
+            'u',
+            's', 'strike',
+            'ul', 'ol', 'li',
+            'blockquote',
+            'h1', 'h2', 'h3', 'h4',
+            'pre', 'code',
+            'a',
+        ];
+
+        $allowedByTag = [
+            'a' => ['href', 'target', 'rel', 'title'],
+        ];
+
+        $previous = libxml_use_internal_errors(true);
+        $doc = new \DOMDocument();
+        // Wrap to handle fragments and preserve multiple root nodes
+        $wrapped = '<div id="__wrap">' . $html . '</div>';
+        $doc->loadHTML('<?xml encoding="utf-8" ?>' . $wrapped, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        $wrap = $doc->getElementById('__wrap');
+        if ($wrap === null) {
+            return '';
+        }
+
+        $this->sanitizeDomNode($wrap, $allowedTags, $allowedByTag);
+
+        $out = '';
+        foreach (iterator_to_array($wrap->childNodes) as $child) {
+            $out .= $doc->saveHTML($child);
+        }
+
+        return trim($out);
+    }
+
+    /**
+     * @param array<string> $allowedTags
+     * @param array<string, array<string>> $allowedByTag
+     */
+    private function sanitizeDomNode(\DOMNode $node, array $allowedTags, array $allowedByTag): void {
+        if ($node->nodeType === XML_ELEMENT_NODE) {
+            $tag = strtolower($node->nodeName);
+            if (!in_array($tag, $allowedTags, true)) {
+                // sanitize children first, then unwrap unknown element
+                foreach (iterator_to_array($node->childNodes) as $child) {
+                    $this->sanitizeDomNode($child, $allowedTags, $allowedByTag);
+                }
+
+                $parent = $node->parentNode;
+                if ($parent !== null) {
+                    while ($node->firstChild) {
+                        $parent->insertBefore($node->firstChild, $node);
+                    }
+                    $parent->removeChild($node);
+                }
+                return;
+            }
+
+            // Remove dangerous/unused attributes
+            if ($node->hasAttributes()) {
+                $allowedAttrs = $allowedByTag[$tag] ?? [];
+                /** @var \DOMNamedNodeMap $attrs */
+                $attrs = $node->attributes;
+                // Iterate backwards because we'll remove attributes
+                for ($i = $attrs->length - 1; $i >= 0; $i--) {
+                    $attr = $attrs->item($i);
+                    if ($attr === null) {
+                        continue;
+                    }
+                    $name = strtolower($attr->nodeName);
+                    if (str_starts_with($name, 'on') || $name === 'style') {
+                        $node->removeAttributeNode($attr);
+                        continue;
+                    }
+                    if (!in_array($name, $allowedAttrs, true)) {
+                        $node->removeAttributeNode($attr);
+                    }
+                }
+            }
+
+            if ($tag === 'a') {
+                $href = $node->attributes?->getNamedItem('href')?->nodeValue ?? '';
+                if (!$this->isSafeHref($href)) {
+                    $node->removeAttribute('href');
+                }
+                // Force safe defaults
+                if ($node->hasAttribute('href')) {
+                    $node->setAttribute('target', '_blank');
+                    $node->setAttribute('rel', 'noopener noreferrer');
+                } else {
+                    $node->removeAttribute('target');
+                    $node->removeAttribute('rel');
+                }
+            }
+        }
+
+        // Recurse into children
+        $child = $node->firstChild;
+        while ($child !== null) {
+            $next = $child->nextSibling;
+            $this->sanitizeDomNode($child, $allowedTags, $allowedByTag);
+            $child = $next;
+        }
+    }
+
+    private function isSafeHref(string $href): bool {
+        $href = trim($href);
+        if ($href === '') {
+            return false;
+        }
+        if (str_starts_with($href, '#') || str_starts_with($href, '/')) {
+            return true;
+        }
+        $parsed = parse_url($href);
+        if (!is_array($parsed)) {
+            return false;
+        }
+        if (!isset($parsed['scheme'])) {
+            // relative URL
+            return true;
+        }
+        $scheme = strtolower((string) $parsed['scheme']);
+        return in_array($scheme, ['http', 'https', 'mailto', 'tel'], true);
     }
 
     #[NoCSRFRequired]
@@ -360,6 +572,7 @@ class ProjectApiController extends Controller
         ?string $loc_zip = null,
         ?string $request_date = null,
         ?string $desired_execution_date = null,
+        ?int $required_preparation_weeks = null,
         ?int $required_preparation_days = null,
     ): DataResponse {
 
@@ -371,6 +584,14 @@ class ProjectApiController extends Controller
             if (array_key_exists('desired_execution_date', $params)) {
                 $desired_execution_date = is_string($params['desired_execution_date']) ? $params['desired_execution_date'] : null;
             }
+            if (array_key_exists('required_preparation_weeks', $params)) {
+                $raw = $params['required_preparation_weeks'];
+                if (is_int($raw)) {
+                    $required_preparation_weeks = $raw;
+                } elseif (is_string($raw) && $raw !== '' && is_numeric($raw)) {
+                    $required_preparation_weeks = (int) $raw;
+                }
+            }
             if (array_key_exists('required_preparation_days', $params)) {
                 $raw = $params['required_preparation_days'];
                 if (is_int($raw)) {
@@ -379,6 +600,14 @@ class ProjectApiController extends Controller
                     $required_preparation_days = (int) $raw;
                 }
             }
+        }
+
+        if ($required_preparation_weeks === null && $required_preparation_days !== null) {
+            $days = max(0, (int) $required_preparation_days);
+            $required_preparation_weeks = (int) ceil($days / 7);
+        }
+        if ($required_preparation_weeks !== null && $required_preparation_weeks < 0) {
+            $required_preparation_weeks = 0;
         }
 
         if ($organizationId === null && $groupId !== '' && ctype_digit($groupId)) {
@@ -401,9 +630,7 @@ class ProjectApiController extends Controller
                 $loc_street,
                 $loc_city,
                 $loc_zip,
-                $request_date,
-                $desired_execution_date,
-                $required_preparation_days,
+                $required_preparation_weeks,
             );
 
             return new DataResponse([
@@ -649,8 +876,19 @@ class ProjectApiController extends Controller
         ?string $loc_city = null,
         ?string $loc_zip = null,
         ?string $external_ref = null,
-        ?int $status = null
+        ?int $status = null,
+        ?int $required_preparation_weeks = null
     ): DataResponse {
+        $params = $this->request->getParams();
+        if (is_array($params) && array_key_exists('required_preparation_weeks', $params)) {
+            $raw = $params['required_preparation_weeks'];
+            if (is_int($raw)) {
+                $required_preparation_weeks = $raw;
+            } elseif (is_string($raw) && $raw !== '' && is_numeric($raw)) {
+                $required_preparation_weeks = (int) $raw;
+            }
+        }
+
         $existingProject = $this->projectMapper->find($id);
         if ($existingProject === null) {
             throw new OCSNotFoundException("Project with ID $id not found");
@@ -667,6 +905,7 @@ class ProjectApiController extends Controller
                 'description',
                 'external_ref',
                 'status',
+                'required_preparation_weeks',
             ];
 
             $providedFields = array_keys($this->request->getParams());
@@ -692,6 +931,7 @@ class ProjectApiController extends Controller
             $loc_zip,
             $external_ref,
             $status,
+            $required_preparation_weeks,
         );
         return new DataResponse($updatedProject);
     }

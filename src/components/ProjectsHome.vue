@@ -25,13 +25,17 @@
 		}">
 		<!-- Collapsible Sidebar -->
 		<aside
+			v-show="!isNarrow || mobilePane === 'list'"
 			class="projects-home__sidebar"
-			:class="{ 'projects-home__sidebar--collapsed': isSidebarCollapsed && !isNarrow }"
-			v-show="!isNarrow || mobilePane === 'list'">
+			:class="{ 'projects-home__sidebar--collapsed': isSidebarCollapsed && !isNarrow }">
 			<header class="projects-home__sidebar-header">
 				<div v-if="!isSidebarCollapsed || isNarrow" class="projects-home__sidebar-brand">
-					<h2 class="projects-home__title">Projects</h2>
-					<p class="projects-home__subtitle">Manage spaces</p>
+					<h2 class="projects-home__title">
+						Projects
+					</h2>
+					<p class="projects-home__subtitle">
+						Manage spaces
+					</p>
 				</div>
 				<div class="projects-home__sidebar-actions">
 					<NcButton
@@ -65,8 +69,12 @@
 						class="projects-home__filter-select"
 						aria-label="Project scope"
 						@change="loadProjects">
-						<option value="all">All organization</option>
-						<option value="my">My projects</option>
+						<option value="all">
+							All organization
+						</option>
+						<option value="my">
+							My projects
+						</option>
 					</select>
 				</div>
 
@@ -88,9 +96,15 @@
 							v-model="statusFilter"
 							class="projects-home__filter-select"
 							aria-label="Filter projects">
-							<option value="all">All</option>
-							<option value="active">Active</option>
-							<option value="archived">Archived</option>
+							<option value="all">
+								All
+							</option>
+							<option value="active">
+								Active
+							</option>
+							<option value="archived">
+								Archived
+							</option>
 						</select>
 					</div>
 					<div class="projects-home__filter">
@@ -100,9 +114,15 @@
 							v-model="sortKey"
 							class="projects-home__filter-select"
 							aria-label="Sort projects">
-							<option value="default">Default</option>
-							<option value="name">Name</option>
-							<option value="number">Number</option>
+							<option value="default">
+								Default
+							</option>
+							<option value="name">
+								Name
+							</option>
+							<option value="number">
+								Number
+							</option>
 						</select>
 					</div>
 					<NcButton
@@ -191,7 +211,7 @@
 		</aside>
 
 		<!-- Main Content Area -->
-		<main class="projects-home__main" v-show="!isNarrow || mobilePane === 'details'">
+		<main v-show="!isNarrow || mobilePane === 'details'" class="projects-home__main">
 			<div v-if="selectedProject" class="projects-home__main-content">
 				<!-- Hero Section -->
 				<header class="projects-home__hero">
@@ -206,7 +226,9 @@
 					<div class="projects-home__hero-main">
 						<div class="projects-home__hero-info">
 							<div class="projects-home__hero-title-row">
-								<h2 class="projects-home__details-title">{{ selectedProject.name || 'Unnamed project' }}</h2>
+								<h2 class="projects-home__details-title">
+									{{ selectedProject.name || 'Unnamed project' }}
+								</h2>
 								<div class="projects-home__hero-badges">
 									<span class="projects-home__badge" :class="statusBadgeClass(selectedProject.status)">
 										{{ statusLabel(selectedProject.status) }}
@@ -266,6 +288,39 @@
 					<button
 						type="button"
 						class="projects-home__tab"
+						:class="{ 'projects-home__tab--active': activeTab === 'notes' }"
+						@click="setActiveTab('notes')">
+						<NoteText :size="16" class="projects-home__tab-icon" />
+						<span class="projects-home__tab-label">Notes</span>
+					</button>
+					<button
+						type="button"
+						class="projects-home__tab"
+						:class="{ 'projects-home__tab--active': activeTab === 'timeline' }"
+						@click="setActiveTab('timeline')">
+						<ChartGantt :size="16" class="projects-home__tab-icon" />
+						<span class="projects-home__tab-label">Timeline</span>
+					</button>
+					<button
+						type="button"
+						class="projects-home__tab"
+						:class="{ 'projects-home__tab--active': activeTab === 'deck' }"
+						@click="setActiveTab('deck')">
+						<ViewDashboard :size="16" class="projects-home__tab-icon" />
+						<span class="projects-home__tab-label">Deck</span>
+					</button>
+					<button
+						v-if="isSelectedProjectCombi"
+						type="button"
+						class="projects-home__tab"
+						:class="{ 'projects-home__tab--active': activeTab === 'cardVisibility' }"
+						@click="setActiveTab('cardVisibility')">
+						<NoteText :size="16" class="projects-home__tab-icon" />
+						<span class="projects-home__tab-label">Form</span>
+					</button>
+					<button
+						type="button"
+						class="projects-home__tab"
 						:class="{ 'projects-home__tab--active': activeTab === 'files' }"
 						@click="setActiveTab('files')">
 						<FolderOpen :size="16" class="projects-home__tab-icon" />
@@ -309,7 +364,9 @@
 								<div class="projects-home__detail-grid projects-home__detail-grid--single">
 									<article class="projects-home__card">
 										<div class="projects-home__card-header">
-											<h4 class="projects-home__card-subtitle">Address Details</h4>
+											<h4 class="projects-home__card-subtitle">
+												Address Details
+											</h4>
 										</div>
 										<div class="projects-home__kv-list">
 											<div class="projects-home__kv">
@@ -359,7 +416,9 @@
 								<div class="projects-home__detail-grid">
 									<article class="projects-home__card">
 										<div class="projects-home__card-header">
-											<h4 class="projects-home__card-subtitle">Contact Information</h4>
+											<h4 class="projects-home__card-subtitle">
+												Contact Information
+											</h4>
 										</div>
 										<div class="projects-home__kv-list">
 											<div class="projects-home__kv">
@@ -374,7 +433,9 @@
 									</article>
 									<article class="projects-home__card">
 										<div class="projects-home__card-header">
-											<h4 class="projects-home__card-subtitle">Contact Methods</h4>
+											<h4 class="projects-home__card-subtitle">
+												Contact Methods
+											</h4>
 										</div>
 										<div class="projects-home__kv-list">
 											<div class="projects-home__kv">
@@ -418,7 +479,8 @@
 											</h3>
 										</div>
 										<div class="projects-home__panel-content">
-											<GanttChart :project-id="selectedProject.id" :is-admin="true" />
+											<TimelineSummary :project-id="selectedProject.id" :can-edit="canManageProjects" />
+											<GanttChart :project-id="selectedProject.id" :is-admin="canManageProjects" />
 										</div>
 									</div>
 									<div class="projects-home__split-panel projects-home__split-panel--deck">
@@ -454,9 +516,92 @@
 					<div v-else-if="activeTab === 'whiteboard'" class="projects-home__tab-section projects-home__tab-section--full">
 						<WhiteboardBoard
 							ref="whiteboardBoard"
+							:key="String(selectedProject.id || '') + ':' + String(selectedProject.white_board_id || '')"
 							:project-id="selectedProject.id"
-							:user-id="context?.userId || ''"
-							:key="String(selectedProject.id || '') + ':' + String(selectedProject.white_board_id || '')" />
+							:user-id="context?.userId || ''" />
+					</div>
+
+					<!-- Notes Tab -->
+					<div v-else-if="activeTab === 'notes'" class="projects-home__tab-section projects-home__tab-section--full">
+						<div class="projects-home__tab-section-header">
+							<h3 class="projects-home__section-title">
+								<NoteText :size="20" />
+								Notes
+							</h3>
+						</div>
+						<ProjectNotesList :project-id="selectedProject.id" />
+					</div>
+
+					<!-- Timeline Tab -->
+					<div v-else-if="activeTab === 'timeline'" class="projects-home__tab-section projects-home__tab-section--full">
+						<div class="projects-home__tab-section-header">
+							<h3 class="projects-home__section-title">
+								<ChartGantt :size="20" />
+								Timeline
+							</h3>
+						</div>
+						<div class="projects-home__split-panel projects-home__split-panel--timeline">
+							<div class="projects-home__panel-content">
+								<TimelineSummary :project-id="selectedProject.id" :can-edit="canManageProjects" />
+								<GanttChart :project-id="selectedProject.id" :is-admin="canManageProjects" />
+							</div>
+						</div>
+					</div>
+
+					<!-- Deck Tab -->
+					<div v-else-if="activeTab === 'deck'" class="projects-home__tab-section projects-home__tab-section--full">
+						<div class="projects-home__tab-section-header">
+							<h3 class="projects-home__section-title">
+								<ViewDashboard :size="20" />
+								Deck
+							</h3>
+							<NcButton
+								type="tertiary"
+								:disabled="!selectedProject.boardId"
+								@click="openDeck(selectedProject)">
+								<template #icon>
+									<OpenInNew :size="14" />
+								</template>
+								Open
+							</NcButton>
+						</div>
+
+						<div class="projects-home__deck-sections">
+							<div class="projects-home__split-panel projects-home__split-panel--deck">
+								<div class="projects-home__panel-header">
+									<h3 class="projects-home__panel-title">
+										<ViewDashboard :size="18" />
+										Analytics
+									</h3>
+								</div>
+								<div class="projects-home__panel-content">
+									<DeckAnalytics :board-id="selectedProject.boardId" />
+								</div>
+							</div>
+
+							<div class="projects-home__split-panel projects-home__split-panel--deck">
+								<div class="projects-home__panel-header">
+									<h3 class="projects-home__panel-title">
+										<ViewDashboard :size="18" />
+										Tasks
+									</h3>
+								</div>
+								<div class="projects-home__panel-content">
+									<DeckBoard
+										:board-id="selectedProject.boardId"
+										:project-id="selectedProject.id"
+										:organization-id="Number(selectedProject.organization_id) || Number(context?.organizationId) || null"
+										:can-manage-profiles="canManageProjects" />
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Card Visibility Tab -->
+					<div v-else-if="activeTab === 'cardVisibility'" class="projects-home__tab-section projects-home__tab-section--full">
+						<ProjectCardVisibilityTab
+							:project-id="selectedProject.id"
+							:can-edit="canManageProjects" />
 					</div>
 
 					<!-- Files Tab -->
@@ -493,7 +638,9 @@
 									<AccountMultiple :size="20" />
 									Project Members
 								</h3>
-								<p class="projects-home__section-subtitle">Anyone in this project can invite organization members</p>
+								<p class="projects-home__section-subtitle">
+									Anyone in this project can invite organization members
+								</p>
 							</div>
 						</div>
 
@@ -521,8 +668,12 @@
 							</NcButton>
 						</div>
 
-						<p v-if="memberInviteMessage" class="projects-home__inline-success">{{ memberInviteMessage }}</p>
-						<p v-if="membersError" class="projects-home__inline-error projects-home__inline-error--left">{{ membersError }}</p>
+						<p v-if="memberInviteMessage" class="projects-home__inline-success">
+							{{ memberInviteMessage }}
+						</p>
+						<p v-if="membersError" class="projects-home__inline-error projects-home__inline-error--left">
+							{{ membersError }}
+						</p>
 
 						<div v-if="membersLoading" class="projects-home__loading-state">
 							<NcLoadingIcon :size="24" />
@@ -595,7 +746,9 @@
 		<!-- Edit Profile Modal -->
 		<NcModal :show="showProjectProfileModal" size="normal" @close="cancelProjectProfileEdit">
 			<div class="projects-home__profile-modal">
-				<h3 class="projects-home__profile-modal-title">Edit Project Details</h3>
+				<h3 class="projects-home__profile-modal-title">
+					Edit Project Details
+				</h3>
 				<p class="projects-home__profile-modal-subtitle">
 					Update project name, client information, and project location in separate sections.
 				</p>
@@ -627,7 +780,9 @@
 
 				<div class="projects-home__profile-sections">
 					<div v-if="canManageProjects && projectProfileSection === 'project'" class="projects-home__profile-section">
-						<h4 class="projects-home__profile-section-title">Project Name</h4>
+						<h4 class="projects-home__profile-section-title">
+							Project Name
+						</h4>
 						<div class="projects-home__profile-grid projects-home__profile-grid--single">
 							<NcTextField
 								v-model="projectProfileDraft.name"
@@ -639,7 +794,9 @@
 					</div>
 
 					<div v-else-if="projectProfileSection === 'client'" class="projects-home__profile-section">
-						<h4 class="projects-home__profile-section-title">Client Information</h4>
+						<h4 class="projects-home__profile-section-title">
+							Client Information
+						</h4>
 						<div class="projects-home__profile-grid">
 							<NcTextField
 								v-model="projectProfileDraft.client_name"
@@ -675,7 +832,9 @@
 					</div>
 
 					<div v-else class="projects-home__profile-section">
-						<h4 class="projects-home__profile-section-title">Project Location</h4>
+						<h4 class="projects-home__profile-section-title">
+							Project Location
+						</h4>
 						<div class="projects-home__profile-grid projects-home__profile-grid--single">
 							<NcTextField
 								v-model="projectProfileDraft.loc_street"
@@ -699,7 +858,9 @@
 					</div>
 				</div>
 
-				<p v-if="projectProfileError" class="projects-home__inline-error projects-home__inline-error--left">{{ projectProfileError }}</p>
+				<p v-if="projectProfileError" class="projects-home__inline-error projects-home__inline-error--left">
+					{{ projectProfileError }}
+				</p>
 
 				<div class="projects-home__profile-actions">
 					<NcButton
@@ -742,7 +903,6 @@ import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
 import DotsHorizontal from 'vue-material-design-icons/DotsHorizontal.vue'
 import Draw from 'vue-material-design-icons/Draw.vue'
 import Download from 'vue-material-design-icons/Download.vue'
-import EyeOutline from 'vue-material-design-icons/EyeOutline.vue'
 import FilterRemove from 'vue-material-design-icons/FilterRemove.vue'
 import FolderOpen from 'vue-material-design-icons/FolderOpen.vue'
 import FolderOutline from 'vue-material-design-icons/FolderOutline.vue'
@@ -763,12 +923,15 @@ import { createClient } from 'webdav'
 import { PROJECT_TYPES } from '../macros/project-types.js'
 import { ProjectsService } from '../Services/projects.js'
 
+import DeckAnalytics from './ProjectDeck/DeckAnalytics.vue'
 import DeckBoard from './ProjectDeck/DeckBoard.vue'
 import GanttChart from './ProjectTimeline/GanttChart.vue'
+import TimelineSummary from './ProjectTimeline/TimelineSummary.vue'
 import ProjectFilesBrowser from './ProjectFiles/ProjectFilesBrowser.vue'
 import WhiteboardBoard from './ProjectWhiteboard/WhiteboardBoard.vue'
 import ProjectCreator from './ProjectCreator.vue'
 import ProjectNotesList from './ProjectNotesList.vue'
+import ProjectCardVisibilityTab from './ProjectCardVisibilityTab.vue'
 
 const projectsService = ProjectsService.getInstance()
 const webdavClient = createClient(generateRemoteUrl('dav'))
@@ -784,15 +947,16 @@ export default {
 		ArchiveArrowUp,
 		ChartGantt,
 		ChevronLeft,
+		DeckAnalytics,
 		DeckBoard,
 		DotsHorizontal,
 		Draw,
 		Download,
-		EyeOutline,
 		FilterRemove,
 		FolderOpen,
 		FolderOutline,
 		GanttChart,
+		TimelineSummary,
 		Magnify,
 		MapMarker,
 		MenuClose,
@@ -815,6 +979,7 @@ export default {
 		WhiteboardBoard,
 		ProjectCreator,
 		ProjectNotesList,
+		ProjectCardVisibilityTab,
 		ViewDashboard,
 	},
 	data() {
@@ -888,6 +1053,9 @@ export default {
 		},
 		canEditSelectedProjectDetails() {
 			return this.hasProjectAccess && !!this.selectedProject
+		},
+		isSelectedProjectCombi() {
+			return Number(this.selectedProject?.type) === 0
 		},
 		scopeLabel() {
 			if (this.context?.isGlobalAdmin) {
@@ -1395,7 +1563,7 @@ export default {
 			if (!project.boardId) {
 				return
 			}
-			const url = generateUrl(`/apps/deck/#/board/${project.boardId}`)
+			const url = generateUrl(`/apps/deck/board/${project.boardId}`)
 			window.open(url, '_blank')
 		},
 		openFolder(project) {
@@ -2039,6 +2207,14 @@ export default {
 	border-radius: 12px;
 	background: var(--color-main-background);
 	overflow: hidden;
+}
+
+.projects-home__deck-sections {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 16px;
+	height: 100%;
+	min-height: 500px;
 }
 
 .projects-home__panel-header {

@@ -242,7 +242,7 @@ export default {
             document.dispatchEvent(event);
         },
         navigateToProjectPage(boardId) {
-            const url = generateUrl(`/apps/deck/#/board/${boardId}`);
+            const url = generateUrl(`/apps/deck/board/${boardId}`);
             window.open(url, "_blank");
         },
         onPreview(project) {

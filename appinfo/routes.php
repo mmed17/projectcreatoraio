@@ -23,6 +23,16 @@ return [
             "verb" => "GET",
         ],
         [
+            "name" => "project_api#getCardVisibility",
+            "url" => "/api/v1/projects/{projectId}/card-visibility",
+            "verb" => "GET",
+        ],
+        [
+            "name" => "project_api#updateCardVisibility",
+            "url" => "/api/v1/projects/{projectId}/card-visibility",
+            "verb" => "PUT",
+        ],
+        [
             "name" => "project_api#listMembers",
             "url" => "/api/v1/projects/{projectId}/members",
             "verb" => "GET",
@@ -99,6 +109,16 @@ return [
             "name" => "timeline_api#index",
             "url" => "/api/v1/projects/{projectId}/timeline",
             "verb" => "GET",
+        ],
+        [
+            "name" => "timeline_api#summary",
+            "url" => "/api/v1/projects/{projectId}/timeline/summary",
+            "verb" => "GET",
+        ],
+        [
+            "name" => "timeline_api#syncDone",
+            "url" => "/api/v1/projects/{projectId}/timeline/sync-done",
+            "verb" => "POST",
         ],
         [
             "name" => "timeline_api#create",
