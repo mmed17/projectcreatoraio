@@ -598,11 +598,11 @@
 					</div>
 
 					<!-- Card Visibility Tab -->
-					<div v-else-if="activeTab === 'cardVisibility'" class="projects-home__tab-section projects-home__tab-section--full">
-						<ProjectCardVisibilityTab
-							:project-id="selectedProject.id"
-							:can-edit="canManageProjects" />
-					</div>
+						<div v-else-if="activeTab === 'cardVisibility'" class="projects-home__tab-section projects-home__tab-section--full">
+							<ProjectCardVisibilityTab
+								:project-id="selectedProject.id"
+								:can-edit="canEditPreparationWeeks" />
+						</div>
 
 					<!-- Files Tab -->
 					<div v-else-if="activeTab === 'files'" class="projects-home__tab-section projects-home__tab-section--full">

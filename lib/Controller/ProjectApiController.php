@@ -72,7 +72,7 @@ class ProjectApiController extends Controller
         $this->assertCanAccessProject($project);
 
         $payload = $this->projectService->getProjectCardVisibility($projectId);
-        $payload['can_edit'] = $this->canAdministerProject($project);
+        $payload['can_edit'] = $this->canEditPreparationWeeks($project);
 
         return new DataResponse($payload);
     }
@@ -88,7 +88,7 @@ class ProjectApiController extends Controller
 
         $this->assertCanAccessProject($project);
 
-        if (!$this->canAdministerProject($project)) {
+        if (!$this->canEditPreparationWeeks($project)) {
             throw new OCSForbiddenException('Only project managers can update form settings');
         }
 
@@ -110,7 +110,7 @@ class ProjectApiController extends Controller
         }
 
         $result = $this->projectService->updateProjectCardVisibility($projectId, $payload);
-        $result['can_edit'] = true;
+        $result['can_edit'] = $this->canEditPreparationWeeks($project);
 
         return new DataResponse($result);
     }
