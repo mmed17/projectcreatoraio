@@ -229,6 +229,16 @@
 								<h2 class="projects-home__details-title">
 									{{ selectedProject.name || 'Unnamed project' }}
 								</h2>
+								<NcButton
+									v-if="canEditProjectTitle"
+									type="tertiary"
+									class="projects-home__title-edit-btn"
+									aria-label="Edit project title"
+									@click="startProjectProfileEdit">
+									<template #icon>
+										<Pencil :size="15" />
+									</template>
+								</NcButton>
 								<div class="projects-home__hero-badges">
 									<span class="projects-home__badge" :class="statusBadgeClass(selectedProject.status)">
 										{{ statusLabel(selectedProject.status) }}
@@ -1970,6 +1980,11 @@ export default {
 	font-size: 22px;
 	font-weight: 700;
 	line-height: 1.3;
+}
+
+.projects-home__title-edit-btn {
+	--button-size: 30px;
+	min-width: 30px;
 }
 
 .projects-home__details-subtitle {
