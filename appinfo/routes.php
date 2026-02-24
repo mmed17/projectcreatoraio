@@ -126,6 +126,11 @@ return [
             "verb" => "POST",
         ],
         [
+            "name" => "timeline_api#reorder",
+            "url" => "/api/v1/projects/{projectId}/timeline/reorder",
+            "verb" => "PUT",
+        ],
+        [
             "name" => "timeline_api#update",
             "url" => "/api/v1/projects/{projectId}/timeline/{id}",
             "verb" => "PUT",

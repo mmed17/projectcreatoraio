@@ -163,6 +163,30 @@ class TimelineApiController extends Controller
     }
 
     /**
+     * Batch reorder timeline items (non-system only) to avoid N API calls on drag-and-drop.
+     *
+     * @NoAdminRequired
+     */
+    public function reorder(int $projectId, array $ids = []): JSONResponse
+    {
+        try {
+            $project = $this->requireProject($projectId);
+            $this->assertCanManageTimelineProject($project);
+
+            if ($ids === []) {
+                return new JSONResponse(['error' => 'Missing ids'], Http::STATUS_BAD_REQUEST);
+            }
+
+            $items = $this->mapper->reorderNonSystemItems($projectId, $ids);
+            return new JSONResponse($items);
+        } catch (\InvalidArgumentException $e) {
+            return new JSONResponse(['error' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
+        } catch (\Throwable $e) {
+            return $this->errorResponse($e);
+        }
+    }
+
+    /**
      * @NoAdminRequired
      */
     public function destroy(int $projectId, int $id): JSONResponse

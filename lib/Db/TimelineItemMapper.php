@@ -12,6 +12,8 @@ class TimelineItemMapper extends QBMapper
 {
     public const TABLE_NAME = "project_timeline_items";
 
+    private const RESERVED_SYSTEM_ORDER_INDICES = [0, 1, 2];
+
     public function __construct(IDBConnection $db)
     {
         parent::__construct($db, self::TABLE_NAME, TimelineItem::class);
@@ -146,5 +148,64 @@ class TimelineItemMapper extends QBMapper
 
         $next = ((int) ($row['MAX(order_index)'] ?? 0)) + 1;
         return max(3, $next);
+    }
+
+    /**
+     * Reorder all non-system items for a project in one operation.
+     *
+     * @param int $projectId
+     * @param int[] $orderedIds The full, desired order of non-system timeline item IDs.
+     * @return TimelineItem[] Updated items (including system items), ordered by order_index.
+     */
+    public function reorderNonSystemItems(int $projectId, array $orderedIds): array
+    {
+        $orderedIds = array_values(array_unique(array_map('intval', $orderedIds)));
+        $orderedIds = array_values(array_filter($orderedIds, static fn (int $id) => $id > 0));
+
+        $items = $this->findByProject($projectId);
+        $itemsById = [];
+        $expectedNonSystemIds = [];
+
+        foreach ($items as $item) {
+            $itemsById[$item->getId()] = $item;
+            if (trim((string) ($item->getSystemKey() ?? '')) === '') {
+                $expectedNonSystemIds[] = (int) $item->getId();
+            }
+        }
+
+        sort($expectedNonSystemIds);
+        $givenIds = $orderedIds;
+        sort($givenIds);
+
+        if ($givenIds !== $expectedNonSystemIds) {
+            throw new \InvalidArgumentException('Invalid reorder payload');
+        }
+
+        // Keep a safe offset above the reserved system indices.
+        $orderIndex = max(self::RESERVED_SYSTEM_ORDER_INDICES) + 1 + 7; // start at 10
+
+        $this->db->beginTransaction();
+        try {
+            foreach ($orderedIds as $id) {
+                $item = $itemsById[$id] ?? null;
+                if ($item === null) {
+                    throw new \InvalidArgumentException('Invalid reorder payload');
+                }
+
+                if (trim((string) ($item->getSystemKey() ?? '')) !== '') {
+                    throw new \InvalidArgumentException('System items cannot be reordered');
+                }
+
+                $item->setOrderIndex($orderIndex);
+                $this->updateItem($item);
+                $orderIndex++;
+            }
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+
+        return $this->findByProject($projectId);
     }
 }

@@ -360,9 +360,17 @@ export default {
 				return this.items
 			},
 			set(value) {
+				// vuedraggable provides the array in the new UI order. Keep the UI stable by
+				// immediately updating `orderIndex` locally, otherwise `items` (which sorts
+				// by `orderIndex`) will snap back to the previous order.
+				const reordered = (value || []).slice()
+				reordered.forEach((item, index) => {
+					// Avoid reserved system indices (0, 1, 2)
+					item.orderIndex = index + 10
+				})
 				this.allItems = [
 					...this.allItems.filter((item) => this.isSystemItem(item)),
-					...value,
+					...reordered,
 				]
 			},
 		},
@@ -607,14 +615,11 @@ export default {
 		},
 		async onDragEnd() {
 			try {
+				// Ensure v-model update is applied before persisting
+				await this.$nextTick()
 				const baseUrl = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${this.projectId}/timeline`)
-				const updates = this.items.map((item, index) => {
-					// We need to avoid reserved system indices (0, 1, 2)
-					const newOrder = index + 10
-					return axios.put(`${baseUrl}/${item.id}`, { orderIndex: newOrder })
-				})
-				await Promise.all(updates)
-				await this.loadItems()
+				const response = await axios.put(`${baseUrl}/reorder`, { ids: this.items.map((item) => item.id) })
+				this.allItems = response.data || []
 			} catch (error) {
 				console.error('Error updating order:', error)
 				await this.loadItems()
