@@ -28,30 +28,23 @@
 					</div>
 
 					<div class="form-card__selection">
-						<div class="segment-control">
-							<button
-								type="button"
-								class="segment-control__item"
-								:class="{ 'segment-control__item--active': answers[question.field] === 0 }"
-								:disabled="!canEdit || saving"
-								@click="setAnswer(question.field, 0)">
-								No
-							</button>
-							<button
-								type="button"
-								class="segment-control__item"
-								:class="{ 'segment-control__item--active': answers[question.field] > 0 }"
-								:disabled="!canEdit || saving"
-								@click="setAnswer(question.field, getYesValue(question))">
-								Yes
-							</button>
+						<div class="option-list" role="radiogroup" :aria-label="question.question">
+							<label
+								v-for="option in question.options"
+								:key="option.value"
+								class="option-item"
+								:class="{ 'option-item--active': answers[question.field] === Number(option.value) }">
+								<input
+									class="option-item__input"
+									type="radio"
+									:name="question.field"
+									:value="option.value"
+									:checked="answers[question.field] === Number(option.value)"
+									:disabled="!canEdit || saving"
+									@change="setAnswer(question.field, option.value)">
+								<span class="option-item__text">{{ option.label }}</span>
+							</label>
 						</div>
-					</div>
-
-					<div class="form-card__description">
-						<p :key="answers[question.field]">
-							{{ getLabelForValue(question, answers[question.field]) }}
-						</p>
 					</div>
 				</article>
 			</div>
@@ -159,21 +152,14 @@ export default {
 		isFieldDirty(field) {
 			return this.answers[field] !== this.initialAnswers[field]
 		},
-		getYesValue(question) {
-			const option = question.options.find(opt => opt.show > 0)
-			return option ? option.show : 1
-		},
-		getLabelForValue(question, value) {
-			const option = question.options.find(opt => opt.show === (value || 0))
-			return option ? option.label : 'No selection'
-		},
 		setAnswer(field, value) {
 			if (!this.canEdit || this.saving) return
 			this.saveError = ''
 			this.successMessage = ''
+			const normalizedValue = value === null || value === undefined || value === '' ? null : Number(value)
 			this.answers = {
 				...this.answers,
-				[field]: Number(value),
+				[field]: normalizedValue,
 			}
 		},
 		normalizeAnswer(value) {
@@ -184,7 +170,10 @@ export default {
 			if (!Number.isFinite(numeric)) {
 				return null
 			}
-			return [0, 1, 2].includes(numeric) ? numeric : null
+			if (!Number.isInteger(numeric)) {
+				return null
+			}
+			return numeric
 		},
 		normalizeAnswers(raw) {
 			return {
@@ -208,7 +197,6 @@ export default {
 			try {
 				const payload = await projectsService.getCardVisibility(id)
 				this.questions = Array.isArray(payload?.questions) ? payload.questions : []
-
 				const normalizedAnswers = this.normalizeAnswers(payload?.answers)
 				this.answers = normalizedAnswers
 				this.initialAnswers = { ...normalizedAnswers }
@@ -303,10 +291,10 @@ export default {
 /* Card Style */
 .form-card {
 	display: grid;
-	grid-template-columns: 1fr auto;
+	grid-template-columns: 1fr;
 	grid-template-areas:
-		"info selection"
-		"description description";
+		"info"
+		"selection";
 	gap: 24px;
 	padding: 32px;
 	background: var(--color-background-hover);
@@ -350,62 +338,58 @@ export default {
 	color: var(--color-main-text);
 }
 
+.form-card__hint {
+	margin: 0;
+	font-size: 14px;
+	line-height: 1.5;
+	color: var(--color-text-maxcontrast);
+	opacity: 0.85;
+}
+
 .form-card__selection {
 	grid-area: selection;
-	align-self: center;
+	align-self: start;
 }
 
-.form-card__description {
-	grid-area: description;
-	padding-top: 20px;
-	border-top: 1px solid var(--color-border);
-	font-size: 15px;
-	color: var(--color-text-maxcontrast);
-	line-height: 1.6;
-}
-
-.form-card__description p {
-	margin: 0;
-	opacity: 0.9;
-}
-
-/* Segment Control */
-.segment-control {
+/* Options list (single-choice) */
+.option-list {
 	display: flex;
-	background: var(--color-background-dark);
-	padding: 6px;
-	border-radius: 14px;
-	min-width: 160px;
-	border: 1px solid var(--color-border);
+	flex-direction: column;
+	gap: 10px;
 }
 
-.segment-control__item {
-	flex: 1;
-	border: none;
-	background: transparent;
-	padding: 10px 20px;
-	font-size: 15px;
-	font-weight: 700;
-	border-radius: 10px;
+.option-item {
+	display: grid;
+	grid-template-columns: 18px 1fr;
+	gap: 12px;
+	align-items: start;
+	padding: 12px 14px;
+	border-radius: 14px;
+	border: 1px solid var(--color-border);
+	background: var(--color-main-background);
 	cursor: pointer;
-	color: var(--color-text-maxcontrast);
 	transition: all 0.2s ease;
 }
 
-.segment-control__item:hover:not(:disabled):not(.segment-control__item--active) {
+.option-item:hover:not(.option-item--active) {
+	border-color: var(--color-primary-element);
+	background: var(--color-background-hover);
+}
+
+.option-item--active {
+	border-color: var(--color-primary-element);
+	background: var(--color-primary-element-light);
+}
+
+.option-item__input {
+	margin: 2px 0 0;
+}
+
+.option-item__text {
+	font-size: 14px;
+	line-height: 1.4;
 	color: var(--color-main-text);
-	background: rgba(0, 0, 0, 0.03);
-}
-
-.segment-control__item--active {
-	background: var(--color-main-background);
-	color: var(--color-primary-element);
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-}
-
-.segment-control__item:disabled {
-	cursor: not-allowed;
-	opacity: 0.5;
+	font-weight: 600;
 }
 
 /* Footer & Actions */
@@ -486,13 +470,13 @@ export default {
 		grid-template-columns: 1fr;
 		grid-template-areas:
 			"info"
-			"selection"
-			"description";
+			"selection";
 		padding: 24px;
 	}
 
 	.form-card__selection {
 		justify-self: start;
+		min-width: 0;
 	}
 
 	.project-form__footer {

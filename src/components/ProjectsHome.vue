@@ -326,7 +326,7 @@
 						:class="{ 'projects-home__tab--active': activeTab === 'cardVisibility' }"
 						@click="setActiveTab('cardVisibility')">
 						<NoteText :size="16" class="projects-home__tab-icon" />
-						<span class="projects-home__tab-label">Form</span>
+						<span class="projects-home__tab-label">Intake formulier</span>
 					</button>
 					<button
 						type="button"
@@ -550,13 +550,13 @@
 								Timeline
 							</h3>
 						</div>
-							<div class="projects-home__split-panel projects-home__split-panel--timeline">
-								<div class="projects-home__panel-content">
-									<TimelineSummary :project-id="selectedProject.id" :can-edit="canEditPreparationWeeks" />
-									<GanttChart :project-id="selectedProject.id" :is-admin="canManageTimelineItems" />
-								</div>
+						<div class="projects-home__split-panel projects-home__split-panel--timeline">
+							<div class="projects-home__panel-content">
+								<TimelineSummary :project-id="selectedProject.id" :can-edit="canEditPreparationWeeks" />
+								<GanttChart :project-id="selectedProject.id" :is-admin="canManageTimelineItems" />
 							</div>
 						</div>
+					</div>
 
 					<!-- Deck Tab -->
 					<div v-else-if="activeTab === 'deck'" class="projects-home__tab-section projects-home__tab-section--full">
@@ -608,11 +608,11 @@
 					</div>
 
 					<!-- Card Visibility Tab -->
-						<div v-else-if="activeTab === 'cardVisibility'" class="projects-home__tab-section projects-home__tab-section--full">
-							<ProjectCardVisibilityTab
-								:project-id="selectedProject.id"
-								:can-edit="canEditPreparationWeeks" />
-						</div>
+					<div v-else-if="activeTab === 'cardVisibility'" class="projects-home__tab-section projects-home__tab-section--full">
+						<ProjectCardVisibilityTab
+							:project-id="selectedProject.id"
+							:can-edit="canEditPreparationWeeks" />
+					</div>
 
 					<!-- Files Tab -->
 					<div v-else-if="activeTab === 'files'" class="projects-home__tab-section projects-home__tab-section--full">
