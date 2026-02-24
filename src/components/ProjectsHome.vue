@@ -755,7 +755,7 @@
 
 				<div class="projects-home__profile-nav" role="tablist" aria-label="Project detail sections">
 					<button
-						v-if="canManageProjects"
+						v-if="canEditProjectTitle"
 						type="button"
 						class="projects-home__profile-nav-btn"
 						:class="{ 'projects-home__profile-nav-btn--active': projectProfileSection === 'project' }"
@@ -779,7 +779,7 @@
 				</div>
 
 				<div class="projects-home__profile-sections">
-					<div v-if="canManageProjects && projectProfileSection === 'project'" class="projects-home__profile-section">
+					<div v-if="canEditProjectTitle && projectProfileSection === 'project'" class="projects-home__profile-section">
 						<h4 class="projects-home__profile-section-title">
 							Project Name
 						</h4>
@@ -1062,6 +1062,14 @@ export default {
 			const currentUserId = String(this.context?.userId || '').trim()
 			return ownerId !== '' && currentUserId !== '' && ownerId === currentUserId
 		},
+		canEditProjectTitle() {
+			if (this.canManageProjects) {
+				return true
+			}
+			const ownerId = String(this.selectedProject?.ownerId || '').trim()
+			const currentUserId = String(this.context?.userId || '').trim()
+			return ownerId !== '' && currentUserId !== '' && ownerId === currentUserId
+		},
 		canEditSelectedProjectDetails() {
 			return this.hasProjectAccess && !!this.selectedProject
 		},
@@ -1207,7 +1215,7 @@ export default {
 				loc_city: '',
 				loc_zip: '',
 			}
-			this.projectProfileSection = this.canManageProjects ? 'project' : 'client'
+			this.projectProfileSection = this.canEditProjectTitle ? 'project' : 'client'
 		},
 		startProjectProfileEdit() {
 			if (!this.canEditSelectedProjectDetails) {
@@ -1216,12 +1224,12 @@ export default {
 			this.projectProfileError = ''
 			this.projectProfileMessage = ''
 			this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
-			this.projectProfileSection = this.canManageProjects ? 'project' : 'client'
+			this.projectProfileSection = this.canEditProjectTitle ? 'project' : 'client'
 			this.showProjectProfileModal = true
 		},
 		cancelProjectProfileEdit() {
 			this.projectProfileError = ''
-			this.projectProfileSection = this.canManageProjects ? 'project' : 'client'
+			this.projectProfileSection = this.canEditProjectTitle ? 'project' : 'client'
 			this.showProjectProfileModal = false
 		},
 		async saveProjectProfile() {
@@ -1245,7 +1253,7 @@ export default {
 				loc_city: this.projectProfileDraft.loc_city,
 				loc_zip: this.projectProfileDraft.loc_zip,
 			}
-			if (this.canManageProjects) {
+			if (this.canEditProjectTitle) {
 				payload.name = this.projectProfileDraft.name
 			}
 			try {

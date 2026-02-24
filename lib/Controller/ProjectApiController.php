@@ -898,6 +898,12 @@ class ProjectApiController extends Controller
 
         $isAdminForProject = $this->canAdministerProject($existingProject);
         $canEditPreparationWeeks = $this->canEditPreparationWeeks($existingProject);
+        $isProjectOwner = false;
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser !== null) {
+            $ownerId = trim((string) $existingProject->getOwnerId());
+            $isProjectOwner = $ownerId !== '' && $ownerId === $currentUser->getUID();
+        }
         if (!$isAdminForProject) {
             $restrictedFields = [
                 'name',
@@ -913,11 +919,16 @@ class ProjectApiController extends Controller
             $attemptedRestrictedFields = array_values(array_intersect($restrictedFields, $providedFields));
             if ($attemptedRestrictedFields !== []) {
                 if (
+                    $isProjectOwner
+                    && array_values(array_diff($attemptedRestrictedFields, ['name', 'required_preparation_weeks'])) === []
+                ) {
+                    // Project owners may only edit project name and required preparation weeks.
+                } elseif (
                     $canEditPreparationWeeks
                     && count($attemptedRestrictedFields) === 1
                     && $attemptedRestrictedFields[0] === 'required_preparation_weeks'
                 ) {
-                    // Project owners may only edit required preparation weeks.
+                    // Non-admin users with prep-weeks permission may only edit this field.
                 } else {
                     throw new OCSForbiddenException('Project members can only update client and location details');
                 }
