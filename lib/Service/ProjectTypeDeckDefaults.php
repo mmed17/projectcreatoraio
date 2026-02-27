@@ -90,6 +90,65 @@ class ProjectTypeDeckDefaults
 		return array_values(array_map(static fn (array $item) => (string) ($item['title'] ?? ''), $cards));
 	}
 
+	/**
+	 * All default card titles marked as important for the given project type.
+	 *
+	 * @return string[]
+	 */
+	public static function getImportantTitles(int $projectType): array
+	{
+		$cards = array_merge(self::getNextPriorityCards($projectType), self::getProcessStepCards($projectType));
+		$out = [];
+		foreach ($cards as $card) {
+			$title = trim((string) ($card['title'] ?? ''));
+			if ($title === '') {
+				continue;
+			}
+			if (!((bool) ($card['important'] ?? false))) {
+				continue;
+			}
+			$out[] = $title;
+		}
+		return array_values(array_unique($out));
+	}
+
+	/**
+	 * Important titles that are currently visible, based on enabled conditional sets.
+	 *
+	 * For Combi projects, set membership is defined by getConditionalSet1Titles/getConditionalSet2Titles.
+	 *
+	 * @param int[] $enabledSets
+	 * @return string[]
+	 */
+	public static function getVisibleImportantTitles(int $projectType, array $enabledSets): array
+	{
+		$titles = self::getImportantTitles($projectType);
+		if ($titles === []) {
+			return [];
+		}
+
+		if ($projectType !== self::TYPE_COMBI) {
+			return $titles;
+		}
+
+		$isSet1Enabled = in_array(1, $enabledSets, true);
+		$isSet2Enabled = in_array(2, $enabledSets, true);
+		$set1Titles = self::getConditionalSet1Titles();
+		$set2Titles = self::getConditionalSet2Titles();
+
+		$out = [];
+		foreach ($titles as $title) {
+			if (in_array($title, $set1Titles, true) && !$isSet1Enabled) {
+				continue;
+			}
+			if (in_array($title, $set2Titles, true) && !$isSet2Enabled) {
+				continue;
+			}
+			$out[] = $title;
+		}
+		return $out;
+	}
+
 	public static function getDefaultPreparationWeeks(int $projectType): int
 	{
 		return 0;

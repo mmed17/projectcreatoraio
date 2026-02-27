@@ -33,7 +33,8 @@ class TimelinePlanningService
 		}
 		$prepWeeks = max(0, (int) $prepWeeks);
 
-		$requiredTitles = ProjectTypeDeckDefaults::getRequiredNextPriorityTitles($projectType);
+		$enabledSets = CardVisibility::getEnabledSetsForProject($project);
+		$requiredTitles = ProjectTypeDeckDefaults::getVisibleImportantTitles($projectType, $enabledSets);
 		if ($requiredTitles === []) {
 			$pending = $this->buildCoordinationPendingPeriod($requestDateDate, null);
 			return [

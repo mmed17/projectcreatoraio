@@ -32,13 +32,10 @@
 				</div>
 			</div>
 
-			<DeckRasciManager
+			<DeckCardPolicyManager
 				v-if="!loading && !error && canManage"
 				:board-id="boardId"
-				:organization-id="normalizedOrganizationId"
-				:members="projectMembers"
-				:stacks="sortedStacks"
-				:can-manage-profiles="canManageProfiles" />
+				:members="projectMembers" />
 
 			<div v-if="loading" class="deck-board__muted">
 				Loading board...
@@ -68,7 +65,7 @@ import Refresh from 'vue-material-design-icons/Refresh.vue'
 
 import { DeckService } from '../../Services/deck.js'
 import { ProjectsService } from '../../Services/projects.js'
-import DeckRasciManager from './DeckRasciManager.vue'
+import DeckCardPolicyManager from './DeckCardPolicyManager.vue'
 
 const deckService = DeckService.getInstance()
 const projectsService = ProjectsService.getInstance()
@@ -76,7 +73,7 @@ const projectsService = ProjectsService.getInstance()
 export default {
 	name: 'DeckBoard',
 	components: {
-		DeckRasciManager,
+		DeckCardPolicyManager,
 		NcButton,
 		OpenInNew,
 		Refresh,
@@ -90,14 +87,6 @@ export default {
 			type: [String, Number],
 			default: null,
 		},
-		organizationId: {
-			type: Number,
-			default: null,
-		},
-		canManageProfiles: {
-			type: Boolean,
-			default: false,
-		},
 	},
 	data() {
 		return {
@@ -105,7 +94,6 @@ export default {
 			permissions: null,
 			error: '',
 			loading: false,
-			stacks: [],
 			projectMembers: [],
 			embeddedReady: false,
 			embeddedError: '',
@@ -127,13 +115,6 @@ export default {
 				return !!this.permissions.PERMISSION_MANAGE
 			}
 			return !!this.board?.permissions?.PERMISSION_MANAGE
-		},
-		normalizedOrganizationId() {
-			const value = Number(this.organizationId)
-			return Number.isFinite(value) && value > 0 ? value : null
-		},
-		sortedStacks() {
-			return (this.stacks || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 		},
 		deckBoardUrl() {
 			if (!this.boardId) {
@@ -166,15 +147,13 @@ export default {
 			}
 			this.loading = true
 			try {
-				const [board, permissions, stacks, members] = await Promise.all([
+				const [board, permissions, members] = await Promise.all([
 					deckService.getBoard(this.boardId),
 					deckService.getBoardPermissions(this.boardId),
-					deckService.listStacks(this.boardId),
 					this.projectId ? projectsService.listMembers(Number(this.projectId)) : Promise.resolve([]),
 				])
 				this.board = board
 				this.permissions = permissions
-				this.stacks = this.normalizeStacks(stacks)
 				this.projectMembers = Array.isArray(members) ? members : []
 			} catch (e) {
 				this.error = 'Could not load Deck board.'
@@ -201,21 +180,10 @@ export default {
 		resetState() {
 			this.board = null
 			this.permissions = null
-			this.stacks = []
 			this.projectMembers = []
 			this.error = ''
 			this.embeddedReady = false
 			this.embeddedError = ''
-		},
-		normalizeStacks(stacks) {
-			const list = Array.isArray(stacks) ? stacks : []
-			return list.map((stack) => {
-				const cards = Array.isArray(stack.cards) ? stack.cards : []
-				return {
-					...stack,
-					cards: cards.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
-				}
-			})
 		},
 		openBoard() {
 			if (!this.deckBoardUrl) {

@@ -7,6 +7,7 @@ use OCA\Deck\Db\Label;
 use OCA\Deck\Db\Stack;
 use OCA\Deck\Service\BoardService;
 use OCA\Deck\Service\CardService;
+use OCA\Deck\Service\CardPolicyService;
 use OCA\Deck\Service\LabelService;
 use OCA\Deck\Service\StackService;
 use OCP\IUser;
@@ -20,6 +21,7 @@ class DeckDefaultCardsService
 
 	public function __construct(
 		private readonly CardService $cardService,
+		private readonly CardPolicyService $cardPolicyService,
 		private readonly LabelService $labelService,
 		private readonly StackService $stackService,
 		private readonly BoardService $boardService,
@@ -42,6 +44,9 @@ class DeckDefaultCardsService
 				return;
 			}
 
+			// Enable new card-policy permissions for project boards.
+			$this->cardPolicyService->enableCardPolicyMode($boardId);
+
 			$board = $this->boardService->find($boardId, true);
 
 			$stacks = $this->getBoardStacks($board, $owner);
@@ -59,18 +64,24 @@ class DeckDefaultCardsService
 
 			$importantLabelId = $this->ensureImportantLabelId($boardId, $board, $owner);
 
+			$policyByTitle = $this->getCardPolicyByTitle($projectType);
+
 			$this->seedCardsIntoStack(
+				$boardId,
 				$nextPriorityStack,
 				$nextPriorityCards,
 				$owner->getUID(),
-				$importantLabelId
+				$importantLabelId,
+				$policyByTitle,
 			);
 
 			$this->seedCardsIntoStack(
+				$boardId,
 				$processStepsStack,
 				$processStepCards,
 				$owner->getUID(),
-				$importantLabelId
+				$importantLabelId,
+				$policyByTitle,
 			);
 		} catch (Throwable $e) {
 			$this->logger->error('Deck default card seeding failed', [
@@ -146,7 +157,7 @@ class DeckDefaultCardsService
 	/**
 	 * @param array<int, array{title: string, important: bool}> $cards
 	 */
-	private function seedCardsIntoStack(Stack $stack, array $cards, string $ownerUid, ?int $importantLabelId): void
+	private function seedCardsIntoStack(int $boardId, Stack $stack, array $cards, string $ownerUid, ?int $importantLabelId, array $policyByTitle): void
 	{
 		foreach ($cards as $index => $cardTemplate) {
 			try {
@@ -158,6 +169,17 @@ class DeckDefaultCardsService
 					$ownerUid,
 					''
 				);
+
+				$title = (string) ($cardTemplate['title'] ?? '');
+				if ($title !== '' && isset($policyByTitle[$title])) {
+					$policy = $policyByTitle[$title];
+					$this->cardPolicyService->setCardPolicyByRoleKeys(
+						$boardId,
+						(int) $card->getId(),
+						(array) ($policy['move'] ?? []),
+						(array) ($policy['approve'] ?? []),
+					);
+				}
 
 				if ($importantLabelId !== null && ($cardTemplate['important'] ?? false)) {
 					$this->cardService->assignLabel((int)$card->getId(), $importantLabelId);
@@ -172,5 +194,41 @@ class DeckDefaultCardsService
 				continue;
 			}
 		}
+	}
+
+	/**
+	 * @return array<string, array{move: string[], approve: string[]}>
+	 */
+	private function getCardPolicyByTitle(int $projectType): array
+	{
+		if ($projectType !== ProjectTypeDeckDefaults::TYPE_COMBI) {
+			return [];
+		}
+
+		return [
+			// Process steps
+			'Garantie overeenkomst' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+			'VO' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+			'DO' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+			'Intake inplannen & hosten' => ['move' => ['cpl'], 'approve' => ['cpl']],
+			'Intakeverslag' => ['move' => ['cpl'], 'approve' => ['cpl']],
+			'Huisnummerbesluit' => ['move' => ['client_developer', 'cpl'], 'approve' => ['cpl']],
+			'Hoogbouwoverleg inplannen' => ['move' => ['cpl'], 'approve' => ['cpl']],
+			'VO inpandige tekeningen' => ['move' => ['client_developer'], 'approve' => ['grid_operator']],
+			'DO inpandige tekeningen' => ['move' => ['client_developer'], 'approve' => ['grid_operator']],
+			'Verslag inpandig overleg' => ['move' => ['client_developer'], 'approve' => ['grid_operator']],
+			'Blokkenschema' => ['move' => ['client_developer'], 'approve' => ['grid_operator']],
+			'Aanvraag particuliere grond' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+			'Bodemrapport' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+			'Saneringsevaluatierapport' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+			'Zakelijkrecht' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+
+			// Next priority
+			'Piekvermogensformulier' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+			'Situatie tekening' => ['move' => ['client_developer'], 'approve' => ['grid_operator']],
+			'Intakeformulier' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+			'Quickscan' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+			'AVP' => ['move' => ['grid_operator'], 'approve' => ['grid_operator']],
+		];
 	}
 }

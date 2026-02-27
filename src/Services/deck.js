@@ -52,56 +52,50 @@ export class DeckService {
 		return response.data
 	}
 
-	async getTransitionPermissions(boardId) {
-		const url = generateUrl(`/apps/deck/boards/${boardId}/transition-permissions`)
+	async getCardPolicy(boardId) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy`)
 		const response = await axios.get(url, { headers: this.headers() })
-		return response.data ?? []
-	}
-
-	async addTransitionPermission(boardId, data) {
-		const url = generateUrl(`/apps/deck/boards/${boardId}/transition-permissions`)
-		const response = await axios.post(url, data, { headers: this.headers() })
 		return response.data
 	}
 
-	async deleteTransitionPermission(id) {
-		const url = generateUrl(`/apps/deck/transition-permissions/${id}`)
+	async enableCardPolicy(boardId) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/enable`)
+		const response = await axios.post(url, {}, { headers: this.headers() })
+		return response.data
+	}
+
+	async updateCardPolicySettings(boardId, data) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/settings`)
+		const response = await axios.put(url, data, { headers: this.headers() })
+		return response.data
+	}
+
+	async updateCardPolicyDefaults(boardId, data) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/defaults`)
+		const response = await axios.put(url, data, { headers: this.headers() })
+		return response.data
+	}
+
+	async setCardPolicy(boardId, cardId, data) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/cards/${cardId}`)
+		const response = await axios.put(url, data, { headers: this.headers() })
+		return response.data
+	}
+
+	async clearCardPolicy(boardId, cardId) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/cards/${cardId}`)
 		const response = await axios.delete(url, { headers: this.headers() })
 		return response.data
 	}
 
-	async listRoleProfiles(organizationId) {
-		const url = generateUrl(`/apps/deck/organizations/${organizationId}/role-profiles`)
-		const response = await axios.get(url, { headers: this.headers() })
-		return response.data ?? []
-	}
-
-	async getRoleProfile(profileId) {
-		const url = generateUrl(`/apps/deck/role-profiles/${profileId}`)
-		const response = await axios.get(url, { headers: this.headers() })
-		return response.data ?? null
-	}
-
-	async createRoleProfile(organizationId, name, permissions = []) {
-		const url = generateUrl(`/apps/deck/organizations/${organizationId}/role-profiles`)
-		const response = await axios.post(url, { name, permissions }, { headers: this.headers() })
+	async addCardPolicyMembership(boardId, data) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/memberships`)
+		const response = await axios.post(url, data, { headers: this.headers() })
 		return response.data
 	}
 
-	async createRoleProfileFromBoard(boardId, name, organizationId) {
-		const url = generateUrl(`/apps/deck/boards/${boardId}/export-role-profile`)
-		const response = await axios.post(url, { name, organizationId }, { headers: this.headers() })
-		return response.data
-	}
-
-	async applyRoleProfile(boardId, profileId, clearExisting = false) {
-		const url = generateUrl(`/apps/deck/boards/${boardId}/apply-role-profile/${profileId}`)
-		const response = await axios.post(url, { clearExisting }, { headers: this.headers() })
-		return response.data
-	}
-
-	async deleteRoleProfile(profileId) {
-		const url = generateUrl(`/apps/deck/role-profiles/${profileId}`)
+	async deleteCardPolicyMembership(boardId, membershipId) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/memberships/${membershipId}`)
 		const response = await axios.delete(url, { headers: this.headers() })
 		return response.data
 	}

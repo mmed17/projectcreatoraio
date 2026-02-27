@@ -41,8 +41,7 @@ class ProjectService
     private const CV_FIELD_BUILDING_TYPE = 'cv_building_type';
     private const CV_FIELD_AVP_LOCATION = 'cv_avp_location';
 
-    /** @var array<string, array<int, int>>|null */
-    private ?array $cardVisibilityShowMap = null;
+	// Card-visibility helpers live in CardVisibility.
 
     public function __construct(
         protected IUserSession $userSession,
@@ -1121,244 +1120,35 @@ class ProjectService
     /**
      * @return array<int, array{field: string, category: string, question: string, options: array<int, array{label: string, value: int, show: int}>>>
      */
-    private function getCardVisibilityQuestions(): array
-    {
-        return [
-            [
-                'field' => self::CV_FIELD_OBJECT_OWNERSHIP,
-                'category' => 'Eigendoms situatie te realiseren object',
-                'question' => 'Eigendoms situatie te realiseren object (antwoord met ja op de situatie die van toepassing is).',
-                'options' => [
-                    [
-                        'label' => 'Het object(en) komt op eigen grond te staan en de gevel grenst direct aan gemeentegrond.',
-                        'value' => 201,
-                        'show' => 0,
-                    ],
-                    [
-                        'label' => 'Het object komt op eigen grond te staan maar de gevel grenst niet direct aan gemeentegrond.',
-                        'value' => 202,
-                        'show' => 2,
-                    ],
-                    [
-                        'label' => 'Het object komt op eigen grond te staan en de grond wordt overgedragen aan de gemeente.',
-                        'value' => 203,
-                        'show' => 2,
-                    ],
-                    [
-                        'label' => 'Het object komt op openbare grond te staan.',
-                        'value' => 204,
-                        'show' => 0,
-                    ],
-                    [
-                        'label' => 'Ik weet het nog niet.',
-                        'value' => 205,
-                        'show' => 2,
-                    ],
-                ],
-            ],
-            [
-                'field' => self::CV_FIELD_TRACE_OWNERSHIP,
-                'category' => 'Eigendoms situatie kabel en leidingen tracé',
-                'question' => 'Eigendoms situatie kabel en leidingen tracé (antwoord met ja op de situatie die van toepassing is).',
-                'options' => [
-                    [
-                        'label' => 'Het vrije tracé komt in eigen grond te liggen.',
-                        'value' => 211,
-                        'show' => 2,
-                    ],
-                    [
-                        'label' => 'Het vrije tracé komt in openbare grond te liggen.',
-                        'value' => 212,
-                        'show' => 0,
-                    ],
-                    [
-                        'label' => 'Het vrije tracé komt zowel in eigen grond als in openbare grond te liggen.',
-                        'value' => 213,
-                        'show' => 2,
-                    ],
-                    [
-                        'label' => 'Ik weet het nog niet.',
-                        'value' => 214,
-                        'show' => 2,
-                    ],
-                ],
-            ],
-            [
-                'field' => self::CV_FIELD_BUILDING_TYPE,
-                'category' => 'Grondgebonden woningen/ hoogbouw/ bedrijfsunits',
-                'question' => 'Grondgebonden woningen/ hoogbouw/ bedrijfsunits (antwoord met ja op de situatie die van toepassing is).',
-                'options' => [
-                    [
-                        'label' => 'U realiseert grondgebonden woningen.',
-                        'value' => 121,
-                        'show' => 0,
-                    ],
-                    [
-                        'label' => 'U realiseert appartementen.',
-                        'value' => 122,
-                        'show' => 1,
-                    ],
-                    [
-                        'label' => 'U realiseert zowel grondgebonden woningen als appartementen.',
-                        'value' => 123,
-                        'show' => 1,
-                    ],
-                    [
-                        'label' => 'U realiseert bedrijfsunits.',
-                        'value' => 124,
-                        'show' => 0,
-                    ],
-                ],
-            ],
-            [
-                'field' => self::CV_FIELD_AVP_LOCATION,
-                'category' => 'AVP Locatie',
-                'question' => 'AVP locatie (antwoord met ja op de situatie die van toepassing is).',
-                'options' => [
-                    [
-                        'label' => 'Ik heb nog niet nagedacht over een mogelijke AVP.',
-                        'value' => 221,
-                        'show' => 2,
-                    ],
-                    [
-                        'label' => 'Ik realiseer grondgebonden woningen en/of hoogbouw en/of bedrijfsunits. Er is rekening gehouden met een AVP op eigen grond.',
-                        'value' => 222,
-                        'show' => 0,
-                    ],
-                    [
-                        'label' => 'Ik realiseer grondgebonden woningen en/of hoogbouw en/of bedrijfsunits. Er is geen rekening gehouden met een AVP op eigen grond.',
-                        'value' => 223,
-                        'show' => 2,
-                    ],
-                    [
-                        'label' => 'Bij hoogbouw is de eis dat het AVP inpandig wordt opgenomen en daar is geen rekening mee gehouden.',
-                        'value' => 224,
-                        'show' => 2,
-                    ],
-                ],
-            ],
-        ];
-    }
+	private function getCardVisibilityQuestions(): array
+	{
+		return CardVisibility::getQuestions();
+	}
 
-    /**
-     * @return array<string, array<int, int>>
-     */
-    private function getCardVisibilityShowMap(): array
-    {
-        if ($this->cardVisibilityShowMap !== null) {
-            return $this->cardVisibilityShowMap;
-        }
-
-        $map = [];
-        foreach ($this->getCardVisibilityQuestions() as $question) {
-            $field = (string) ($question['field'] ?? '');
-            if ($field === '') {
-                continue;
-            }
-
-            $options = $question['options'] ?? [];
-            if (!is_array($options)) {
-                continue;
-            }
-
-            foreach ($options as $option) {
-                if (!is_array($option)) {
-                    continue;
-                }
-
-                $value = (int) ($option['value'] ?? 0);
-                $show = (int) ($option['show'] ?? 0);
-                $map[$field][$value] = $show;
-            }
-        }
-
-        $this->cardVisibilityShowMap = $map;
-        return $map;
-    }
-
-    /**
-     * @param array<string, array<int, int>> $showMap
-     */
-    private function resolveCardVisibilityShow(string $field, ?int $value, array $showMap): ?int
-    {
-        if ($value === null) {
-            return null;
-        }
-
-        if (in_array($value, [0, 1, 2], true)) {
-            return $value;
-        }
-
-        return $showMap[$field][$value] ?? 0;
-    }
-
-    /**
-     * @return array{cv_object_ownership: ?int, cv_trace_ownership: ?int, cv_building_type: ?int, cv_avp_location: ?int}
-     */
-    private function extractCardVisibilityAnswers(Project $project): array
-    {
-        return [
-            self::CV_FIELD_OBJECT_OWNERSHIP => $this->normalizeCardVisibilityAnswer($project->getCvObjectOwnership(), self::CV_FIELD_OBJECT_OWNERSHIP, true),
-            self::CV_FIELD_TRACE_OWNERSHIP => $this->normalizeCardVisibilityAnswer($project->getCvTraceOwnership(), self::CV_FIELD_TRACE_OWNERSHIP, true),
-            self::CV_FIELD_BUILDING_TYPE => $this->normalizeCardVisibilityAnswer($project->getCvBuildingType(), self::CV_FIELD_BUILDING_TYPE, true),
-            self::CV_FIELD_AVP_LOCATION => $this->normalizeCardVisibilityAnswer($project->getCvAvpLocation(), self::CV_FIELD_AVP_LOCATION, true),
-        ];
-    }
+	/**
+	 * @return array{cv_object_ownership: ?int, cv_trace_ownership: ?int, cv_building_type: ?int, cv_avp_location: ?int}
+	 */
+	private function extractCardVisibilityAnswers(Project $project): array
+	{
+		return CardVisibility::extractAnswers($project);
+	}
 
     /**
      * @param array{cv_object_ownership: ?int, cv_trace_ownership: ?int, cv_building_type: ?int, cv_avp_location: ?int} $answers
      * @return int[]
      */
-    private function getEnabledCardVisibilitySets(array $answers): array
-    {
-        $showMap = $this->getCardVisibilityShowMap();
-        $enabled = [];
-        foreach ($answers as $field => $answer) {
-            $show = $this->resolveCardVisibilityShow((string) $field, $answer, $showMap);
-            if ($show === 1) {
-                $enabled[1] = true;
-            } elseif ($show === 2) {
-                $enabled[2] = true;
-            }
-        }
-
-        $sets = array_keys($enabled);
-        sort($sets);
-        return array_values($sets);
-    }
+	private function getEnabledCardVisibilitySets(array $answers): array
+	{
+		return CardVisibility::getEnabledSets($answers);
+	}
 
     /**
      * @param mixed $value
      */
-    private function normalizeCardVisibilityAnswer(mixed $value, string $field, bool $allowNull = false): ?int
-    {
-        if ($value === null) {
-            return $allowNull ? null : 0;
-        }
-
-        if (is_string($value)) {
-            $value = trim($value);
-            if ($value === '') {
-                return $allowNull ? null : 0;
-            }
-            if (is_numeric($value)) {
-                $value = (int) $value;
-            }
-        }
-
-        $showMap = $this->getCardVisibilityShowMap();
-        $allowed = array_keys($showMap[$field] ?? []);
-        $allowed[] = 0;
-        $allowed[] = 1;
-        $allowed[] = 2;
-        $allowed = array_values(array_unique($allowed));
-
-        if (!is_int($value) || !in_array($value, $allowed, true)) {
-            throw new OCSException(sprintf('Invalid value for %s. Allowed values: null, 0, 1, 2 or one of the configured option values.', $field), 400);
-        }
-
-        return $value;
-    }
+	private function normalizeCardVisibilityAnswer(mixed $value, string $field, bool $allowNull = false): ?int
+	{
+		return CardVisibility::normalizeAnswer($value, $field, $allowNull);
+	}
 
     /**
      * @param array{cv_object_ownership: ?int, cv_trace_ownership: ?int, cv_building_type: ?int, cv_avp_location: ?int} $answers

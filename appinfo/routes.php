@@ -116,11 +116,6 @@ return [
             "verb" => "GET",
         ],
         [
-            "name" => "timeline_api#syncDone",
-            "url" => "/api/v1/projects/{projectId}/timeline/sync-done",
-            "verb" => "POST",
-        ],
-        [
             "name" => "timeline_api#create",
             "url" => "/api/v1/projects/{projectId}/timeline",
             "verb" => "POST",

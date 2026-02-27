@@ -7,7 +7,6 @@ use OCA\Organization\Db\UserMapper as OrganizationUserMapper;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Db\TimelineItemMapper;
-use OCA\ProjectCreatorAIO\Service\DeckDoneSyncService;
 use OCA\ProjectCreatorAIO\Service\TimelinePlanningService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -20,19 +19,18 @@ use OCP\IUserSession;
 
 class TimelineApiController extends Controller
 {
-    public function __construct(
-        string $appName,
-        IRequest $request,
-        private TimelineItemMapper $mapper,
-        private ProjectMapper $projectMapper,
-        private IUserSession $userSession,
-        private IGroupManager $groupManager,
-        private OrganizationUserMapper $organizationUserMapper,
-        private TimelinePlanningService $planningService,
-        private DeckDoneSyncService $doneSyncService,
-    ) {
-        parent::__construct($appName, $request);
-    }
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private TimelineItemMapper $mapper,
+		private ProjectMapper $projectMapper,
+		private IUserSession $userSession,
+		private IGroupManager $groupManager,
+		private OrganizationUserMapper $organizationUserMapper,
+		private TimelinePlanningService $planningService,
+	) {
+		parent::__construct($appName, $request);
+	}
 
     /**
      * @NoAdminRequired
@@ -68,25 +66,12 @@ class TimelineApiController extends Controller
     /**
      * @NoAdminRequired
      */
-    public function syncDone(int $projectId): JSONResponse
-    {
-        try {
-            $project = $this->requireProject($projectId);
-            $this->assertCanAccessProject($project);
-
-            $changed = $this->doneSyncService->syncProject($project);
-            return new JSONResponse(['success' => true, 'changed' => $changed]);
-        } catch (\Throwable $e) {
-            return $this->errorResponse($e);
-        }
-    }
-
-    /**
-     * @NoAdminRequired
-     */
-    public function create(
-        int $projectId,
-        string $label,
+	/**
+	 * @NoAdminRequired
+	 */
+	public function create(
+		int $projectId,
+		string $label,
         ?string $startDate = null,
         ?string $endDate = null,
         string $color = '#3b82f6',

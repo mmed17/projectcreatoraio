@@ -237,13 +237,6 @@ export default {
 		async load() {
 			this.loading = true
 			try {
-				try {
-					const syncUrl = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${this.projectId}/timeline/sync-done`)
-					await axios.post(syncUrl)
-				} catch (e) {
-					// best-effort
-				}
-
 				const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${this.projectId}/timeline/summary`)
 				const response = await axios.get(url)
 				this.summary = response.data || this.summary
