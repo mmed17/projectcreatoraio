@@ -32,11 +32,20 @@ class DeckTemplateApiController extends Controller
 		if ($user === null) {
 			throw new OCSForbiddenException('Authentication required');
 		}
+		$uid = $user->getUID();
 
 		if ($boardId !== null) {
-			$items = $this->templateService->listForBoard($boardId, $user->getUID());
+			$items = $this->templateService->listForBoard($boardId, $uid);
+			$canApply = $this->templateService->canApplyForBoard($boardId, $uid);
+			return new DataResponse(array_map(static function ($t) use ($uid, $canApply): array {
+				$data = $t->jsonSerialize();
+				$createdBy = (string) ($t->getCreatedBy() ?? '');
+				$data['canApply'] = $canApply;
+				$data['canDelete'] = $canApply || ($createdBy !== '' && $createdBy === $uid);
+				return $data;
+			}, $items));
 		} else {
-			$items = $this->templateService->listForUser($user->getUID());
+			$items = $this->templateService->listForUser($uid);
 		}
 		return new DataResponse(array_map(static fn ($t) => $t->jsonSerialize(), $items));
 	}
@@ -55,13 +64,13 @@ class DeckTemplateApiController extends Controller
 
 	#[NoCSRFRequired]
 	#[NoAdminRequired]
-	public function delete(int $templateId): DataResponse
+	public function delete(int $templateId, ?int $boardId = null): DataResponse
 	{
 		$user = $this->userSession->getUser();
 		if ($user === null) {
 			throw new OCSForbiddenException('Authentication required');
 		}
-		$this->templateService->delete($templateId, $user->getUID());
+		$this->templateService->delete($templateId, $user->getUID(), $boardId);
 		return new DataResponse(['status' => 'deleted']);
 	}
 

@@ -275,23 +275,35 @@
 							No templates saved yet. Save the current board setup below.
 						</div>
 						<div v-else class="pc-template-cards">
-							<div v-for="t in templates" :key="t.id" class="pc-template-card">
-								<div class="pc-template-card-info">
-									<strong class="pc-template-name">{{ t.name }}</strong>
-									<span class="pc-template-meta muted">By {{ t.createdBy }} · {{ formatIso(t.createdAt) }}</span>
+								<div v-for="t in templates" :key="t.id" class="pc-template-card">
+									<div class="pc-template-card-info">
+										<strong class="pc-template-name">{{ t.name }}</strong>
+										<span class="pc-template-meta muted">By {{ t.createdBy }} · {{ formatIso(t.createdAt) }}</span>
+									</div>
+									<div class="pc-template-card-actions">
+										<NcButton
+											type="primary"
+											size="small"
+											:loading="applyingTemplateId === t.id"
+											:disabled="(!!applyingTemplateId && applyingTemplateId !== t.id) || t.canApply === false"
+											:title="t.canApply === false ? 'Only project owners can apply templates' : ''"
+											@click="applyTemplate(t)">
+											<template #icon>✨</template>
+											Apply Template
+										</NcButton>
+										<NcButton
+											type="tertiary"
+											size="small"
+											:disabled="t.canDelete === false"
+											:title="t.canDelete === false ? 'You can only delete templates you created' : 'Delete template'"
+											aria-label="Delete template"
+											@click="deleteTemplate(t)">
+											<template #icon>
+												<span style="color: var(--color-error); font-size: 16px;">🗑️</span>
+											</template>
+										</NcButton>
+									</div>
 								</div>
-								<div class="pc-template-card-actions">
-									<NcButton type="primary" size="small" :loading="applyingTemplateId === t.id" :disabled="!!applyingTemplateId && applyingTemplateId !== t.id" @click="applyTemplate(t)">
-										<template #icon>✨</template>
-										Apply Template
-									</NcButton>
-									<NcButton type="tertiary" size="small" @click="deleteTemplate(t)" title="Delete template" aria-label="Delete template">
-										<template #icon>
-											<span style="color: var(--color-error); font-size: 16px;">🗑️</span>
-										</template>
-									</NcButton>
-								</div>
-							</div>
 						</div>
 					</div>
 				</div>
@@ -541,7 +553,7 @@ export default {
 		async deleteTemplate(t) {
 			if (!t?.id) return
 			try {
-				await deckTemplatesService.delete(t.id)
+				await deckTemplatesService.delete(t.id, this.boardIdNum)
 				showSuccess('Template deleted')
 				await this.loadTemplates()
 			} catch (e) {
@@ -550,6 +562,10 @@ export default {
 		},
 		async applyTemplate(t) {
 			if (!t?.id) return
+			if (t?.canApply === false) {
+				showError('Only project owners can apply templates')
+				return
+			}
 			if (this.applyingTemplateId) return
 			if (!confirm(`Apply template "${t.name}" to this board? This can create missing roles, stacks, and cards.`)) return
 			this.applyingTemplateId = t.id

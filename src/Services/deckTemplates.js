@@ -41,9 +41,14 @@ export class DeckTemplatesService {
 		return response.data
 	}
 
-	async delete(templateId) {
+	async delete(templateId, boardId = null) {
 		const url = generateUrl(`/apps/projectcreatoraio/api/v1/deck-templates/${Number(templateId)}`)
+		const params = {}
+		if (boardId !== null && boardId !== undefined && Number(boardId) > 0) {
+			params.boardId = Number(boardId)
+		}
 		const response = await axios.delete(url, {
+			params,
 			headers: {
 				'OCS-APIRequest': 'true',
 				'Content-Type': 'application/json',

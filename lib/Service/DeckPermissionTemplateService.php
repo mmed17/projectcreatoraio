@@ -5,18 +5,18 @@ declare(strict_types=1);
 namespace OCA\ProjectCreatorAIO\Service;
 
 use DateTime;
-use OCA\Deck\Service\CardPolicyService;
 use OCA\Deck\NoPermissionException as DeckNoPermissionException;
+use OCA\Deck\Service\CardPolicyService;
 use OCA\Organization\Db\UserMapper as OrganizationUserMapper;
 use OCA\ProjectCreatorAIO\Db\DeckPermissionTemplate;
 use OCA\ProjectCreatorAIO\Db\DeckPermissionTemplateMapper;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\OCS\OCSBadRequestException;
-use OCP\DB\QueryBuilder\IQueryBuilder;
-use OCP\IGroupManager;
-use OCP\IDBConnection;
 use OCP\AppFramework\OCS\OCSForbiddenException;
 use OCP\AppFramework\OCS\OCSNotFoundException;
+use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\IDBConnection;
+use OCP\IGroupManager;
 
 class DeckPermissionTemplateService
 {
@@ -30,6 +30,8 @@ class DeckPermissionTemplateService
 	}
 
 	/**
+	 * Keeps existing behavior: list all templates for the current user's organization.
+	 *
 	 * @return DeckPermissionTemplate[]
 	 */
 	public function listForUser(string $userId): array
@@ -42,6 +44,9 @@ class DeckPermissionTemplateService
 	}
 
 	/**
+	 * List templates for the organization of the project linked to this board.
+	 * Any project member (or project owner/org admin/global admin) may list.
+	 *
 	 * @return DeckPermissionTemplate[]
 	 */
 	public function listForBoard(int $boardId, string $userId): array
@@ -50,15 +55,42 @@ class DeckPermissionTemplateService
 			throw new OCSBadRequestException('Invalid board');
 		}
 
-		$orgId = $this->getOrganizationIdForBoard($boardId);
-		if ($orgId <= 0) {
-			throw new OCSNotFoundException('This board is not linked to a project');
-		}
-
-		$this->assertOrganizationAdmin($userId, $orgId);
-		return $this->templateMapper->findByOrganization($orgId);
+		$ctx = $this->assertCanAccessProjectForBoard($boardId, $userId);
+		return $this->templateMapper->findByOrganization($ctx['organizationId']);
 	}
 
+	/**
+	 * Only project owners OR organization admins OR global admins may apply templates for a board.
+	 */
+	public function canApplyForBoard(int $boardId, string $userId): bool
+	{
+		if ($boardId <= 0) {
+			return false;
+		}
+
+		$ctx = $this->getProjectContextForBoard($boardId);
+		$orgId = (int) ($ctx['organizationId'] ?? 0);
+		if ($orgId <= 0) {
+			return false;
+		}
+
+		if ($this->isGlobalAdmin($userId)) {
+			return true;
+		}
+		if ($this->isOrganizationAdmin($userId, $orgId)) {
+			return true;
+		}
+
+		$ownerId = (string) ($ctx['ownerId'] ?? '');
+		return $ownerId !== '' && $ownerId === $userId;
+	}
+
+	/**
+	 * Fetch the template payload for applying to this board.
+	 * Only project owners OR organization admins OR global admins may fetch payload.
+	 *
+	 * @return array<string, mixed>
+	 */
 	public function getForBoard(int $templateId, int $boardId, string $userId): array
 	{
 		if ($templateId <= 0) {
@@ -68,11 +100,8 @@ class DeckPermissionTemplateService
 			throw new OCSBadRequestException('Invalid board');
 		}
 
-		$orgId = $this->getOrganizationIdForBoard($boardId);
-		if ($orgId <= 0) {
-			throw new OCSNotFoundException('This board is not linked to a project');
-		}
-		$this->assertOrganizationAdmin($userId, $orgId);
+		$ctx = $this->assertCanApplyForBoard($boardId, $userId);
+		$orgId = $ctx['organizationId'];
 
 		try {
 			$template = $this->templateMapper->find($templateId);
@@ -101,6 +130,10 @@ class DeckPermissionTemplateService
 		];
 	}
 
+	/**
+	 * Any project member may create a template (board context),
+	 * but we still enforce Deck's permission check (must be able to manage board).
+	 */
 	public function createFromBoard(int $boardId, string $name, string $userId): DeckPermissionTemplate
 	{
 		$name = trim($name);
@@ -111,12 +144,9 @@ class DeckPermissionTemplateService
 			throw new OCSBadRequestException('Invalid board');
 		}
 
-		$orgId = $this->getOrganizationIdForBoard($boardId);
-		if ($orgId <= 0) {
-			throw new OCSNotFoundException('This board is not linked to a project');
-		}
+		$ctx = $this->assertCanAccessProjectForBoard($boardId, $userId);
+		$orgId = $ctx['organizationId'];
 
-		$this->assertOrganizationAdmin($userId, $orgId);
 		if ($this->templateMapper->findByOrganizationAndName($orgId, $name) !== null) {
 			throw new OCSBadRequestException('A template with this name already exists');
 		}
@@ -202,38 +232,87 @@ class DeckPermissionTemplateService
 		return $this->templateMapper->insert($template);
 	}
 
-	public function delete(int $templateId, string $userId): void
+	/**
+	 * Delete a template.
+	 * - Global admins OR org admins may delete any template.
+	 * - Project owners may delete any template (requires boardId context).
+	 * - Template creators may delete their own templates.
+	 */
+	public function delete(int $templateId, string $userId, ?int $boardId = null): void
 	{
+		if ($templateId <= 0) {
+			throw new OCSBadRequestException('Invalid template');
+		}
+
 		try {
 			$template = $this->templateMapper->find($templateId);
 		} catch (DoesNotExistException $e) {
 			throw new OCSNotFoundException('Template not found');
 		}
+
 		$orgId = (int) ($template->getOrganizationId() ?? 0);
-		$this->assertOrganizationAdmin($userId, $orgId);
-		$this->templateMapper->delete($template);
+		$createdBy = (string) ($template->getCreatedBy() ?? '');
+
+		if ($this->isGlobalAdmin($userId)) {
+			$this->templateMapper->delete($template);
+			return;
+		}
+
+		if ($orgId > 0 && $this->isOrganizationAdmin($userId, $orgId)) {
+			$this->templateMapper->delete($template);
+			return;
+		}
+
+		if ($createdBy !== '' && $createdBy === $userId) {
+			$this->templateMapper->delete($template);
+			return;
+		}
+
+		if ($boardId !== null) {
+			if ($boardId <= 0) {
+				throw new OCSBadRequestException('Invalid board');
+			}
+
+			$ctx = $this->getProjectContextForBoard($boardId);
+			$boardOrgId = (int) ($ctx['organizationId'] ?? 0);
+			if ($boardOrgId <= 0) {
+				throw new OCSNotFoundException('This board is not linked to a project');
+			}
+
+			if ($boardOrgId !== $orgId) {
+				throw new OCSNotFoundException('Template not found');
+			}
+
+			$ownerId = (string) ($ctx['ownerId'] ?? '');
+			if ($ownerId !== '' && $ownerId === $userId) {
+				$this->templateMapper->delete($template);
+				return;
+			}
+		}
+
+		throw new OCSForbiddenException('You do not have permission to delete this template');
 	}
 
-	private function assertOrganizationAdmin(string $userId, int $organizationId): void
+	private function isOrganizationAdmin(string $userId, int $organizationId): bool
 	{
 		if ($organizationId <= 0) {
-			throw new OCSForbiddenException('Missing organization context');
-		}
-		if ($this->groupManager->isAdmin($userId)) {
-			return;
+			return false;
 		}
 		$membership = $this->organizationUserMapper->getOrganizationMembership($userId);
 		if ($membership === null || (int) ($membership['organization_id'] ?? 0) !== $organizationId) {
-			throw new OCSForbiddenException('You are not a member of this organization');
+			return false;
 		}
-		if ((string) ($membership['role'] ?? '') !== 'admin') {
-			throw new OCSForbiddenException('Only organization admins can manage templates');
-		}
+		return (string) ($membership['role'] ?? '') === 'admin';
+	}
+
+	private function isGlobalAdmin(string $userId): bool
+	{
+		return $this->groupManager->isAdmin($userId);
 	}
 
 	private function getOrganizationIdForUser(string $userId): int
 	{
-		if ($this->groupManager->isAdmin($userId)) {
+		if ($this->isGlobalAdmin($userId)) {
 			// Global admins must pick an organization elsewhere (MVP: no org-scoped listing for them).
 			return 0;
 		}
@@ -241,17 +320,95 @@ class DeckPermissionTemplateService
 		return isset($membership['organization_id']) ? (int) $membership['organization_id'] : 0;
 	}
 
-	private function getOrganizationIdForBoard(int $boardId): int
+	/**
+	 * @return array{organizationId: int, ownerId: string, projectGroupGid: string}
+	 */
+	private function getProjectContextForBoard(int $boardId): array
 	{
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('organization_id')
+		$qb->select('organization_id', 'owner_id', 'project_group_gid')
 			->from('custom_projects')
 			->where($qb->expr()->eq('board_id', $qb->createNamedParameter($boardId, IQueryBuilder::PARAM_INT)))
 			->setMaxResults(1);
+
 		$res = $qb->executeQuery();
 		$row = $res->fetch();
 		$res->closeCursor();
-		return isset($row['organization_id']) ? (int) $row['organization_id'] : 0;
+
+		if (!is_array($row)) {
+			return [
+				'organizationId' => 0,
+				'ownerId' => '',
+				'projectGroupGid' => '',
+			];
+		}
+
+		return [
+			'organizationId' => isset($row['organization_id']) ? (int) $row['organization_id'] : 0,
+			'ownerId' => (string) ($row['owner_id'] ?? ''),
+			'projectGroupGid' => (string) ($row['project_group_gid'] ?? ''),
+		];
+	}
+
+	/**
+	 * Any project member (group member), project owner, org admin, or global admin.
+	 *
+	 * @return array{organizationId: int, ownerId: string, projectGroupGid: string}
+	 */
+	private function assertCanAccessProjectForBoard(int $boardId, string $userId): array
+	{
+		$ctx = $this->getProjectContextForBoard($boardId);
+		$orgId = (int) ($ctx['organizationId'] ?? 0);
+		if ($orgId <= 0) {
+			throw new OCSNotFoundException('This board is not linked to a project');
+		}
+
+		if ($this->isGlobalAdmin($userId)) {
+			return $ctx;
+		}
+		if ($this->isOrganizationAdmin($userId, $orgId)) {
+			return $ctx;
+		}
+
+		$ownerId = (string) ($ctx['ownerId'] ?? '');
+		if ($ownerId !== '' && $ownerId === $userId) {
+			return $ctx;
+		}
+
+		$gid = trim((string) ($ctx['projectGroupGid'] ?? ''));
+		if ($gid !== '' && $this->groupManager->isInGroup($userId, $gid)) {
+			return $ctx;
+		}
+
+		throw new OCSForbiddenException('You do not have access to this project');
+	}
+
+	/**
+	 * Only project owners OR org admins OR global admins.
+	 *
+	 * @return array{organizationId: int, ownerId: string, projectGroupGid: string}
+	 */
+	private function assertCanApplyForBoard(int $boardId, string $userId): array
+	{
+		$ctx = $this->getProjectContextForBoard($boardId);
+		$orgId = (int) ($ctx['organizationId'] ?? 0);
+		if ($orgId <= 0) {
+			throw new OCSNotFoundException('This board is not linked to a project');
+		}
+
+		if ($this->isGlobalAdmin($userId)) {
+			return $ctx;
+		}
+		if ($this->isOrganizationAdmin($userId, $orgId)) {
+			return $ctx;
+		}
+
+		$ownerId = (string) ($ctx['ownerId'] ?? '');
+		if ($ownerId !== '' && $ownerId === $userId) {
+			return $ctx;
+		}
+
+		throw new OCSForbiddenException('You do not have permission to apply templates for this board');
 	}
 
 	/**
