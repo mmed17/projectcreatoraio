@@ -100,29 +100,29 @@
 				<div class="form-row">
 					<NcTextField
 						v-model="project.loc_street"
-						label="Location street"
+						label="Project location street"
 						class="form-row-item"
 						placeholder="e.g., 45 Industrial Ave"
 						:show-label="true"
-						input-label="Location street" />
+						input-label="Project location street" />
 
 					<NcTextField
 						v-model="project.loc_city"
-						label="Location city"
+						label="Project location city"
 						class="form-row-item"
 						placeholder="e.g., Toronto"
 						:show-label="true"
-						input-label="Location city" />
+						input-label="Project location city" />
 				</div>
 
 				<div class="form-row">
 					<NcTextField
 						v-model="project.loc_zip"
-						label="Location ZIP"
+						label="Project location ZIP"
 						class="form-row-item"
 						placeholder="e.g., 10001"
 						:show-label="true"
-						input-label="Location ZIP" />
+						input-label="Project location ZIP" />
 				</div>
 
 				<div class="form-row">

@@ -41,6 +41,8 @@ class TimelineApiController extends Controller
             $project = $this->requireProject($projectId);
             $this->assertCanAccessProject($project);
 
+            $this->syncSystemTimelineItems($project);
+
             $items = $this->mapper->findByProject($projectId);
             return new JSONResponse($items);
         } catch (\Throwable $e) {
@@ -75,10 +77,46 @@ class TimelineApiController extends Controller
         ?string $startDate = null,
         ?string $endDate = null,
         string $color = '#3b82f6',
+        string $itemType = 'phase',
     ): JSONResponse {
         try {
             $project = $this->requireProject($projectId);
             $this->assertCanManageTimelineProject($project);
+
+            // Ensure derived/system items exist so order indices don't collide.
+            $this->syncSystemTimelineItems($project);
+
+            $label = trim($label);
+            if ($label === '') {
+                return new JSONResponse(['error' => 'Missing label'], Http::STATUS_BAD_REQUEST);
+            }
+
+            $startDate = $this->normalizeDateParamToNull($startDate);
+            $endDate = $this->normalizeDateParamToNull($endDate);
+
+            $itemType = strtolower(trim((string) $itemType));
+            if ($itemType === '') {
+                $itemType = 'phase';
+            }
+            if (!in_array($itemType, ['phase', 'milestone'], true)) {
+                return new JSONResponse(['error' => 'Invalid item type'], Http::STATUS_BAD_REQUEST);
+            }
+
+            if ($startDate === null) {
+                return new JSONResponse(['error' => 'Missing start date'], Http::STATUS_BAD_REQUEST);
+            }
+
+            if ($itemType === 'milestone') {
+                $endDate = $startDate;
+            }
+
+            if ($endDate !== null) {
+                $start = new DateTime($startDate);
+                $end = new DateTime($endDate);
+                if ($end < $start) {
+                    return new JSONResponse(['error' => 'End date cannot be before start date'], Http::STATUS_BAD_REQUEST);
+                }
+            }
 
             $item = $this->mapper->createItem(
                 $projectId,
@@ -87,6 +125,8 @@ class TimelineApiController extends Controller
                 $endDate,
                 $color,
                 $this->mapper->getNextOrderIndex($projectId),
+                null,
+                $itemType,
             );
 
             return new JSONResponse($item, Http::STATUS_CREATED);
@@ -105,6 +145,7 @@ class TimelineApiController extends Controller
         ?string $startDate = null,
         ?string $endDate = null,
         ?string $color = null,
+        ?string $itemType = null,
         ?int $orderIndex = null,
     ): JSONResponse {
         try {
@@ -123,22 +164,61 @@ class TimelineApiController extends Controller
             $isSystemItem = (string) ($item->getSystemKey() ?? '') !== '';
 
             if (!$isSystemItem && $label !== null) {
-                $item->setLabel($label);
+                $nextLabel = trim($label);
+                if ($nextLabel === '') {
+                    return new JSONResponse(['error' => 'Missing label'], Http::STATUS_BAD_REQUEST);
+                }
+                $item->setLabel($nextLabel);
             }
+
+            $clearStart = $startDate !== null && trim($startDate) === '';
+            $clearEnd = $endDate !== null && trim($endDate) === '';
+
+            $startDate = $this->normalizeDateParamToNull($startDate);
+            $endDate = $this->normalizeDateParamToNull($endDate);
+
             if ($startDate !== null) {
                 $item->setStartDate(new DateTime($startDate));
+            } elseif ($clearStart) {
+                $item->setStartDate(null);
             }
+
             if ($endDate !== null) {
                 $item->setEndDate(new DateTime($endDate));
+            } elseif ($clearEnd) {
+                $item->setEndDate(null);
             }
             if ($color !== null) {
                 $item->setColor($color);
             }
-            if (!$isSystemItem && $orderIndex !== null) {
-                if (in_array($orderIndex, [0, 1, 2], true)) {
-                    return new JSONResponse(['error' => 'Order index is reserved for system timeline items'], Http::STATUS_FORBIDDEN);
+
+            if (!$isSystemItem && $itemType !== null) {
+                $nextType = strtolower(trim((string) $itemType));
+                if ($nextType === '') {
+                    $nextType = 'phase';
                 }
+                if (!in_array($nextType, ['phase', 'milestone'], true)) {
+                    return new JSONResponse(['error' => 'Invalid item type'], Http::STATUS_BAD_REQUEST);
+                }
+                $item->setItemType($nextType);
+            }
+
+            if (!$isSystemItem && $orderIndex !== null) {
                 $item->setOrderIndex($orderIndex);
+            }
+
+            $effectiveType = strtolower(trim((string) ($item->getItemType() ?? 'phase')));
+            if ($effectiveType === 'milestone') {
+                $start = $item->getStartDate();
+                if ($start instanceof DateTime) {
+                    $item->setEndDate(clone $start);
+                }
+            }
+
+            $start = $item->getStartDate();
+            $end = $item->getEndDate();
+            if ($start instanceof DateTime && $end instanceof DateTime && $end < $start) {
+                return new JSONResponse(['error' => 'End date cannot be before start date'], Http::STATUS_BAD_REQUEST);
             }
 
             return new JSONResponse($this->mapper->updateItem($item));
@@ -147,8 +227,20 @@ class TimelineApiController extends Controller
         }
     }
 
+    private function normalizeDateParamToNull(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+        return $value;
+    }
+
     /**
-     * Batch reorder timeline items (non-system only) to avoid N API calls on drag-and-drop.
+     * Batch reorder timeline items to avoid N API calls on drag-and-drop.
      *
      * @NoAdminRequired
      */
@@ -162,7 +254,7 @@ class TimelineApiController extends Controller
                 return new JSONResponse(['error' => 'Missing ids'], Http::STATUS_BAD_REQUEST);
             }
 
-            $items = $this->mapper->reorderNonSystemItems($projectId, $ids);
+            $items = $this->mapper->reorderItems($projectId, $ids);
             return new JSONResponse($items);
         } catch (\InvalidArgumentException $e) {
             return new JSONResponse(['error' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
@@ -170,6 +262,105 @@ class TimelineApiController extends Controller
             return $this->errorResponse($e);
         }
     }
+
+	private function syncSystemTimelineItems(Project $project): void
+	{
+		try {
+			$summary = $this->planningService->buildSummary($project);
+			$projectId = (int) $project->getId();
+
+			$requestDate = trim((string) ($summary['requestDate'] ?? ''));
+			$process = $summary['processCompleted'] ?? [];
+			$processStatus = trim((string) ($process['status'] ?? ''));
+			$processDate = trim((string) ($process['date'] ?? ''));
+			$earliest = trim((string) ($summary['earliestExecutionDate'] ?? ''));
+
+			if ($requestDate !== '') {
+				$this->upsertSystemItem(
+					$projectId,
+					'request_date',
+					'Request Date',
+					$requestDate,
+					$requestDate,
+					'#0f172a',
+					'milestone',
+					0,
+				);
+			}
+
+			if ($requestDate !== '') {
+				$isComplete = $processStatus === 'complete' && $processDate !== '';
+				$this->upsertSystemItem(
+					$projectId,
+					'process_completed',
+					'Process Completed',
+					$requestDate,
+					$isComplete ? $processDate : null,
+					$isComplete ? '#10b981' : '#f59e0b',
+					'phase',
+					1,
+				);
+			}
+
+			if ($processStatus === 'complete' && $processDate !== '' && $earliest !== '') {
+				$this->upsertSystemItem(
+					$projectId,
+					'prep_time',
+					'Prep Time',
+					$processDate,
+					$earliest,
+					'#3b82f6',
+					'phase',
+					2,
+				);
+			} else {
+				$this->mapper->deleteByProjectAndSystemKey($projectId, 'prep_time');
+			}
+		} catch (\Throwable $e) {
+			// Non-blocking: timeline should still load even if derived system items fail.
+		}
+	}
+
+	private function upsertSystemItem(
+		int $projectId,
+		string $systemKey,
+		string $label,
+		?string $startDate,
+		?string $endDate,
+		string $color,
+		string $itemType,
+		int $defaultOrderIndex,
+	): void {
+		$existing = $this->mapper->findByProjectAndSystemKey($projectId, $systemKey);
+		if ($existing === null) {
+			$this->mapper->createItem(
+				$projectId,
+				$label,
+				$startDate,
+				$endDate,
+				$color,
+				$defaultOrderIndex,
+				$systemKey,
+				$itemType,
+			);
+			return;
+		}
+
+		$existing->setLabel($label);
+		$existing->setItemType($itemType);
+		if ($startDate !== null) {
+			$existing->setStartDate(new DateTime($startDate));
+		} else {
+			$existing->setStartDate(null);
+		}
+		if ($endDate !== null) {
+			$existing->setEndDate(new DateTime($endDate));
+		} else {
+			$existing->setEndDate(null);
+		}
+		$existing->setColor($color);
+		$this->mapper->updateItem($existing);
+	}
 
     /**
      * @NoAdminRequired

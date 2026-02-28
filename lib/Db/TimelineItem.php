@@ -20,6 +20,8 @@ use JsonSerializable;
  * @method void setEndDate(?DateTime $endDate)
  * @method string getColor()
  * @method void setColor(string $color)
+ * @method string|null getItemType()
+ * @method void setItemType(?string $itemType)
  * @method int getOrderIndex()
  * @method void setOrderIndex(int $orderIndex)
  * @method DateTime getCreatedAt()
@@ -36,6 +38,7 @@ class TimelineItem extends Entity implements JsonSerializable
     protected $startDate;
     protected $endDate;
     protected $color;
+    protected $itemType;
     protected $orderIndex;
     protected $systemKey;
     protected $createdAt;
@@ -48,6 +51,7 @@ class TimelineItem extends Entity implements JsonSerializable
         $this->addType('startDate', Types::DATE);
         $this->addType('endDate', Types::DATE);
         $this->addType('systemKey', Types::STRING);
+        $this->addType('itemType', Types::STRING);
         $this->addType('createdAt', Types::DATETIME);
         $this->addType('updatedAt', Types::DATETIME);
     }
@@ -55,6 +59,12 @@ class TimelineItem extends Entity implements JsonSerializable
 
     public function jsonSerialize(): array
     {
+        $itemType = (string) ($this->getItemType() ?? '');
+        $itemType = trim($itemType);
+        if ($itemType === '') {
+            $itemType = 'phase';
+        }
+
         return [
             'id' => $this->getId(),
             'projectId' => $this->getProjectId(),
@@ -66,6 +76,7 @@ class TimelineItem extends Entity implements JsonSerializable
                 ? $this->endDate->format('Y-m-d')
                 : $this->endDate,
             'color' => $this->getColor(),
+            'itemType' => $itemType,
             'orderIndex' => $this->getOrderIndex(),
             'systemKey' => $this->getSystemKey(),
             'createdAt' => $this->createdAt instanceof DateTime

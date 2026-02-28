@@ -40,9 +40,15 @@ export class DeckService {
 		return response.data ?? []
 	}
 
-	async createCard(stackId, title, order = 999) {
+	async createStack(boardId, title, order = 999) {
+		const url = generateUrl('/apps/deck/stacks')
+		const response = await axios.post(url, { title, boardId: Number(boardId), order }, { headers: this.headers() })
+		return response.data
+	}
+
+	async createCard(stackId, title, order = 999, description = '') {
 		const url = generateUrl('/apps/deck/cards')
-		const response = await axios.post(url, { title, stackId, type: 'plain', order }, { headers: this.headers() })
+		const response = await axios.post(url, { title, stackId, type: 'plain', order, description }, { headers: this.headers() })
 		return response.data
 	}
 
@@ -96,6 +102,24 @@ export class DeckService {
 
 	async deleteCardPolicyMembership(boardId, membershipId) {
 		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/memberships/${membershipId}`)
+		const response = await axios.delete(url, { headers: this.headers() })
+		return response.data
+	}
+
+	async createCardPolicyRole(boardId, data) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/roles`)
+		const response = await axios.post(url, data, { headers: this.headers() })
+		return response.data
+	}
+
+	async updateCardPolicyRole(boardId, roleId, data) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/roles/${roleId}`)
+		const response = await axios.put(url, data, { headers: this.headers() })
+		return response.data
+	}
+
+	async deleteCardPolicyRole(boardId, roleId) {
+		const url = generateUrl(`/apps/deck/boards/${boardId}/card-policy/roles/${roleId}`)
 		const response = await axios.delete(url, { headers: this.headers() })
 		return response.data
 	}

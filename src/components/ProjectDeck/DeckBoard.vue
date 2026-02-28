@@ -32,10 +32,28 @@
 				</div>
 			</div>
 
-			<DeckCardPolicyManager
+			<!-- Advanced Permissions Section -->
+			<div v-if="!loading && !error && canManage" class="pc-collapsible-section" :class="{ 'is-open': !isPermissionsCollapsed }">
+				<button class="pc-collapsible-header" @click="isPermissionsCollapsed = !isPermissionsCollapsed">
+					<div class="pc-collapsible-title">
+						<span class="pc-collapsible-icon">🛡️</span>
+						<div>
+							<h3>Advanced Permissions</h3>
+							<p class="muted">Manage custom rules and roles for individual cards</p>
+						</div>
+					</div>
+					<div class="pc-collapsible-chevron" :class="{ 'is-rotated': !isPermissionsCollapsed }">
+						▼
+					</div>
+				</button>
+				
+				<div v-show="!isPermissionsCollapsed" class="pc-collapsible-body">
+					<DeckCardPolicyManager
 				v-if="!loading && !error && canManage"
 				:board-id="boardId"
 				:members="projectMembers" />
+				</div>
+			</div>
 
 			<div v-if="loading" class="deck-board__muted">
 				Loading board...
@@ -90,6 +108,7 @@ export default {
 	},
 	data() {
 		return {
+			isPermissionsCollapsed: true,
 			board: null,
 			permissions: null,
 			error: '',
@@ -173,9 +192,13 @@ export default {
 				this.projectMembers = []
 			}
 		},
-		reload() {
-			this.load()
-			this.mountEmbedded({ forceRemount: true })
+		async reload() {
+			await this.load()
+			if (this.error) {
+				return
+			}
+			await this.$nextTick()
+			await this.mountEmbedded({ forceRemount: true })
 		},
 		resetState() {
 			this.board = null
@@ -359,5 +382,86 @@ export default {
 		min-height: min(74vh, 880px);
 		height: min(74vh, 880px);
 	}
+}
+
+/* Collapsible Section Styles */
+.pc-collapsible-section {
+	margin-top: 24px;
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-large, 8px);
+	background: var(--color-main-background);
+	overflow: hidden;
+	transition: box-shadow 0.2s;
+}
+
+.pc-collapsible-section.is-open {
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+	border-color: var(--color-primary-element-light, var(--color-border));
+}
+
+.pc-collapsible-header {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 24px;
+	background: var(--color-background-hover);
+	border: none;
+	cursor: pointer;
+	text-align: left;
+	transition: background-color 0.2s;
+}
+
+.pc-collapsible-header:hover {
+	background: var(--color-main-background);
+}
+
+.pc-collapsible-section.is-open .pc-collapsible-header {
+	border-bottom: 1px solid var(--color-border);
+	background: var(--color-main-background);
+}
+
+.pc-collapsible-title {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+.pc-collapsible-icon {
+	font-size: 24px;
+	opacity: 0.8;
+}
+
+.pc-collapsible-title h3 {
+	margin: 0 0 4px 0;
+	font-size: 16px;
+	font-weight: bold;
+	color: var(--color-main-text);
+}
+
+.pc-collapsible-title p {
+	margin: 0;
+	font-size: 13px;
+}
+
+.pc-collapsible-chevron {
+	font-size: 12px;
+	color: var(--color-text-maxcontrast);
+	transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pc-collapsible-chevron.is-rotated {
+	transform: rotate(180deg);
+}
+
+.pc-collapsible-body {
+	padding: 24px;
+	background: var(--color-main-background);
+	animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+	from { opacity: 0; transform: translateY(-10px); }
+	to { opacity: 1; transform: translateY(0); }
 }
 </style>

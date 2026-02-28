@@ -135,6 +135,26 @@ return [
             "url" => "/api/v1/projects/{projectId}/timeline/{id}",
             "verb" => "DELETE",
         ],
+		[
+			'name' => 'deck_template_api#list',
+			'url' => '/api/v1/deck-templates',
+			'verb' => 'GET',
+		],
+		[
+			'name' => 'deck_template_api#createFromBoard',
+			'url' => '/api/v1/deck-templates/from-board',
+			'verb' => 'POST',
+		],
+		[
+			'name' => 'deck_template_api#delete',
+			'url' => '/api/v1/deck-templates/{templateId}',
+			'verb' => 'DELETE',
+		],
+		[
+			'name' => 'deck_template_api#get',
+			'url' => '/api/v1/deck-templates/{templateId}',
+			'verb' => 'GET',
+		],
         [
             "name" => "page#index",
             "url" => "/",

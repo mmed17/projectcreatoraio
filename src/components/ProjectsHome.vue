@@ -234,7 +234,7 @@
 									type="tertiary"
 									class="projects-home__title-edit-btn"
 									aria-label="Edit project title"
-									@click="startProjectProfileEdit">
+									@click="startProjectProfileEdit('project')">
 									<template #icon>
 										<Pencil :size="15" />
 									</template>
@@ -364,7 +364,7 @@
 									<NcButton
 										v-if="canEditSelectedProjectDetails"
 										type="tertiary"
-										@click="startProjectProfileEdit">
+										@click="startProjectProfileEdit('location')">
 										<template #icon>
 											<Pencil :size="16" />
 										</template>
@@ -416,7 +416,7 @@
 									<NcButton
 										v-if="canEditSelectedProjectDetails"
 										type="tertiary"
-										@click="startProjectProfileEdit">
+										@click="startProjectProfileEdit('client')">
 										<template #icon>
 											<Pencil :size="16" />
 										</template>
@@ -1227,14 +1227,20 @@ export default {
 			}
 			this.projectProfileSection = this.canEditProjectTitle ? 'project' : 'client'
 		},
-		startProjectProfileEdit() {
+		startProjectProfileEdit(section = null) {
 			if (!this.canEditSelectedProjectDetails) {
 				return
 			}
 			this.projectProfileError = ''
 			this.projectProfileMessage = ''
 			this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
-			this.projectProfileSection = this.canEditProjectTitle ? 'project' : 'client'
+			const requested = typeof section === 'string' ? section.trim() : ''
+			const allowed = ['project', 'client', 'location']
+			let nextSection = allowed.includes(requested) ? requested : (this.canEditProjectTitle ? 'project' : 'client')
+			if (nextSection === 'project' && !this.canEditProjectTitle) {
+				nextSection = 'client'
+			}
+			this.projectProfileSection = nextSection
 			this.showProjectProfileModal = true
 		},
 		cancelProjectProfileEdit() {
