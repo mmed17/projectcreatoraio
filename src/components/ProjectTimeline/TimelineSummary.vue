@@ -164,7 +164,7 @@ export default {
 				requiredPreparationWeeks: 0,
 				processCompleted: { status: 'missing_cards', date: null, doneCount: 0, totalRequired: 0, missingTitles: [] },
 				earliestExecutionDate: null,
-				coordinationPendingPeriod: { days: 0, fromDate: null, toDate: null, isFinal: false },
+				coordinationPendingPeriod: { weeks: 0, fromDate: null, toDate: null, isFinal: false },
 			},
 			prepWeeksInput: '0',
 		}
@@ -203,9 +203,21 @@ export default {
 			return Number.isFinite(next) && next !== current
 		},
 		coordinationPendingText() {
-			const days = Number(this.summary?.coordinationPendingPeriod?.days)
-			if (!Number.isFinite(days) || days < 0) return ''
-			return `${days} ${days === 1 ? 'day' : 'days'}`
+			const period = this.summary?.coordinationPendingPeriod || {}
+			let weeks = Number(period.weeks)
+
+			if (!Number.isFinite(weeks)) {
+				const legacyDays = Number(period.days)
+				if (Number.isFinite(legacyDays) && legacyDays >= 0) {
+					weeks = legacyDays / 7
+				}
+			}
+
+			if (!Number.isFinite(weeks) || weeks < 0) return ''
+
+			const normalized = Math.round(weeks * 10) / 10
+			const display = Number.isInteger(normalized) ? String(normalized) : normalized.toFixed(1)
+			return `${display} ${normalized === 1 ? 'week' : 'weeks'}`
 		},
 		coordinationPendingRangeText() {
 			const fromDate = this.summary?.coordinationPendingPeriod?.fromDate

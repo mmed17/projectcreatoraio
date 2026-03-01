@@ -9,18 +9,19 @@ use OCP\DB\ISchemaWrapper;
 use OCP\Migration\IOutput;
 use OCP\Migration\SimpleMigrationStep;
 
-class Version010014Date20260228121000 extends SimpleMigrationStep
+class Version010015Date20260301133000 extends SimpleMigrationStep
 {
 	public function changeSchema(IOutput $output, Closure $schemaClosure, array $options): ?ISchemaWrapper
 	{
 		/** @var ISchemaWrapper $schema */
 		$schema = $schemaClosure();
 
-		$legacyTableName = 'project_deck_permission_templates';
-		$newTableName = 'pc_deck_perm_tpl';
-
-		if ($schema->hasTable($legacyTableName) && !$schema->hasTable($newTableName)) {
-			$schema->renameTable($legacyTableName, $newTableName);
+		// Templates are now owned by the Deck app
+		if ($schema->hasTable('pc_deck_perm_tpl')) {
+			$schema->dropTable('pc_deck_perm_tpl');
+		}
+		if ($schema->hasTable('project_deck_permission_templates')) {
+			$schema->dropTable('project_deck_permission_templates');
 		}
 
 		return $schema;

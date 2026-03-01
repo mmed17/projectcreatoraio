@@ -626,7 +626,6 @@ export default {
 				left: `${leftPx}px`,
 				width: `${Math.max(1, durationDays) * this.dayWidth}px`,
 				backgroundColor: color,
-				borderColor: 'rgba(0,0,0,0.1)',
 				'--bar-color': color,
 			}
 		},
@@ -872,7 +871,8 @@ export default {
 	gap: 2px;
 	padding: 4px;
 	background: var(--color-background-dark);
-	border-radius: 12px;
+	border: 1px solid var(--color-border);
+	border-radius: 14px;
 }
 
 .zoom-indicator {
@@ -889,7 +889,7 @@ export default {
 	border: 1px solid var(--color-border);
 	border-radius: 20px;
 	overflow: hidden;
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+	box-shadow: 0 4px 24px rgba(0, 0, 0, 0.05);
 }
 
 .timeline-v2__loading,
@@ -951,15 +951,16 @@ export default {
 .phase-row {
 	display: flex;
 	align-items: center;
-	min-height: 64px;
+	min-height: 68px;
 	padding: 0 16px;
 	border-bottom: 1px solid var(--color-border);
 	background: var(--color-main-background);
-	transition: background 0.2s ease;
+	transition: all 0.2s ease;
 }
 
 .phase-row:hover {
 	background: var(--color-background-hover);
+	padding-left: 20px;
 }
 
 .phase-row--system {
@@ -983,6 +984,11 @@ export default {
 	color: var(--color-text-lighter);
 	display: flex;
 	align-items: center;
+	transition: color 0.2s ease;
+}
+
+.phase-row:hover .drag-handle {
+	color: var(--color-primary-element);
 }
 
 .drag-handle--locked {
@@ -1008,11 +1014,12 @@ export default {
 }
 
 .phase-row__name {
-	font-weight: 600;
+	font-weight: 700;
 	font-size: 14px;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	color: var(--color-main-text);
 }
 
 .phase-row__duration {
@@ -1035,6 +1042,7 @@ export default {
 	overflow-x: auto;
 	overflow-y: hidden;
 	cursor: grab;
+	background-color: var(--color-main-background);
 }
 
 .gantt-v2__main--dragging {
@@ -1057,14 +1065,14 @@ export default {
 
 .year-row, .month-row, .week-row {
 	display: flex;
-	border-bottom: 1px solid rgba(0,0,0,0.05);
+	border-bottom: 1px solid var(--color-border);
 }
 
 .year-label, .month-label, .week-label {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	border-right: 1px solid rgba(0,0,0,0.05);
+	border-right: 1px solid var(--color-border);
 	white-space: nowrap;
 	overflow: hidden;
 }
@@ -1089,12 +1097,13 @@ export default {
 }
 
 .grid-column {
-	border-right: 1px solid rgba(0,0,0,0.03);
+	border-right: 1px solid var(--color-border);
+	opacity: 0.3;
 	height: 100%;
 }
 
 .timeline-row {
-	height: 64px;
+	height: 68px;
 	display: flex;
 	align-items: center;
 	border-bottom: 1px solid var(--color-border);
@@ -1109,17 +1118,18 @@ export default {
 	display: flex;
 	align-items: center;
 	padding: 0 12px;
-	box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-	border: 1px solid rgba(0,0,0,0.08);
+	box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+	border: 1px solid rgba(255, 255, 255, 0.15);
 	cursor: pointer;
-	transition: filter 0.2s ease, transform 0.1s ease;
+	transition: filter 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 	z-index: 5;
 	transform: translateY(-50%);
 }
 
 .timeline-bar:hover {
-	filter: brightness(1.05);
-	transform: translateY(-50%) scaleY(1.05);
+	filter: brightness(1.1);
+	transform: translateY(-50%) scale(1.02);
+	box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 	z-index: 10;
 }
 
@@ -1130,33 +1140,48 @@ export default {
 .timeline-bar--readonly:hover {
 	filter: none;
 	transform: translateY(-50%);
-	box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+	box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
-.timeline-bar--ongoing::after {
-	content: '';
-	position: absolute;
-	top: 0;
-	right: -10px;
-	width: 0;
-	height: 0;
-	border-top: 16px solid transparent;
-	border-bottom: 16px solid transparent;
-	border-left: 10px solid var(--bar-color, #3b82f6);
-	filter: brightness(1.05);
+@keyframes progress-stripes {
+	from { background-position: 1rem 0; }
+	to { background-position: 0 0; }
+}
+
+.timeline-bar--ongoing {
+	background-image: linear-gradient(
+		45deg,
+		rgba(255, 255, 255, 0.2) 25%,
+		transparent 25%,
+		transparent 50%,
+		rgba(255, 255, 255, 0.2) 50%,
+		rgba(255, 255, 255, 0.2) 75%,
+		transparent 75%,
+		transparent
+	);
+	background-size: 1rem 1rem;
+	animation: progress-stripes 1s linear infinite;
+	border-right: 2px dashed rgba(255, 255, 255, 0.8);
 }
 
 .timeline-milestone {
 	position: absolute;
 	top: 50%;
-	width: 14px;
-	height: 14px;
+	width: 16px;
+	height: 16px;
 	background: var(--marker-color, #0f172a);
 	transform: translate(-50%, -50%) rotate(45deg);
-	border-radius: 2px;
-	box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-	border: 1px solid rgba(0,0,0,0.12);
+	border-radius: 3px;
+	box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+	border: 2px solid #fff;
 	z-index: 8;
+	transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.timeline-milestone:hover {
+	transform: translate(-50%, -50%) rotate(45deg) scale(1.2);
+	box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+	z-index: 10;
 }
 
 .timeline-bar__label {
@@ -1182,21 +1207,36 @@ export default {
 	height: 100%;
 	background: #ef4444;
 	box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+	position: relative;
+}
+
+.today-line::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 8px;
+	height: 8px;
+	background: #ef4444;
+	border-radius: 50%;
+	box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
 }
 
 .today-badge {
 	position: absolute;
-	top: 4px;
+	top: 12px;
 	left: 50%;
 	transform: translateX(-50%);
 	background: #ef4444;
 	color: #fff;
-	font-size: 9px;
+	font-size: 10px;
 	font-weight: 800;
 	text-transform: uppercase;
-	padding: 2px 6px;
-	border-radius: 4px;
+	padding: 3px 8px;
+	border-radius: 12px;
 	white-space: nowrap;
+	box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
 }
 
 /* Actions Column */

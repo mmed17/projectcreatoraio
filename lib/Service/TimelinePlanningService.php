@@ -208,9 +208,10 @@ class TimelinePlanningService
 		}
 
 		$days = (int) $start->diff($end)->days;
+		$weeks = round($days / 7, 1);
 
 		return [
-			'days' => $days,
+			'weeks' => $weeks,
 			'fromDate' => $start->format('Y-m-d'),
 			'toDate' => $end->format('Y-m-d'),
 			'isFinal' => $completedDate instanceof DateTime,
