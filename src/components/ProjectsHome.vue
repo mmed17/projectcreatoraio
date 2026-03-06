@@ -102,6 +102,9 @@
 							<option value="active">
 								Active
 							</option>
+							<option value="stale">
+								Stale
+							</option>
 							<option value="archived">
 								Archived
 							</option>
@@ -1102,6 +1105,9 @@ export default {
 				if (this.statusFilter === 'active' && normalizedStatus !== 1) {
 					return false
 				}
+				if (this.statusFilter === 'stale' && normalizedStatus !== 2) {
+					return false
+				}
 				if (this.statusFilter === 'archived' && normalizedStatus !== 0) {
 					return false
 				}
@@ -1171,6 +1177,7 @@ export default {
 		statusLabelShort(status) {
 			const normalized = Number(status)
 			if (normalized === 1) return 'Active'
+			if (normalized === 2) return 'Stale'
 			if (normalized === 0) return 'Archived'
 			return 'Unknown'
 		},
@@ -1190,6 +1197,7 @@ export default {
 		statusBadgeClass(status) {
 			const normalized = Number(status)
 			if (normalized === 1) return 'projects-home__badge--success'
+			if (normalized === 2) return 'projects-home__badge--warning'
 			if (normalized === 0) return 'projects-home__badge--muted'
 			return ''
 		},
@@ -1318,6 +1326,9 @@ export default {
 			const normalized = Number(status)
 			if (normalized === 1) {
 				return 'projects-home__status-pill--active'
+			}
+			if (normalized === 2) {
+				return 'projects-home__status-pill--stale'
 			}
 			if (normalized === 0) {
 				return 'projects-home__status-pill--archived'
@@ -1472,6 +1483,9 @@ export default {
 			const normalized = Number(status)
 			if (normalized === 1) {
 				return 'Active'
+			}
+			if (normalized === 2) {
+				return 'Stale'
 			}
 			if (normalized === 0) {
 				return 'Archived'
@@ -1927,6 +1941,11 @@ export default {
 	color: var(--color-text-maxcontrast);
 }
 
+.projects-home__status-pill--stale {
+	background: rgba(181, 106, 0, 0.16);
+	color: #b56a00;
+}
+
 .projects-home__project-meta {
 	display: flex;
 	align-items: center;
@@ -2047,6 +2066,12 @@ export default {
 	background: rgba(36, 153, 255, 0.1);
 	border-color: rgba(36, 153, 255, 0.2);
 	color: var(--color-primary-element);
+}
+
+.projects-home__badge--warning {
+	background: rgba(181, 106, 0, 0.12);
+	border-color: rgba(181, 106, 0, 0.24);
+	color: #b56a00;
 }
 
 .projects-home__badge--muted {

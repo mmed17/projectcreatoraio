@@ -38,6 +38,8 @@ class Project extends Entity implements JsonSerializable {
     protected int|null    $status      = null;
     protected int|null    $organizationId = null;
     protected string|null    $whiteBoardId = null;
+    protected DateTime|null $lastDeckMoveAt = null;
+    protected DateTime|null $staleNotifiedAt = null;
     protected int|null $requiredPreparationWeeks = null;
     protected int|null $cvObjectOwnership = null;
     protected int|null $cvTraceOwnership = null;
@@ -75,6 +77,8 @@ class Project extends Entity implements JsonSerializable {
         $this->addType('status',      Types::INTEGER);
         $this->addType('organization_id', Types::INTEGER);
         $this->addType('white_board_id', Types::STRING);
+        $this->addType('last_deck_move_at', Types::DATETIME);
+        $this->addType('stale_notified_at', Types::DATETIME);
         $this->addType('requiredPreparationWeeks', Types::INTEGER);
         $this->addType('cvObjectOwnership', Types::SMALLINT);
         $this->addType('cvTraceOwnership', Types::SMALLINT);

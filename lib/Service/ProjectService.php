@@ -62,6 +62,7 @@ class ProjectService
         protected IUserManager $userManager,
         private readonly FolderStorageManager $folderStorageManager,
         private readonly ChangeHelper $changeHelper,
+        private readonly ProjectNotificationService $projectNotificationService,
     ) {
     }
 
@@ -364,6 +365,14 @@ class ProjectService
         }
 
         $ownerId = trim((string) ($project->getOwnerId() ?? ''));
+
+        if ($addedToGroup) {
+            $this->projectNotificationService->notifyMemberAdded(
+                $project,
+                $user,
+                $this->userSession->getUser(),
+            );
+        }
 
         return [
             'added' => !$alreadyMember,
@@ -1332,8 +1341,12 @@ class ProjectService
         if ($external_ref !== null)
             $project->setExternalRef($external_ref);
 
-        if ($status !== null)
+        if ($status !== null) {
+            if (!in_array($status, [0, 1], true)) {
+                throw new OCSException('Unsupported project status.', 400);
+            }
             $project->setStatus($status);
+        }
 
         if ($required_preparation_weeks !== null) {
             $project->setRequiredPreparationWeeks(max(0, (int) $required_preparation_weeks));

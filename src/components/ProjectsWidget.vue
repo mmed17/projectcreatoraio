@@ -169,7 +169,8 @@ export default {
             searchTimeout: undefined,
             statuses: [
                 { id: 0, label: 'Archived' },
-                { id: 1, label: 'Active' }
+                { id: 1, label: 'Active' },
+                { id: 2, label: 'Stale' }
             ]
 		}
 	},

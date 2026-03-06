@@ -169,6 +169,41 @@ class ProjectMapper extends QBMapper
         return $this->findEntities($qb);
     }
 
+    /**
+     * @return Project[]
+     */
+    public function findOwnedByUserAndOrganization(string $userId, int $organizationId): array
+    {
+        $qb = $this->db->getQueryBuilder();
+
+        $qb->select('*')
+            ->from(self::TABLE_NAME)
+            ->where(
+                $qb->expr()->eq('owner_id', $qb->createNamedParameter($userId))
+            )
+            ->andWhere(
+                $qb->expr()->eq('organization_id', $qb->createNamedParameter($organizationId, IQueryBuilder::PARAM_INT))
+            )
+            ->orderBy('created_at', 'DESC');
+
+        return $this->findEntities($qb);
+    }
+
+    public function transferOwnershipByOrg(string $sourceUserId, string $targetUserId, int $organizationId): int
+    {
+        $qb = $this->db->getQueryBuilder();
+
+        return $qb->update(self::TABLE_NAME)
+            ->set('owner_id', $qb->createNamedParameter($targetUserId))
+            ->where(
+                $qb->expr()->eq('owner_id', $qb->createNamedParameter($sourceUserId))
+            )
+            ->andWhere(
+                $qb->expr()->eq('organization_id', $qb->createNamedParameter($organizationId, IQueryBuilder::PARAM_INT))
+            )
+            ->executeStatement();
+    }
+
     public function findByOrganizationId(int $organizationId, int $limit = null, int $offset = null): array
     {
         $qb = $this->db->getQueryBuilder();
@@ -207,6 +242,37 @@ class ProjectMapper extends QBMapper
         } catch (DoesNotExistException $e) {
             return null;
         }
+    }
+
+    public function findByWhiteBoardId(int $whiteBoardId)
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')
+            ->from(self::TABLE_NAME)
+            ->where(
+                $qb->expr()->eq('white_board_id', $qb->createNamedParameter((string) $whiteBoardId))
+            );
+
+        try {
+            return $this->findEntity($qb);
+        } catch (DoesNotExistException $e) {
+            return null;
+        }
+    }
+
+    /**
+     * @return Project[]
+     */
+    public function listDeckTrackedProjects(): array
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')
+            ->from(self::TABLE_NAME)
+            ->where($qb->expr()->isNotNull('board_id'))
+            ->andWhere($qb->expr()->neq('board_id', $qb->createNamedParameter('')))
+            ->orderBy('id', 'ASC');
+
+        return $this->findEntities($qb);
     }
 
     public function findByCardId(int $cardId): ?Project

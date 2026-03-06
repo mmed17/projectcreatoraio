@@ -2,20 +2,27 @@
 
 namespace OCA\ProjectCreatorAIO\AppInfo;
 
+use OCA\ProjectCreatorAIO\BackgroundJob\DetectStaleProjectsJob;
 use OCA\ProjectCreatorAIO\Dashboard\ProjectsWidget;
+use OCA\ProjectCreatorAIO\Listener\WhiteboardWrittenListener;
+use OCA\ProjectCreatorAIO\Notification\Notifier;
 use OCA\ProjectCreatorAIO\Service\DeckDefaultCardsService;
+use OCA\ProjectCreatorAIO\Service\ProjectDeckActivityService;
 use OCA\ProjectCreatorAIO\Service\TimelinePlanningService;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\AppFramework\IAppContainer;
+use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\Deck\Service\BoardService;
 use OCA\Deck\Service\CardService;
 use OCA\Deck\Service\CardPolicyService;
 use OCA\Deck\Service\LabelService;
 use OCA\Deck\Service\StackService;
+use OCP\Files\Events\Node\NodeWrittenEvent;
 use Psr\Log\LoggerInterface;
 
 class Application extends App implements IBootstrap {
@@ -26,6 +33,8 @@ class Application extends App implements IBootstrap {
 	
 	public function register(IRegistrationContext $context): void {
 		$context->registerDashboardWidget(ProjectsWidget::class);
+		$context->registerNotifierService(Notifier::class);
+		$context->registerEventListener(NodeWrittenEvent::class, WhiteboardWrittenListener::class);
 
         $context->registerService('ProjectMapper', function (IAppContainer $c) {
             return new ProjectMapper(
@@ -51,7 +60,20 @@ class Application extends App implements IBootstrap {
 			);
 		});
 
+		$context->registerService(DetectStaleProjectsJob::class, function (IAppContainer $c) {
+			return new DetectStaleProjectsJob(
+				$c->getServer()->get(ITimeFactory::class),
+				$c->getServer()->query(ProjectDeckActivityService::class),
+			);
+		});
+
 	}
 
-	public function boot(IBootContext $context): void {}
+	public function boot(IBootContext $context): void {
+		$context->injectFn(function (IJobList $jobList): void {
+			if (!$jobList->has(DetectStaleProjectsJob::class, null)) {
+				$jobList->add(DetectStaleProjectsJob::class);
+			}
+		});
+	}
 }
