@@ -46,7 +46,7 @@ class ProjectDeckActivityService {
 			$project->setStatus(self::STATUS_ACTIVE);
 		}
 
-		$this->projectMapper->updateProjectDetails($project);
+		$this->persistProjectDetails($project);
 	}
 
 	public function processStaleProjects(?DateTimeInterface $now = null): void {
@@ -81,7 +81,7 @@ class ProjectDeckActivityService {
 			if ($status === self::STATUS_STALE) {
 				$project->setStatus(self::STATUS_ACTIVE);
 				$project->setStaleNotifiedAt(null);
-				$this->projectMapper->updateProjectDetails($project);
+				$this->persistProjectDetails($project);
 			}
 			return;
 		}
@@ -99,7 +99,7 @@ class ProjectDeckActivityService {
 		}
 
 		if ($needsUpdate) {
-			$this->projectMapper->updateProjectDetails($project);
+			$this->persistProjectDetails($project);
 		}
 	}
 
@@ -109,5 +109,27 @@ class ProjectDeckActivityService {
 		}
 
 		return DateTime::createFromInterface($dateTime);
+	}
+
+	private function persistProjectDetails(Project $project): void {
+		try {
+			$this->projectMapper->updateProjectDetails($project);
+		} catch (\Throwable $e) {
+			if (!$this->isMissingDeckActivityColumnError($e)) {
+				throw $e;
+			}
+
+			$this->logger->warning('Skipping project deck activity persistence until schema migration is applied', [
+				'exception' => $e,
+				'projectId' => $project->getId(),
+			]);
+		}
+	}
+
+	private function isMissingDeckActivityColumnError(\Throwable $e): bool {
+		$message = $e->getMessage();
+
+		return str_contains($message, 'last_deck_move_at')
+			|| str_contains($message, 'stale_notified_at');
 	}
 }

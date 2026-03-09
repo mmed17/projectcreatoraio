@@ -582,12 +582,17 @@ export default {
 		},
 		formatItemDates(item) {
 			if (!item) return '-'
+			const futureHint = this.formatFutureStartHint(item)
 			if (this.isMilestone(item)) {
-				return this.formatDate(item.startDate)
+				return futureHint
+					? `${this.formatDate(item.startDate)} • ${futureHint}`
+					: this.formatDate(item.startDate)
 			}
 			const start = this.formatDate(item.startDate)
 			const end = this.isOngoing(item) ? 'Ongoing' : this.formatDate(item.endDate)
-			return `${start} – ${end}`
+			return futureHint
+				? `${start} – ${end} • ${futureHint}`
+				: `${start} – ${end}`
 		},
 		formatItemBadge(item) {
 			if (this.isMilestone(item)) return 'Milestone'
@@ -601,6 +606,18 @@ export default {
 			const d = new Date(date)
 			d.setHours(0, 0, 0, 0)
 			return d
+		},
+		getDaysUntilStart(item) {
+			if (!item?.startDate) return null
+			const today = this.toDateOnly(new Date())
+			const start = this.parseDateOnly(item.startDate)
+			const diff = Math.floor((start - today) / (1000 * 60 * 60 * 24))
+			return diff > 0 ? diff : null
+		},
+		formatFutureStartHint(item) {
+			const days = this.getDaysUntilStart(item)
+			if (!days) return ''
+			return `Starts in ${days} day${days === 1 ? '' : 's'}`
 		},
 		getIsoWeekInfo(date) {
 			const d = this.toDateOnly(date)
@@ -662,11 +679,15 @@ export default {
 			return `${fixed} week${weeks === 1 ? '' : 's'} (${days} day${days === 1 ? '' : 's'})`
 		},
 		barTitle(item) {
+			const futureHint = this.formatFutureStartHint(item)
 			if (this.isMilestone(item)) {
-				return `${item.label}: ${this.formatDate(item.startDate)}`
+				return futureHint
+					? `${item.label}: ${this.formatDate(item.startDate)} (${futureHint})`
+					: `${item.label}: ${this.formatDate(item.startDate)}`
 			}
 			const endText = this.isOngoing(item) ? 'Ongoing' : this.formatDate(item.endDate)
-			return `${item.label}: ${this.formatDate(item.startDate)} - ${endText} (${this.formatWeeksLabel(item)})`
+			const baseTitle = `${item.label}: ${this.formatDate(item.startDate)} - ${endText} (${this.formatWeeksLabel(item)})`
+			return futureHint ? `${baseTitle} (${futureHint})` : baseTitle
 		},
 		openAddModal() {
 			this.editingItem = null

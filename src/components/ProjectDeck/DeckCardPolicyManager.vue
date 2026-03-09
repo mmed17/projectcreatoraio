@@ -210,6 +210,14 @@
 							<span v-for="r in roles" :key="r.id" class="pc-role-chip" :style="{ borderColor: r.color }">
 								<span class="pc-dot" :style="{ background: r.color }"></span>
 								{{ r.name }} <span class="pc-role-key">({{ r.roleKey }})</span>
+								<button
+									type="button"
+									class="pc-role-delete"
+									:disabled="deletingRoleId === r.id"
+									:title="`Delete ${r.name}`"
+									@click.stop="removeRole(r)">
+									×
+								</button>
 							</span>
 						</div>
 					</div>
@@ -397,6 +405,7 @@ export default {
 			savingDefaults: false,
 			savingBulk: false,
 			creatingRole: false,
+			deletingRoleId: null,
 		}
 	},
 	computed: {
@@ -875,9 +884,22 @@ export default {
 		},
 		async addMembership() {
 			try {
+				const roleKey = String(this.newMembership?.role?.value || '')
+				const participant = String(this.newMembership?.user?.value || '')
+				const role = this.roles.find(r => String(r.roleKey) === roleKey)
+				const roleId = Number(role?.id)
+				const existing = this.memberships.some(m =>
+					Number(m.roleId) === roleId
+					&& String(m.participant) === participant
+					&& Number(m.participantType) === 0)
+				if (existing) {
+					showError('This user is already assigned to this role')
+					return
+				}
+
 				await deckService.addCardPolicyMembership(this.boardIdNum, {
-					roleKey: this.newMembership.role.value,
-					participant: this.newMembership.user.value,
+					roleKey,
+					participant,
 					participantType: 0,
 				})
 				this.newMembership.role = null
@@ -890,7 +912,21 @@ export default {
 		},
 		async removeMembership(m) {
 			try {
-				await deckService.deleteCardPolicyMembership(this.boardIdNum, m.id)
+				const sameMembershipIds = this.memberships
+					.filter(x =>
+						Number(x.roleId) === Number(m.roleId)
+						&& String(x.participant) === String(m.participant)
+						&& Number(x.participantType) === Number(m.participantType))
+					.map(x => Number(x.id))
+					.filter(id => id > 0)
+				const uniqueIds = Array.from(new Set(sameMembershipIds))
+				const idsToDelete = uniqueIds.length > 0 ? uniqueIds : [Number(m.id)].filter(id => id > 0)
+
+				for (const membershipId of idsToDelete) {
+					await deckService.deleteCardPolicyMembership(this.boardIdNum, membershipId)
+				}
+
+				this.memberships = this.memberships.filter(x => !idsToDelete.includes(Number(x.id)))
 				showSuccess('Member removed')
 				await this.load()
 			} catch (e) {
@@ -914,6 +950,33 @@ export default {
 				showError(e?.response?.data?.ocs?.data?.message || 'Error creating role')
 			} finally {
 				this.creatingRole = false
+			}
+		},
+		async removeRole(role) {
+			const roleId = Number(role?.id)
+			const roleKey = String(role?.roleKey || '')
+			if (!roleId || !roleKey) return
+			if (this.deletingRoleId) return
+			if (!confirm(`Delete role "${role.name}"?`)) return
+			this.deletingRoleId = roleId
+			try {
+				await deckService.deleteCardPolicyRole(this.boardIdNum, roleId)
+				this.roles = this.roles.filter(r => Number(r.id) !== roleId)
+				this.memberships = this.memberships.filter(m => Number(m.roleId) !== roleId)
+				this.defaultRoleKeys = {
+					move: (this.defaultRoleKeys.move || []).filter(key => key !== roleKey),
+					approve: (this.defaultRoleKeys.approve || []).filter(key => key !== roleKey),
+				}
+				this.defaults = {
+					move: (this.defaults.move || []).filter(o => o?.value !== roleKey),
+					approve: (this.defaults.approve || []).filter(o => o?.value !== roleKey),
+				}
+				showSuccess('Role deleted')
+				await this.load()
+			} catch (e) {
+				showError(e?.response?.data?.ocs?.data?.message || 'Error deleting role')
+			} finally {
+				this.deletingRoleId = null
 			}
 		},
 	},
@@ -1190,6 +1253,18 @@ export default {
 .pc-roles-list-box h4 { margin: 0 0 16px 0; font-size: 16px; }
 .pc-roles-chips { display: flex; flex-wrap: wrap; gap: 10px; }
 .pc-role-key { margin-left: 6px; color: var(--pc-text-muted); font-weight: 600; }
+.pc-role-delete {
+	margin-left: 8px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--pc-text-muted);
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+}
+.pc-role-delete:hover:not(:disabled) { color: var(--color-error, #eb5757); }
+.pc-role-delete:disabled { cursor: wait; opacity: 0.5; }
 .pc-add-member-box { padding: 24px; background: var(--pc-bg-hover); border-bottom: 1px solid var(--pc-border); }
 .pc-add-member-box h4 { margin: 0 0 16px 0; font-size: 16px; }
 .pc-add-member-row { display: flex; gap: 16px; align-items: center; }

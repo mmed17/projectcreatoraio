@@ -14,6 +14,28 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
 final class ProjectDeckActivityServiceTest extends TestCase {
+	public function testRecordCardMoveByBoardIdSkipsMissingDeckActivityColumns(): void {
+		$project = new Project();
+		$project->setId(42);
+		$project->setBoardId('15');
+
+		$projectMapper = $this->createMock(ProjectMapper::class);
+		$projectMapper->method('findByBoardId')->with(15)->willReturn($project);
+		$projectMapper->expects($this->once())
+			->method('updateProjectDetails')
+			->with($project)
+			->willThrowException(new \RuntimeException('SQLSTATE[HY000]: General error: 1 no such column: last_deck_move_at'));
+
+		$notificationService = $this->createMock(ProjectNotificationService::class);
+		$logger = $this->createMock(LoggerInterface::class);
+		$logger->expects($this->once())->method('warning');
+
+		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $logger);
+		$service->recordCardMoveByBoardId(15, new DateTime('2026-03-06 12:00:00'));
+
+		$this->assertInstanceOf(DateTime::class, $project->getLastDeckMoveAt());
+	}
+
 	public function testRecordCardMoveByBoardIdReturnsStaleProjectToActive(): void {
 		$project = new Project();
 		$project->setId(42);

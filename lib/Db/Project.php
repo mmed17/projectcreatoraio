@@ -71,14 +71,14 @@ class Project extends Entity implements JsonSerializable {
         // System
         $this->addType('ownerId',     Types::STRING);
         $this->addType('boardId',     Types::STRING);
-        $this->addType('project_group_gid', Types::STRING);
+        $this->addType('projectGroupGid', Types::STRING);
         $this->addType('folderId',    Types::INTEGER);
         $this->addType('folderPath',  Types::STRING);
         $this->addType('status',      Types::INTEGER);
-        $this->addType('organization_id', Types::INTEGER);
-        $this->addType('white_board_id', Types::STRING);
-        $this->addType('last_deck_move_at', Types::DATETIME);
-        $this->addType('stale_notified_at', Types::DATETIME);
+        $this->addType('organizationId', Types::INTEGER);
+        $this->addType('whiteBoardId', Types::STRING);
+        $this->addType('lastDeckMoveAt', Types::DATETIME);
+        $this->addType('staleNotifiedAt', Types::DATETIME);
         $this->addType('requiredPreparationWeeks', Types::INTEGER);
         $this->addType('cvObjectOwnership', Types::SMALLINT);
         $this->addType('cvTraceOwnership', Types::SMALLINT);

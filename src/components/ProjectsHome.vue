@@ -766,24 +766,37 @@
 					Update project name, client information, and project location in separate sections.
 				</p>
 
-				<div class="projects-home__profile-nav" role="tablist" aria-label="Project detail sections">
+				<div
+					v-if="projectProfileSection"
+					class="projects-home__profile-nav"
+					role="tablist"
+					aria-label="Project detail sections">
 					<button
 						v-if="canEditProjectTitle"
+						ref="projectProfileProjectTab"
 						type="button"
+						role="tab"
+						:aria-selected="projectProfileSection === 'project'"
 						class="projects-home__profile-nav-btn"
 						:class="{ 'projects-home__profile-nav-btn--active': projectProfileSection === 'project' }"
 						@click="projectProfileSection = 'project'">
 						Project Name
 					</button>
 					<button
+						ref="projectProfileClientTab"
 						type="button"
+						role="tab"
+						:aria-selected="projectProfileSection === 'client'"
 						class="projects-home__profile-nav-btn"
 						:class="{ 'projects-home__profile-nav-btn--active': projectProfileSection === 'client' }"
 						@click="projectProfileSection = 'client'">
 						Client Info
 					</button>
 					<button
+						ref="projectProfileLocationTab"
 						type="button"
+						role="tab"
+						:aria-selected="projectProfileSection === 'location'"
 						class="projects-home__profile-nav-btn"
 						:class="{ 'projects-home__profile-nav-btn--active': projectProfileSection === 'location' }"
 						@click="projectProfileSection = 'location'">
@@ -791,7 +804,7 @@
 					</button>
 				</div>
 
-				<div class="projects-home__profile-sections">
+				<div v-if="projectProfileSection" class="projects-home__profile-sections">
 					<div v-if="canEditProjectTitle && projectProfileSection === 'project'" class="projects-home__profile-section">
 						<h4 class="projects-home__profile-section-title">
 							Project Name
@@ -1045,7 +1058,7 @@ export default {
 				loc_city: '',
 				loc_zip: '',
 			},
-			projectProfileSection: 'project',
+			projectProfileSection: null,
 			projectProfileSaving: false,
 			projectProfileError: '',
 			projectProfileMessage: '',
@@ -1215,6 +1228,18 @@ export default {
 				loc_zip: selected.loc_zip || '',
 			}
 		},
+		resolveProjectProfileSection(section = null) {
+			const requested = typeof section === 'string' ? section.trim() : ''
+			const allowed = ['project', 'client', 'location']
+			const defaultSection = this.canEditProjectTitle ? 'project' : 'client'
+			const normalized = allowed.includes(requested) ? requested : defaultSection
+
+			if (normalized === 'project' && !this.canEditProjectTitle) {
+				return 'client'
+			}
+
+			return normalized
+		},
 		resetProjectProfileEditor(clearMessage = true) {
 			this.showProjectProfileModal = false
 			this.projectProfileSaving = false
@@ -1233,7 +1258,7 @@ export default {
 				loc_city: '',
 				loc_zip: '',
 			}
-			this.projectProfileSection = this.canEditProjectTitle ? 'project' : 'client'
+			this.projectProfileSection = null
 		},
 		startProjectProfileEdit(section = null) {
 			if (!this.canEditSelectedProjectDetails) {
@@ -1242,19 +1267,31 @@ export default {
 			this.projectProfileError = ''
 			this.projectProfileMessage = ''
 			this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
-			const requested = typeof section === 'string' ? section.trim() : ''
-			const allowed = ['project', 'client', 'location']
-			let nextSection = allowed.includes(requested) ? requested : (this.canEditProjectTitle ? 'project' : 'client')
-			if (nextSection === 'project' && !this.canEditProjectTitle) {
-				nextSection = 'client'
-			}
-			this.projectProfileSection = nextSection
+			this.projectProfileSection = this.resolveProjectProfileSection(section)
 			this.showProjectProfileModal = true
+			this.$nextTick(() => {
+				window.requestAnimationFrame(() => {
+					this.focusActiveProjectProfileTab()
+				})
+			})
+		},
+		focusActiveProjectProfileTab() {
+			const tabRefs = {
+				project: 'projectProfileProjectTab',
+				client: 'projectProfileClientTab',
+				location: 'projectProfileLocationTab',
+			}
+
+			const tabRef = tabRefs[this.projectProfileSection]
+			const tab = tabRef ? this.$refs[tabRef] : null
+			if (tab && typeof tab.focus === 'function') {
+				tab.focus({ preventScroll: true })
+			}
 		},
 		cancelProjectProfileEdit() {
 			this.projectProfileError = ''
-			this.projectProfileSection = this.canEditProjectTitle ? 'project' : 'client'
 			this.showProjectProfileModal = false
+			this.projectProfileSection = null
 		},
 		async saveProjectProfile() {
 			if (!this.selectedProject) {
@@ -1302,6 +1339,7 @@ export default {
 				}
 				this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
 				this.showProjectProfileModal = false
+				this.projectProfileSection = null
 				this.projectProfileMessage = 'Project details updated successfully.'
 			} catch (error) {
 				this.projectProfileError = error?.response?.data?.message || 'Could not update project details.'
@@ -2515,8 +2553,17 @@ export default {
 	transition: background-color 120ms ease, border-color 120ms ease;
 }
 
-.projects-home__profile-nav-btn:hover {
+.projects-home__profile-nav-btn:hover:not(.projects-home__profile-nav-btn--active) {
 	background: var(--color-background-dark);
+}
+
+.projects-home__profile-nav-btn:focus {
+	outline: none;
+}
+
+.projects-home__profile-nav-btn:focus-visible {
+	outline: 2px solid var(--color-primary-element);
+	outline-offset: 1px;
 }
 
 .projects-home__profile-nav-btn--active {
