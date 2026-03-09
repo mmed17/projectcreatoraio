@@ -6,13 +6,11 @@ namespace OCA\ProjectCreatorAIO\Tests\Unit\Service;
 
 use OCA\ProjectCreatorAIO\AppInfo\Application;
 use OCA\ProjectCreatorAIO\Db\Project;
+use OCA\ProjectCreatorAIO\Service\ProjectMemberResolver;
 use OCA\ProjectCreatorAIO\Service\ProjectNotificationService;
 use OCP\ICache;
 use OCP\ICacheFactory;
-use OCP\IGroup;
-use OCP\IGroupManager;
 use OCP\IUser;
-use OCP\IUserManager;
 use OCP\Notification\IManager as INotificationManager;
 use OCP\Notification\INotification;
 use PHPUnit\Framework\TestCase;
@@ -34,8 +32,7 @@ final class ProjectNotificationServiceTest extends TestCase {
 		$notificationManager->expects($this->once())
 			->method('notify')
 			->with($notification);
-		$groupManager = $this->createMock(IGroupManager::class);
-		$userManager = $this->createMock(IUserManager::class);
+		$projectMemberResolver = $this->createMock(ProjectMemberResolver::class);
 		$cacheFactory = $this->createMock(ICacheFactory::class);
 		$cacheFactory->method('isLocalCacheAvailable')->willReturn(false);
 		$cacheFactory->method('isAvailable')->willReturn(false);
@@ -81,7 +78,7 @@ final class ProjectNotificationServiceTest extends TestCase {
 			->with($this->isInstanceOf(\DateTime::class))
 			->willReturnSelf();
 
-		$service = new ProjectNotificationService($notificationManager, $groupManager, $userManager, $cacheFactory, $logger);
+		$service = new ProjectNotificationService($notificationManager, $projectMemberResolver, $cacheFactory, $logger);
 		$service->notifyMemberAdded($project, $member, $actor);
 	}
 
@@ -115,21 +112,13 @@ final class ProjectNotificationServiceTest extends TestCase {
 			'getDisplayName' => 'Member One',
 		]);
 
-		$group = $this->createMock(IGroup::class);
-		$group->method('getUsers')->willReturn([
-			$actor,
-			$groupMember,
-		]);
-
-		$groupManager = $this->createMock(IGroupManager::class);
-		$groupManager->method('get')
-			->with('project-alpha')
-			->willReturn($group);
-
-		$userManager = $this->createMock(IUserManager::class);
-		$userManager->method('get')
-			->with('owner1')
-			->willReturn($owner);
+		$projectMemberResolver = $this->createMock(ProjectMemberResolver::class);
+		$projectMemberResolver->method('getProjectMembers')
+			->with($this->isInstanceOf(Project::class), ['member-1'])
+			->willReturn([
+				$groupMember,
+				$owner,
+			]);
 
 		$cache = $this->createMock(ICache::class);
 		$cache->method('get')->with('whiteboard:42')->willReturn(null);
@@ -153,7 +142,7 @@ final class ProjectNotificationServiceTest extends TestCase {
 		$notifications[0] = null;
 		$notifications[1] = null;
 
-		$service = new ProjectNotificationService($notificationManager, $groupManager, $userManager, $cacheFactory, $logger);
+		$service = new ProjectNotificationService($notificationManager, $projectMemberResolver, $cacheFactory, $logger);
 		$service->notifyWhiteboardUpdated($project, $actor);
 	}
 
@@ -162,8 +151,7 @@ final class ProjectNotificationServiceTest extends TestCase {
 		$notificationManager->expects($this->never())->method('createNotification');
 		$notificationManager->expects($this->never())->method('notify');
 
-		$groupManager = $this->createMock(IGroupManager::class);
-		$userManager = $this->createMock(IUserManager::class);
+		$projectMemberResolver = $this->createMock(ProjectMemberResolver::class);
 
 		$cache = $this->createMock(ICache::class);
 		$cache->method('get')->with('whiteboard:42')->willReturn(time());
@@ -184,7 +172,7 @@ final class ProjectNotificationServiceTest extends TestCase {
 			'getDisplayName' => 'Member One',
 		]);
 
-		$service = new ProjectNotificationService($notificationManager, $groupManager, $userManager, $cacheFactory, $logger);
+		$service = new ProjectNotificationService($notificationManager, $projectMemberResolver, $cacheFactory, $logger);
 		$service->notifyWhiteboardUpdated($project, $actor);
 	}
 
@@ -209,15 +197,10 @@ final class ProjectNotificationServiceTest extends TestCase {
 		$owner = $this->createConfiguredMock(IUser::class, [
 			'getUID' => 'owner1',
 		]);
-
-		$group = $this->createMock(IGroup::class);
-		$group->method('getUsers')->willReturn([$groupMember]);
-
-		$groupManager = $this->createMock(IGroupManager::class);
-		$groupManager->method('get')->with('project-alpha')->willReturn($group);
-
-		$userManager = $this->createMock(IUserManager::class);
-		$userManager->method('get')->with('owner1')->willReturn($owner);
+		$projectMemberResolver = $this->createMock(ProjectMemberResolver::class);
+		$projectMemberResolver->method('getProjectMembers')
+			->with($this->isInstanceOf(Project::class), [])
+			->willReturn([$groupMember, $owner]);
 
 		$cacheFactory = $this->createMock(ICacheFactory::class);
 		$cacheFactory->method('isLocalCacheAvailable')->willReturn(false);
@@ -231,7 +214,7 @@ final class ProjectNotificationServiceTest extends TestCase {
 		$project->setOwnerId('owner1');
 		$project->setProjectGroupGid('project-alpha');
 
-		$service = new ProjectNotificationService($notificationManager, $groupManager, $userManager, $cacheFactory, $logger);
+		$service = new ProjectNotificationService($notificationManager, $projectMemberResolver, $cacheFactory, $logger);
 		$service->notifyDeckStale($project);
 	}
 }

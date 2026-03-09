@@ -1,6 +1,8 @@
 <?php
 
 namespace OCA\ProjectCreatorAIO\Service;
+
+use DateTime;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Db\ProjectNoteMapper;
@@ -15,6 +17,7 @@ use OCP\Files\Folder;
 use OCP\IUser;
 use OCA\Deck\Db\Board;
 use OCA\ProjectCreatorAIO\Service\DeckDefaultCardsService;
+use OCA\ProjectCreatorAIO\ProjectStatus;
 use Throwable;
 use Exception;
 use OCA\Organization\Db\OrganizationMapper;
@@ -63,6 +66,8 @@ class ProjectService
         private readonly FolderStorageManager $folderStorageManager,
         private readonly ChangeHelper $changeHelper,
         private readonly ProjectNotificationService $projectNotificationService,
+        private readonly ProjectActivityService $projectActivityService,
+        private readonly ProjectDeckActivityService $projectDeckActivityService,
     ) {
     }
 
@@ -181,6 +186,11 @@ class ProjectService
             $this->applyCardVisibilityToDeckCards(
                 $project,
                 $this->extractCardVisibilityAnswers($project),
+            );
+
+            $this->projectActivityService->recordProjectCreated(
+                $project,
+                $owner,
             );
 
             return $project;
@@ -368,6 +378,11 @@ class ProjectService
 
         if ($addedToGroup) {
             $this->projectNotificationService->notifyMemberAdded(
+                $project,
+                $user,
+                $this->userSession->getUser(),
+            );
+            $this->projectActivityService->recordMemberAdded(
                 $project,
                 $user,
                 $this->userSession->getUser(),
@@ -872,6 +887,13 @@ class ProjectService
             $this->writeOrCreateFile($privateFolder, 'private-note.md', $privateNote);
         }
 
+        $this->projectActivityService->recordProjectNotesUpdated(
+            $project,
+            $currentUser,
+            $publicNote !== null,
+            $privateNote !== null,
+        );
+
         return $this->getProjectNotes($projectId);
     }
 
@@ -1342,10 +1364,30 @@ class ProjectService
             $project->setExternalRef($external_ref);
 
         if ($status !== null) {
-            if (!in_array($status, [0, 1], true)) {
+            if (!ProjectStatus::isValid($status)) {
                 throw new OCSException('Unsupported project status.', 400);
             }
+
+            if ($status === ProjectStatus::DONE) {
+                $doneReadiness = $this->projectDeckActivityService->getDoneReadiness($project);
+                if (!$doneReadiness['ready']) {
+                    throw new OCSException(sprintf(
+                        'Project can only be marked Done when all active deck cards are in the done stack. Currently %d of %d cards are complete.',
+                        (int) $doneReadiness['doneCards'],
+                        (int) $doneReadiness['totalCards'],
+                    ), 400);
+                }
+            }
+
             $project->setStatus($status);
+
+            if ($status === ProjectStatus::ARCHIVED) {
+                if (!$project->getArchivedAt() instanceof \DateTimeInterface) {
+                    $project->setArchivedAt(new DateTime());
+                }
+            } else {
+                $project->setArchivedAt(null);
+            }
         }
 
         if ($required_preparation_weeks !== null) {

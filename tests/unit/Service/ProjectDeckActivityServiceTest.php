@@ -10,6 +10,7 @@ use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Service\ProjectDeckActivityService;
 use OCA\ProjectCreatorAIO\Service\ProjectNotificationService;
+use OCP\IDBConnection;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
@@ -27,20 +28,21 @@ final class ProjectDeckActivityServiceTest extends TestCase {
 			->willThrowException(new \RuntimeException('SQLSTATE[HY000]: General error: 1 no such column: last_deck_move_at'));
 
 		$notificationService = $this->createMock(ProjectNotificationService::class);
+		$db = $this->createMock(IDBConnection::class);
 		$logger = $this->createMock(LoggerInterface::class);
 		$logger->expects($this->once())->method('warning');
 
-		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $logger);
+		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $db, $logger);
 		$service->recordCardMoveByBoardId(15, new DateTime('2026-03-06 12:00:00'));
 
 		$this->assertInstanceOf(DateTime::class, $project->getLastDeckMoveAt());
 	}
 
-	public function testRecordCardMoveByBoardIdReturnsStaleProjectToActive(): void {
+	public function testRecordCardMoveByBoardIdReturnsWaitingProjectToActive(): void {
 		$project = new Project();
 		$project->setId(42);
 		$project->setBoardId('15');
-		$project->setStatus(ProjectDeckActivityService::STATUS_STALE);
+		$project->setStatus(ProjectDeckActivityService::STATUS_WAITING_ON_CUSTOMER);
 		$project->setStaleNotifiedAt(new DateTime('-1 day'));
 
 		$projectMapper = $this->createMock(ProjectMapper::class);
@@ -48,9 +50,10 @@ final class ProjectDeckActivityServiceTest extends TestCase {
 		$projectMapper->expects($this->once())->method('updateProjectDetails')->with($project);
 
 		$notificationService = $this->createMock(ProjectNotificationService::class);
+		$db = $this->createMock(IDBConnection::class);
 		$logger = $this->createMock(LoggerInterface::class);
 
-		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $logger);
+		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $db, $logger);
 		$service->recordCardMoveByBoardId(15, new DateTime('2026-03-06 12:00:00'));
 
 		$this->assertSame(ProjectDeckActivityService::STATUS_ACTIVE, $project->getStatus());
@@ -58,7 +61,30 @@ final class ProjectDeckActivityServiceTest extends TestCase {
 		$this->assertInstanceOf(DateTime::class, $project->getLastDeckMoveAt());
 	}
 
-	public function testProcessStaleProjectsMarksOldProjectsStaleOnce(): void {
+	public function testRecordCardMoveByBoardIdReturnsOnHoldProjectToActive(): void {
+		$project = new Project();
+		$project->setId(42);
+		$project->setBoardId('15');
+		$project->setStatus(ProjectDeckActivityService::STATUS_ON_HOLD);
+		$project->setStaleNotifiedAt(new DateTime('-30 day'));
+
+		$projectMapper = $this->createMock(ProjectMapper::class);
+		$projectMapper->method('findByBoardId')->with(15)->willReturn($project);
+		$projectMapper->expects($this->once())->method('updateProjectDetails')->with($project);
+
+		$notificationService = $this->createMock(ProjectNotificationService::class);
+		$db = $this->createMock(IDBConnection::class);
+		$logger = $this->createMock(LoggerInterface::class);
+
+		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $db, $logger);
+		$service->recordCardMoveByBoardId(15, new DateTime('2026-03-06 12:00:00'));
+
+		$this->assertSame(ProjectDeckActivityService::STATUS_ACTIVE, $project->getStatus());
+		$this->assertNull($project->getStaleNotifiedAt());
+		$this->assertInstanceOf(DateTime::class, $project->getLastDeckMoveAt());
+	}
+
+	public function testProcessStaleProjectsMarksOldProjectsWaitingOnCustomerOnce(): void {
 		$project = new Project();
 		$project->setId(42);
 		$project->setBoardId('15');
@@ -73,20 +99,44 @@ final class ProjectDeckActivityServiceTest extends TestCase {
 		$notificationService = $this->createMock(ProjectNotificationService::class);
 		$notificationService->expects($this->once())->method('notifyDeckStale')->with($project);
 
+		$db = $this->createMock(IDBConnection::class);
 		$logger = $this->createMock(LoggerInterface::class);
 
-		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $logger);
+		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $db, $logger);
 		$service->processStaleProjects(new DateTime('2026-03-06 12:00:00'));
 
-		$this->assertSame(ProjectDeckActivityService::STATUS_STALE, $project->getStatus());
+		$this->assertSame(ProjectDeckActivityService::STATUS_WAITING_ON_CUSTOMER, $project->getStatus());
 		$this->assertInstanceOf(DateTime::class, $project->getStaleNotifiedAt());
 	}
 
-	public function testProcessStaleProjectsSkipsAlreadyNotifiedStaleProjects(): void {
+	public function testProcessStaleProjectsMarksVeryOldProjectsOnHold(): void {
 		$project = new Project();
 		$project->setId(42);
 		$project->setBoardId('15');
-		$project->setStatus(ProjectDeckActivityService::STATUS_STALE);
+		$project->setStatus(ProjectDeckActivityService::STATUS_ACTIVE);
+		$project->setCreatedAt(new DateTime('2025-03-01 09:00:00'));
+
+		$projectMapper = $this->createMock(ProjectMapper::class);
+		$projectMapper->method('listDeckTrackedProjects')->willReturn([$project]);
+		$projectMapper->expects($this->once())->method('updateProjectDetails')->with($project);
+
+		$notificationService = $this->createMock(ProjectNotificationService::class);
+		$notificationService->expects($this->never())->method('notifyDeckStale');
+
+		$db = $this->createMock(IDBConnection::class);
+		$logger = $this->createMock(LoggerInterface::class);
+
+		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $db, $logger);
+		$service->processStaleProjects(new DateTime('2026-03-06 12:00:00'));
+
+		$this->assertSame(ProjectDeckActivityService::STATUS_ON_HOLD, $project->getStatus());
+	}
+
+	public function testProcessStaleProjectsSkipsAlreadyNotifiedWaitingProjects(): void {
+		$project = new Project();
+		$project->setId(42);
+		$project->setBoardId('15');
+		$project->setStatus(ProjectDeckActivityService::STATUS_WAITING_ON_CUSTOMER);
 		$project->setCreatedAt(new DateTime('2025-10-01 09:00:00'));
 		$project->setStaleNotifiedAt(new DateTime('2026-03-01 10:00:00'));
 
@@ -97,9 +147,10 @@ final class ProjectDeckActivityServiceTest extends TestCase {
 		$notificationService = $this->createMock(ProjectNotificationService::class);
 		$notificationService->expects($this->never())->method('notifyDeckStale');
 
+		$db = $this->createMock(IDBConnection::class);
 		$logger = $this->createMock(LoggerInterface::class);
 
-		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $logger);
+		$service = new ProjectDeckActivityService($projectMapper, $notificationService, $db, $logger);
 		$service->processStaleProjects(new DateTime('2026-03-06 12:00:00'));
 	}
 }

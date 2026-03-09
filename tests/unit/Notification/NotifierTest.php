@@ -140,7 +140,7 @@ final class NotifierTest extends TestCase {
 
 		$prepared = (new Notifier($l10nFactory, $urlGenerator))->prepare($notification, 'en');
 
-		$this->assertSame('Project {project} is stale because no cards moved for 90 days', $prepared->getRichSubject());
+		$this->assertSame('Project {project} is waiting on customer because no cards moved for 90 days', $prepared->getRichSubject());
 		$this->assertSame('Alpha', $prepared->getRichSubjectParameters()['project']['name']);
 	}
 }

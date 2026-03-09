@@ -8,9 +8,7 @@ use OCA\ProjectCreatorAIO\AppInfo\Application;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCP\ICache;
 use OCP\ICacheFactory;
-use OCP\IGroupManager;
 use OCP\IUser;
-use OCP\IUserManager;
 use OCP\Notification\IManager as INotificationManager;
 use Psr\Log\LoggerInterface;
 
@@ -26,8 +24,7 @@ class ProjectNotificationService {
 
 	public function __construct(
 		private readonly INotificationManager $notificationManager,
-		private readonly IGroupManager $groupManager,
-		private readonly IUserManager $userManager,
+		private readonly ProjectMemberResolver $projectMemberResolver,
 		ICacheFactory $cacheFactory,
 		private readonly LoggerInterface $logger,
 	) {
@@ -196,31 +193,11 @@ class ProjectNotificationService {
 	 */
 	private function getProjectRecipientUserIds(Project $project, array $excludedUids = []): array {
 		$recipientIds = [];
-		$seen = [];
-		foreach ($excludedUids as $excludedUid) {
-			$uid = trim((string) $excludedUid);
+		foreach ($this->projectMemberResolver->getProjectMembers($project, $excludedUids) as $member) {
+			$uid = trim((string) $member->getUID());
 			if ($uid !== '') {
-				$seen[$uid] = true;
-			}
-		}
-
-		$groupGid = trim((string) ($project->getProjectGroupGid() ?? ''));
-		if ($groupGid !== '') {
-			$group = $this->groupManager->get($groupGid);
-			foreach ($group?->getUsers() ?? [] as $member) {
-				$uid = trim((string) $member->getUID());
-				if ($uid === '' || isset($seen[$uid])) {
-					continue;
-				}
-
-				$seen[$uid] = true;
 				$recipientIds[] = $uid;
 			}
-		}
-
-		$ownerUid = trim((string) ($project->getOwnerId() ?? ''));
-		if ($ownerUid !== '' && !isset($seen[$ownerUid]) && $this->userManager->get($ownerUid) !== null) {
-			$recipientIds[] = $ownerUid;
 		}
 
 		return $recipientIds;

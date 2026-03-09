@@ -117,7 +117,7 @@ class Notifier implements INotifier {
 
 				$notification
 					->setRichSubject(
-						$l->t('Project {project} is stale because no cards moved for 90 days'),
+						$l->t('Project {project} is waiting on customer because no cards moved for 90 days'),
 						[
 							'project' => [
 								'type' => 'highlight',

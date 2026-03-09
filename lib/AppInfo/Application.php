@@ -3,11 +3,15 @@
 namespace OCA\ProjectCreatorAIO\AppInfo;
 
 use OCA\ProjectCreatorAIO\BackgroundJob\DetectStaleProjectsJob;
+use OCA\ProjectCreatorAIO\BackgroundJob\PurgeArchivedProjectsJob;
+use OCA\ProjectCreatorAIO\BackgroundJob\SendProjectDigestJob;
 use OCA\ProjectCreatorAIO\Dashboard\ProjectsWidget;
 use OCA\ProjectCreatorAIO\Listener\WhiteboardWrittenListener;
 use OCA\ProjectCreatorAIO\Notification\Notifier;
 use OCA\ProjectCreatorAIO\Service\DeckDefaultCardsService;
 use OCA\ProjectCreatorAIO\Service\ProjectDeckActivityService;
+use OCA\ProjectCreatorAIO\Service\ProjectDigestService;
+use OCA\ProjectCreatorAIO\Service\ProjectRetentionService;
 use OCA\ProjectCreatorAIO\Service\TimelinePlanningService;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -67,12 +71,32 @@ class Application extends App implements IBootstrap {
 			);
 		});
 
+		$context->registerService(SendProjectDigestJob::class, function (IAppContainer $c) {
+			return new SendProjectDigestJob(
+				$c->getServer()->get(ITimeFactory::class),
+				$c->getServer()->query(ProjectDigestService::class),
+			);
+		});
+
+		$context->registerService(PurgeArchivedProjectsJob::class, function (IAppContainer $c) {
+			return new PurgeArchivedProjectsJob(
+				$c->getServer()->get(ITimeFactory::class),
+				$c->getServer()->query(ProjectRetentionService::class),
+			);
+		});
+
 	}
 
 	public function boot(IBootContext $context): void {
 		$context->injectFn(function (IJobList $jobList): void {
 			if (!$jobList->has(DetectStaleProjectsJob::class, null)) {
 				$jobList->add(DetectStaleProjectsJob::class);
+			}
+			if (!$jobList->has(SendProjectDigestJob::class, null)) {
+				$jobList->add(SendProjectDigestJob::class);
+			}
+			if (!$jobList->has(PurgeArchivedProjectsJob::class, null)) {
+				$jobList->add(PurgeArchivedProjectsJob::class);
 			}
 		});
 	}

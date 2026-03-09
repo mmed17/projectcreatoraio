@@ -2,10 +2,12 @@
 
 namespace OCA\ProjectCreatorAIO\Db;
 
+use OCA\ProjectCreatorAIO\ProjectStatus;
 use OCP\IDBConnection;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use DateTime;
+use DateTimeInterface;
 use OCA\Organization\Db\Organization;
 use OCP\AppFramework\Db\DoesNotExistException;
 
@@ -61,8 +63,7 @@ class ProjectMapper extends QBMapper
         $project->setLocStreet($locStreet);
         $project->setLocCity($locCity);
         $project->setLocZip($locZip);
-        // New projects start as Active (1)
-        $project->setStatus(1);
+        $project->setStatus(ProjectStatus::ACTIVE);
         $project->setOrganizationId($organization->getId());
         $project->setWhiteBoardId($whiteBoardId);
         $project->setRequiredPreparationWeeks((int) ($requiredPreparationWeeks ?? 0));
@@ -218,6 +219,28 @@ class ProjectMapper extends QBMapper
             ->setFirstResult($offset);
 
         return $this->findEntities($qb);
+    }
+
+    /**
+     * @return Project[]
+     */
+    public function findArchivedBefore(DateTimeInterface $cutoff, int $limit = 50): array
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')
+            ->from(self::TABLE_NAME)
+            ->where($qb->expr()->eq('status', $qb->createNamedParameter(ProjectStatus::ARCHIVED, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->isNotNull('archived_at'))
+            ->andWhere($qb->expr()->lte('archived_at', $qb->createNamedParameter(DateTime::createFromInterface($cutoff), IQueryBuilder::PARAM_DATETIME_MUTABLE)))
+            ->orderBy('archived_at', 'ASC')
+            ->setMaxResults(max(1, $limit));
+
+        return $this->findEntities($qb);
+    }
+
+    public function deleteProject(Project $project): void
+    {
+        $this->delete($project);
     }
 
     /**

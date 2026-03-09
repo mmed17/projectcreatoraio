@@ -7,6 +7,7 @@ use OCA\Organization\Db\UserMapper as OrganizationUserMapper;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Db\TimelineItemMapper;
+use OCA\ProjectCreatorAIO\Service\ProjectActivityService;
 use OCA\ProjectCreatorAIO\Service\TimelinePlanningService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -27,6 +28,7 @@ class TimelineApiController extends Controller
 		private IUserSession $userSession,
 		private IGroupManager $groupManager,
 		private OrganizationUserMapper $organizationUserMapper,
+		private ProjectActivityService $projectActivityService,
 		private TimelinePlanningService $planningService,
 	) {
 		parent::__construct($appName, $request);
@@ -129,6 +131,8 @@ class TimelineApiController extends Controller
                 $itemType,
             );
 
+            $this->projectActivityService->recordTimelineItemCreated($project, $item, $this->userSession->getUser());
+
             return new JSONResponse($item, Http::STATUS_CREATED);
         } catch (\Throwable $e) {
             return $this->errorResponse($e);
@@ -221,7 +225,10 @@ class TimelineApiController extends Controller
                 return new JSONResponse(['error' => 'End date cannot be before start date'], Http::STATUS_BAD_REQUEST);
             }
 
-            return new JSONResponse($this->mapper->updateItem($item));
+            $updatedItem = $this->mapper->updateItem($item);
+            $this->projectActivityService->recordTimelineItemUpdated($project, $updatedItem, $this->userSession->getUser());
+
+            return new JSONResponse($updatedItem);
         } catch (\Throwable $e) {
             return $this->errorResponse($e);
         }
@@ -255,6 +262,7 @@ class TimelineApiController extends Controller
             }
 
             $items = $this->mapper->reorderItems($projectId, $ids);
+            $this->projectActivityService->recordTimelineReordered($project, count($items), $this->userSession->getUser());
             return new JSONResponse($items);
         } catch (\InvalidArgumentException $e) {
             return new JSONResponse(['error' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
@@ -385,6 +393,7 @@ class TimelineApiController extends Controller
             }
 
             $this->mapper->delete($item);
+            $this->projectActivityService->recordTimelineItemDeleted($project, $item, $this->userSession->getUser());
             return new JSONResponse(['success' => true]);
         } catch (\Throwable $e) {
             return $this->errorResponse($e);

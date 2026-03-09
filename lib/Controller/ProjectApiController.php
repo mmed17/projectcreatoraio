@@ -2,6 +2,7 @@
 namespace OCA\Projectcreatoraio\Controller;
 
 use OCA\ProjectCreatorAIO\Service\ProjectService;
+use OCA\ProjectCreatorAIO\Service\ProjectActivityService;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectNote;
 use OCA\Organization\Db\UserMapper as OrganizationUserMapper;
@@ -32,6 +33,7 @@ class ProjectApiController extends Controller
         protected ProjectMapper $projectMapper,
         protected ProjectNoteMapper $noteMapper,
         protected ProjectService $projectService,
+        private ProjectActivityService $projectActivityService,
         private IGroupManager $iGroupManager,
         private OrganizationUserMapper $organizationUserMapper,
         private IRootFolder $rootFolder,
@@ -303,6 +305,8 @@ class ProjectApiController extends Controller
             $visibility
         );
 
+        $this->projectActivityService->recordNoteCreated($project, $note, $currentUser);
+
         return new DataResponse($note->jsonSerialize(), 201);
     }
 
@@ -358,6 +362,8 @@ class ProjectApiController extends Controller
         }
 
         $updatedNote = $this->noteMapper->updateNote($note);
+
+        $this->projectActivityService->recordNoteUpdated($project, $updatedNote, $currentUser);
 
         return new DataResponse($updatedNote->jsonSerialize());
     }
@@ -548,6 +554,10 @@ class ProjectApiController extends Controller
         }
 
         $success = $this->noteMapper->deleteNote($noteId);
+
+        if ($success) {
+            $this->projectActivityService->recordNoteDeleted($project, $note, $currentUser);
+        }
 
         return new DataResponse(['deleted' => $success]);
     }
@@ -920,9 +930,9 @@ class ProjectApiController extends Controller
             if ($attemptedRestrictedFields !== []) {
                 if (
                     $isProjectOwner
-                    && array_values(array_diff($attemptedRestrictedFields, ['name', 'required_preparation_weeks'])) === []
+                    && array_values(array_diff($attemptedRestrictedFields, ['name', 'status', 'required_preparation_weeks'])) === []
                 ) {
-                    // Project owners may only edit project name and required preparation weeks.
+                    // Project owners may only edit project name, status and required preparation weeks.
                 } elseif (
                     $canEditPreparationWeeks
                     && count($attemptedRestrictedFields) === 1

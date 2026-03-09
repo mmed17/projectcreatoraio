@@ -96,17 +96,11 @@
 							v-model="statusFilter"
 							class="projects-home__filter-select"
 							aria-label="Filter projects">
-							<option value="all">
-								All
-							</option>
-							<option value="active">
-								Active
-							</option>
-							<option value="stale">
-								Stale
-							</option>
-							<option value="archived">
-								Archived
+							<option
+								v-for="option in projectStatusFilterOptions"
+								:key="option.value"
+								:value="option.value">
+								{{ option.label }}
 							</option>
 						</select>
 					</div>
@@ -258,24 +252,26 @@
 								{{ selectedProject.description || 'No description provided' }}
 							</p>
 						</div>
-						<div v-if="canManageProjects" class="projects-home__hero-actions">
-							<NcActions :force-menu="true">
-								<template #icon>
-									<DotsHorizontal :size="18" />
-								</template>
-								<NcActionButton
-									:icon="isArchivedStatus(selectedProject.status) ? 'icon-history' : 'icon-archive'"
-									@click="openArchiveDialog">
-									<template #icon>
-										<ArchiveArrowUp v-if="isArchivedStatus(selectedProject.status)" :size="16" />
-										<Archive v-else :size="16" />
-									</template>
-									{{ isArchivedStatus(selectedProject.status) ? 'Restore project' : 'Archive project' }}
-								</NcActionButton>
-							</NcActions>
+						<div v-if="canEditProjectStatus" class="projects-home__hero-actions">
+							<label class="projects-home__status-editor" for="projects-status-editor">
+								<span class="projects-home__status-editor-label">Status</span>
+								<select
+									id="projects-status-editor"
+									class="projects-home__filter-select projects-home__status-select"
+									:value="String(selectedProjectStatusValue)"
+									:disabled="statusUpdating"
+									@change="updateSelectedProjectStatus($event.target.value)">
+									<option
+										v-for="option in projectStatusOptions"
+										:key="option.value"
+										:value="option.value">
+										{{ option.label }}
+									</option>
+								</select>
+							</label>
 						</div>
 					</div>
-					<p v-if="canManageProjects && statusUpdateError" class="projects-home__inline-error">
+					<p v-if="canEditProjectStatus && statusUpdateError" class="projects-home__inline-error">
 						{{ statusUpdateError }}
 					</p>
 				</header>
@@ -729,28 +725,6 @@
 			</NcEmptyContent>
 		</main>
 
-		<!-- Archive Dialog -->
-		<NcDialog
-			v-if="showArchiveDialog && selectedProject"
-			:name="archiveDialogAction === 'archive' ? 'Archive project' : 'Restore project'"
-			:message="archiveDialogAction === 'archive'
-				? `Are you sure you want to archive '${selectedProject.name}'? Archived projects will be hidden from active project lists but can be restored at any time.`
-				: `Are you sure you want to restore '${selectedProject.name}'? This project will become active again and visible in project lists.`"
-			:buttons="[
-				{
-					label: 'Cancel',
-					type: 'secondary',
-					callback: () => { showArchiveDialog = false },
-				},
-				{
-					label: archiveDialogAction === 'archive' ? 'Archive' : 'Restore',
-					type: archiveDialogAction === 'archive' ? 'error' : 'primary',
-					nativeType: archiveDialogAction === 'archive' ? 'error' : 'submit',
-					callback: () => { executeArchiveAction() },
-				},
-			]"
-			@close="showArchiveDialog = false" />
-
 		<!-- Create Project Modal -->
 		<NcModal :show="showCreateModal" size="large" @close="closeCreateModal">
 			<ProjectCreator embedded @created="handleProjectCreated" @cancel="closeCreateModal" />
@@ -912,9 +886,6 @@ import NcButton from '@nextcloud/vue/components/NcButton'
 import NcEmptyContent from '@nextcloud/vue/components/NcEmptyContent'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import NcSelect from '@nextcloud/vue/components/NcSelect'
-import NcActions from '@nextcloud/vue/components/NcActions'
-import NcActionButton from '@nextcloud/vue/components/NcActionButton'
-import NcDialog from '@nextcloud/vue/components/NcDialog'
 import NcModal from '@nextcloud/vue/components/NcModal'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 
@@ -922,11 +893,8 @@ import Account from 'vue-material-design-icons/Account.vue'
 import AccountMultiple from 'vue-material-design-icons/AccountMultiple.vue'
 import AccountOff from 'vue-material-design-icons/AccountOff.vue'
 import AlertCircle from 'vue-material-design-icons/AlertCircle.vue'
-import Archive from 'vue-material-design-icons/Archive.vue'
-import ArchiveArrowUp from 'vue-material-design-icons/ArchiveArrowUp.vue'
 import ChartGantt from 'vue-material-design-icons/ChartGantt.vue'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
-import DotsHorizontal from 'vue-material-design-icons/DotsHorizontal.vue'
 import Draw from 'vue-material-design-icons/Draw.vue'
 import Download from 'vue-material-design-icons/Download.vue'
 import FilterRemove from 'vue-material-design-icons/FilterRemove.vue'
@@ -947,6 +915,16 @@ import { generateRemoteUrl, generateUrl } from '@nextcloud/router'
 import { createClient } from 'webdav'
 
 import { PROJECT_TYPES } from '../macros/project-types.js'
+import {
+	PROJECT_STATUS_FILTER_OPTIONS,
+	PROJECT_STATUS_OPTIONS,
+	getProjectStatusBadgeClass,
+	getProjectStatusLabel,
+	getProjectStatusPillClass,
+	getProjectStatusShortLabel,
+	matchesProjectStatusFilter,
+	normalizeProjectStatus,
+} from '../constants/project-statuses.js'
 import { ProjectsService } from '../Services/projects.js'
 
 import DeckAnalytics from './ProjectDeck/DeckAnalytics.vue'
@@ -969,13 +947,10 @@ export default {
 		AccountMultiple,
 		AccountOff,
 		AlertCircle,
-		Archive,
-		ArchiveArrowUp,
 		ChartGantt,
 		ChevronLeft,
 		DeckAnalytics,
 		DeckBoard,
-		DotsHorizontal,
 		Draw,
 		Download,
 		FilterRemove,
@@ -987,15 +962,12 @@ export default {
 		MapMarker,
 		MenuClose,
 		MenuOpen,
-		NcButton,
-		NcEmptyContent,
-		NcTextField,
-		NcSelect,
-		NcActions,
-		NcActionButton,
-		NcDialog,
-		NcModal,
-		NcLoadingIcon,
+			NcButton,
+			NcEmptyContent,
+			NcTextField,
+			NcSelect,
+			NcModal,
+			NcLoadingIcon,
 		NoteText,
 		OfficeBuilding,
 		OpenInNew,
@@ -1035,8 +1007,6 @@ export default {
 			selectedProject: null,
 			selectedProjectId: null,
 			statusFilter: 'all',
-			showArchiveDialog: false,
-			archiveDialogAction: 'archive',
 			projectMembers: [],
 			membersLoading: false,
 			membersError: '',
@@ -1077,6 +1047,23 @@ export default {
 		canManageProjects() {
 			return !!(this.context?.isGlobalAdmin || this.context?.organizationRole === 'admin')
 		},
+		canEditProjectStatus() {
+			if (this.canManageProjects) {
+				return true
+			}
+			const ownerId = String(this.selectedProject?.ownerId || '').trim()
+			const currentUserId = String(this.context?.userId || '').trim()
+			return ownerId !== '' && currentUserId !== '' && ownerId === currentUserId
+		},
+		projectStatusOptions() {
+			return PROJECT_STATUS_OPTIONS
+		},
+		projectStatusFilterOptions() {
+			return PROJECT_STATUS_FILTER_OPTIONS
+		},
+		selectedProjectStatusValue() {
+			return normalizeProjectStatus(this.selectedProject?.status)
+		},
 		canManageTimelineItems() {
 			return this.hasProjectAccess && !!this.selectedProject
 		},
@@ -1114,14 +1101,7 @@ export default {
 		filteredProjects() {
 			const search = this.searchQuery.trim().toLowerCase()
 			return this.projects.filter((project) => {
-				const normalizedStatus = Number(project.status)
-				if (this.statusFilter === 'active' && normalizedStatus !== 1) {
-					return false
-				}
-				if (this.statusFilter === 'stale' && normalizedStatus !== 2) {
-					return false
-				}
-				if (this.statusFilter === 'archived' && normalizedStatus !== 0) {
+				if (!matchesProjectStatusFilter(this.statusFilter, project.status)) {
 					return false
 				}
 				if (search === '') {
@@ -1188,11 +1168,7 @@ export default {
 		},
 		// Short status label for sidebar
 		statusLabelShort(status) {
-			const normalized = Number(status)
-			if (normalized === 1) return 'Active'
-			if (normalized === 2) return 'Stale'
-			if (normalized === 0) return 'Archived'
-			return 'Unknown'
+			return getProjectStatusShortLabel(status)
 		},
 		// Short type label
 		typeLabelShort(typeId) {
@@ -1208,11 +1184,7 @@ export default {
 		},
 		// Status badge class
 		statusBadgeClass(status) {
-			const normalized = Number(status)
-			if (normalized === 1) return 'projects-home__badge--success'
-			if (normalized === 2) return 'projects-home__badge--warning'
-			if (normalized === 0) return 'projects-home__badge--muted'
-			return ''
+			return getProjectStatusBadgeClass(status)
 		},
 		getProjectProfileDraftFromSelected() {
 			const selected = this.selectedProject || {}
@@ -1361,17 +1333,7 @@ export default {
 			this.sortKey = 'default'
 		},
 		statusPillClass(status) {
-			const normalized = Number(status)
-			if (normalized === 1) {
-				return 'projects-home__status-pill--active'
-			}
-			if (normalized === 2) {
-				return 'projects-home__status-pill--stale'
-			}
-			if (normalized === 0) {
-				return 'projects-home__status-pill--archived'
-			}
-			return ''
+			return getProjectStatusPillClass(status)
 		},
 		setActiveTab(tab) {
 			this.activeTab = tab
@@ -1403,36 +1365,35 @@ export default {
 			await this.loadProjectFiles(projectId)
 			this.loadedFilesProjectId = projectId
 		},
-		isArchivedStatus(status) {
-			return Number(status) === 0
-		},
-		openArchiveDialog() {
+		async updateSelectedProjectStatus(nextStatusRaw) {
 			if (!this.selectedProject) {
-				return
-			}
-			const currentlyArchived = this.isArchivedStatus(this.selectedProject.status)
-			this.archiveDialogAction = currentlyArchived ? 'restore' : 'archive'
-			this.showArchiveDialog = true
-		},
-		async executeArchiveAction() {
-			if (!this.selectedProject) {
-				this.showArchiveDialog = false
 				return
 			}
 			const projectId = Number(this.selectedProject.id)
 			if (!Number.isFinite(projectId) || projectId <= 0) {
-				this.showArchiveDialog = false
 				return
 			}
-			const currentlyArchived = this.isArchivedStatus(this.selectedProject.status)
-			const nextStatus = currentlyArchived ? 1 : 0
-			this.showArchiveDialog = false
+			const nextStatus = normalizeProjectStatus(nextStatusRaw)
+			if (normalizeProjectStatus(this.selectedProject.status) === nextStatus) {
+				return
+			}
 			this.statusUpdateError = ''
 			this.statusUpdating = true
 			try {
-				await projectsService.update(projectId, { status: nextStatus })
-				this.selectedProject.status = nextStatus
-				await this.loadProjects()
+				const updated = await projectsService.update(projectId, { status: nextStatus })
+				const resolvedStatus = normalizeProjectStatus(updated?.status ?? nextStatus)
+				this.selectedProject = {
+					...this.selectedProject,
+					...(updated && typeof updated === 'object' ? updated : {}),
+					status: resolvedStatus,
+				}
+				const projectIndex = this.projects.findIndex((project) => Number(project.id) === projectId)
+				if (projectIndex !== -1) {
+					this.projects.splice(projectIndex, 1, {
+						...this.projects[projectIndex],
+						...this.selectedProject,
+					})
+				}
 			} catch (error) {
 				this.statusUpdateError = error?.response?.data?.message || 'Could not update project status.'
 			} finally {
@@ -1518,17 +1479,7 @@ export default {
 			return match ? match.label : 'Unknown'
 		},
 		statusLabel(status) {
-			const normalized = Number(status)
-			if (normalized === 1) {
-				return 'Active'
-			}
-			if (normalized === 2) {
-				return 'Stale'
-			}
-			if (normalized === 0) {
-				return 'Archived'
-			}
-			return 'Unknown'
+			return getProjectStatusLabel(status)
 		},
 		async loadProjectFiles(projectId) {
 			this.filesError = ''
@@ -1974,14 +1925,24 @@ export default {
 	color: #1e7f2d;
 }
 
+.projects-home__status-pill--waiting {
+	background: rgba(181, 106, 0, 0.16);
+	color: #b56a00;
+}
+
+.projects-home__status-pill--hold {
+	background: rgba(92, 92, 122, 0.15);
+	color: #54546b;
+}
+
+.projects-home__status-pill--done {
+	background: rgba(12, 107, 74, 0.14);
+	color: #0c6b4a;
+}
+
 .projects-home__status-pill--archived {
 	background: rgba(120, 120, 120, 0.14);
 	color: var(--color-text-maxcontrast);
-}
-
-.projects-home__status-pill--stale {
-	background: rgba(181, 106, 0, 0.16);
-	color: #b56a00;
 }
 
 .projects-home__project-meta {
@@ -2069,19 +2030,21 @@ export default {
 	flex-shrink: 0;
 }
 
-.projects-home__hero-actions :deep(.action-item) {
-	--border-radius: 8px;
+.projects-home__status-editor {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 180px;
 }
 
-.projects-home__hero-actions :deep(.action-item__menutoggle) {
-	background: var(--color-main-background);
-	border: 1px solid var(--color-border-dark);
-	border-radius: 8px;
-	padding: 6px 12px;
+.projects-home__status-editor-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--color-text-maxcontrast);
 }
 
-.projects-home__hero-actions :deep(.action-item__menutoggle:hover) {
-	background: var(--color-background-hover);
+.projects-home__status-select {
+	min-width: 180px;
 }
 
 /* Badges */

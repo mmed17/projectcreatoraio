@@ -1,0 +1,217 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\ProjectCreatorAIO\Service;
+
+use DateInterval;
+use DateTime;
+use DateTimeInterface;
+use OCA\ProjectCreatorAIO\Db\Project;
+use OCA\ProjectCreatorAIO\Db\ProjectActivityEvent;
+use OCA\ProjectCreatorAIO\Db\ProjectActivityEventMapper;
+use OCA\ProjectCreatorAIO\Db\ProjectDigestCursorMapper;
+use OCA\ProjectCreatorAIO\Db\ProjectMapper;
+use OCP\IURLGenerator;
+use OCP\Mail\Headers\AutoSubmitted;
+use OCP\Mail\IMailer;
+use OCP\IUser;
+use Psr\Log\LoggerInterface;
+
+class ProjectDigestService {
+	private const INITIAL_LOOKBACK = 'P1D';
+
+	public function __construct(
+		private readonly ProjectMapper $projectMapper,
+		private readonly ProjectActivityEventMapper $eventMapper,
+		private readonly ProjectDigestCursorMapper $cursorMapper,
+		private readonly ProjectMemberResolver $memberResolver,
+		private readonly IMailer $mailer,
+		private readonly IURLGenerator $urlGenerator,
+		private readonly LoggerInterface $logger,
+	) {
+	}
+
+	public function sendDailyDigests(?DateTimeInterface $now = null): void {
+		$currentTime = $now instanceof DateTimeInterface ? DateTime::createFromInterface($now) : new DateTime();
+		$initialNotBefore = (clone $currentTime)->sub(new DateInterval(self::INITIAL_LOOKBACK));
+
+		foreach ($this->projectMapper->list() as $project) {
+			$projectId = (int) ($project->getId() ?? 0);
+			if ($projectId <= 0) {
+				continue;
+			}
+
+			foreach ($this->memberResolver->getProjectMembers($project) as $recipient) {
+				$this->processRecipient($project, $recipient, $currentTime, $initialNotBefore);
+			}
+		}
+	}
+
+	private function processRecipient(Project $project, IUser $recipient, DateTimeInterface $currentTime, DateTimeInterface $initialNotBefore): void {
+		$projectId = (int) ($project->getId() ?? 0);
+		$recipientUid = trim((string) $recipient->getUID());
+		if ($projectId <= 0 || $recipientUid === '') {
+			return;
+		}
+
+		$cursor = $this->cursorMapper->findByProjectAndUser($projectId, $recipientUid);
+		$afterEventId = (int) ($cursor?->getLastEventId() ?? 0);
+		$events = $this->eventMapper->findForDigest(
+			$projectId,
+			$afterEventId,
+			$cursor === null ? $initialNotBefore : null,
+		);
+		if ($events === []) {
+			return;
+		}
+
+		$email = trim((string) ($recipient->getEMailAddress() ?? ''));
+		if ($email === '') {
+			$this->logger->warning('Skipping project digest because recipient has no email address', [
+				'projectId' => $projectId,
+				'userUid' => $recipientUid,
+			]);
+			return;
+		}
+
+		try {
+			$this->sendDigest($project, $recipient, $events);
+			$lastEvent = end($events);
+			if ($lastEvent instanceof ProjectActivityEvent) {
+				$this->cursorMapper->advanceCursor($projectId, $recipientUid, (int) $lastEvent->getId(), $currentTime);
+			}
+		} catch (\Throwable $e) {
+			$this->logger->error('Failed to send project digest email', [
+				'exception' => $e,
+				'projectId' => $projectId,
+				'userUid' => $recipientUid,
+			]);
+		}
+	}
+
+	/**
+	 * @param ProjectActivityEvent[] $events
+	 */
+	private function sendDigest(Project $project, IUser $recipient, array $events): void {
+		$projectName = $this->getProjectName($project);
+		$subject = sprintf('%s: daily activity summary (%d)', $projectName, count($events));
+		$template = $this->mailer->createEMailTemplate('project_activity_digest', [
+			'projectName' => $projectName,
+			'recipientUid' => $recipient->getUID(),
+		]);
+		$template->setSubject($subject);
+		$template->addHeader();
+		$template->addHeading($subject);
+		$template->addBodyText(sprintf('Here is the latest activity for project %s.', $projectName));
+
+		foreach ($events as $event) {
+			[$text, $meta] = $this->formatEvent($event);
+			$template->addBodyListItem($text, $meta, '', $text, $meta);
+		}
+
+		$template->addBodyButton('Open Projects', $this->urlGenerator->linkToRouteAbsolute('projectcreatoraio.page.index'));
+		$template->addFooter();
+
+		$message = $this->mailer->createMessage();
+		$message
+			->setTo([$recipient->getEMailAddress() => $this->getUserDisplayName($recipient)])
+			->setAutoSubmitted(AutoSubmitted::VALUE_AUTO_GENERATED)
+			->useTemplate($template);
+
+		$failedRecipients = $this->mailer->send($message);
+		if ($failedRecipients !== []) {
+			throw new \RuntimeException('Digest delivery failed for: ' . implode(', ', $failedRecipients));
+		}
+	}
+
+	/**
+	 * @return array{0: string, 1: string}
+	 */
+	private function formatEvent(ProjectActivityEvent $event): array {
+		$payload = $event->getPayloadArray();
+		$actor = trim((string) ($event->getActorDisplayName() ?? $event->getActorUid() ?? 'Someone'));
+		if ($actor === '') {
+			$actor = 'Someone';
+		}
+		$meta = $event->getOccurredAt()?->format('Y-m-d H:i') ?? '';
+
+		switch ((string) $event->getEventType()) {
+			case ProjectActivityService::EVENT_PROJECT_CREATED:
+				return [sprintf('%s created the project', $actor), $meta];
+			case ProjectActivityService::EVENT_MEMBER_ADDED:
+				$member = $this->fallbackLabel($payload['memberDisplayName'] ?? null, $payload['memberUid'] ?? null, 'a team member');
+				return [sprintf('%s added %s to the project', $actor, $member), $meta];
+			case ProjectActivityService::EVENT_WHITEBOARD_UPDATED:
+				return [sprintf('%s updated the whiteboard', $actor), $meta];
+			case ProjectActivityService::EVENT_PROJECT_NOTES_UPDATED:
+				$scope = [];
+				if (($payload['publicUpdated'] ?? false) === true) {
+					$scope[] = 'public notes';
+				}
+				if (($payload['privateUpdated'] ?? false) === true) {
+					$scope[] = 'private notes';
+				}
+				$target = $scope === [] ? 'project notes' : implode(' and ', $scope);
+				return [sprintf('%s updated %s', $actor, $target), $meta];
+			case ProjectActivityService::EVENT_NOTE_CREATED:
+				return [sprintf('%s created %s', $actor, $this->formatNoteLabel($payload)), $meta];
+			case ProjectActivityService::EVENT_NOTE_UPDATED:
+				return [sprintf('%s updated %s', $actor, $this->formatNoteLabel($payload)), $meta];
+			case ProjectActivityService::EVENT_NOTE_DELETED:
+				return [sprintf('%s deleted %s', $actor, $this->formatNoteLabel($payload)), $meta];
+			case ProjectActivityService::EVENT_TIMELINE_ITEM_CREATED:
+				return [sprintf('%s created %s', $actor, $this->formatTimelineLabel($payload)), $meta];
+			case ProjectActivityService::EVENT_TIMELINE_ITEM_UPDATED:
+				return [sprintf('%s updated %s', $actor, $this->formatTimelineLabel($payload)), $meta];
+			case ProjectActivityService::EVENT_TIMELINE_ITEM_DELETED:
+				return [sprintf('%s deleted %s', $actor, $this->formatTimelineLabel($payload)), $meta];
+			case ProjectActivityService::EVENT_TIMELINE_REORDERED:
+				$count = max(0, (int) ($payload['count'] ?? 0));
+				return [sprintf('%s reordered %d timeline items', $actor, $count), $meta];
+			default:
+				return [sprintf('%s recorded activity in the project', $actor), $meta];
+		}
+	}
+
+	/**
+	 * @param array<string, mixed> $payload
+	 */
+	private function formatNoteLabel(array $payload): string {
+		$visibility = trim((string) ($payload['visibility'] ?? 'public'));
+		$title = trim((string) ($payload['title'] ?? ''));
+		$type = $visibility === 'private' ? 'a private note' : 'a public note';
+		return $title === '' ? $type : sprintf('%s "%s"', $type, $title);
+	}
+
+	/**
+	 * @param array<string, mixed> $payload
+	 */
+	private function formatTimelineLabel(array $payload): string {
+		$itemType = trim((string) ($payload['itemType'] ?? 'timeline item'));
+		$label = trim((string) ($payload['label'] ?? ''));
+		$type = $itemType === 'milestone' ? 'timeline milestone' : 'timeline item';
+		return $label === '' ? $type : sprintf('%s "%s"', $type, $label);
+	}
+
+	private function fallbackLabel(mixed $preferred, mixed $fallback, string $default): string {
+		foreach ([$preferred, $fallback] as $value) {
+			$label = trim((string) $value);
+			if ($label !== '') {
+				return $label;
+			}
+		}
+
+		return $default;
+	}
+
+	private function getProjectName(Project $project): string {
+		$name = trim((string) ($project->getName() ?? ''));
+		return $name !== '' ? $name : 'Unnamed project';
+	}
+
+	private function getUserDisplayName(IUser $user): string {
+		$displayName = trim((string) ($user->getDisplayName() ?? ''));
+		return $displayName !== '' ? $displayName : (string) $user->getUID();
+	}
+}

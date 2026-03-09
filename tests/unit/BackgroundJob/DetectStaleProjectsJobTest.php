@@ -10,10 +10,10 @@ use OCP\AppFramework\Utility\ITimeFactory;
 use PHPUnit\Framework\TestCase;
 
 final class DetectStaleProjectsJobTest extends TestCase {
-	public function testRunProcessesStaleProjects(): void {
+	public function testRunProcessesProjectLifecycleStatuses(): void {
 		$timeFactory = $this->createMock(ITimeFactory::class);
 		$service = $this->createMock(ProjectDeckActivityService::class);
-		$service->expects($this->once())->method('processStaleProjects');
+		$service->expects($this->once())->method('processLifecycleStatuses');
 
 		$job = new class($timeFactory, $service) extends DetectStaleProjectsJob {
 			public function runPublic(): void {

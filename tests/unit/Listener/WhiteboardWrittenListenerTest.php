@@ -7,6 +7,7 @@ namespace OCA\ProjectCreatorAIO\Tests\Unit\Listener;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Listener\WhiteboardWrittenListener;
+use OCA\ProjectCreatorAIO\Service\ProjectActivityService;
 use OCA\ProjectCreatorAIO\Service\ProjectNotificationService;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\Files\File;
@@ -37,8 +38,12 @@ final class WhiteboardWrittenListenerTest extends TestCase {
 		$projectNotificationService->expects($this->once())
 			->method('notifyWhiteboardUpdated')
 			->with($project, $actor);
+		$projectActivityService = $this->createMock(ProjectActivityService::class);
+		$projectActivityService->expects($this->once())
+			->method('recordWhiteboardUpdated')
+			->with($project, $actor);
 
-		$listener = new WhiteboardWrittenListener($projectMapper, $projectNotificationService, $userSession);
+		$listener = new WhiteboardWrittenListener($projectMapper, $projectNotificationService, $projectActivityService, $userSession);
 		$listener->handle(new NodeWrittenEvent($file));
 	}
 
@@ -52,8 +57,10 @@ final class WhiteboardWrittenListenerTest extends TestCase {
 		$userSession = $this->createMock(IUserSession::class);
 		$projectNotificationService = $this->createMock(ProjectNotificationService::class);
 		$projectNotificationService->expects($this->never())->method('notifyWhiteboardUpdated');
+		$projectActivityService = $this->createMock(ProjectActivityService::class);
+		$projectActivityService->expects($this->never())->method('recordWhiteboardUpdated');
 
-		$listener = new WhiteboardWrittenListener($projectMapper, $projectNotificationService, $userSession);
+		$listener = new WhiteboardWrittenListener($projectMapper, $projectNotificationService, $projectActivityService, $userSession);
 		$listener->handle(new NodeWrittenEvent($file));
 	}
 }

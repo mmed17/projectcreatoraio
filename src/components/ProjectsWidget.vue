@@ -71,7 +71,7 @@
                         <NcChip
                             no-close 
                             :text="currentProjectStatus(project)" 
-                            :variant="project.status && selectedProjectId !== project.id ? 'primary':'secondary'" />
+                            :variant="selectedProjectId !== project.id ? 'primary':'secondary'" />
                     </template>
 
                     <template #actions>
@@ -118,6 +118,10 @@ import NcChip from '@nextcloud/vue/components/NcChip';
 import { getCurrentUser } from '@nextcloud/auth'
 import UsersFetcher from './UsersFetcher.vue'
 import { PROJECT_TYPES } from '../macros/project-types';
+import {
+	PROJECT_STATUS_OPTIONS,
+	getProjectStatusLabel,
+} from '../constants/project-statuses.js'
 import { UsersService } from '../Services/users'
 import { ProjectsService } from '../Services/projects'
 import { generateUrl, generateRemoteUrl } from '@nextcloud/router';
@@ -167,11 +171,7 @@ export default {
             PROJECT_TYPES,
             allUsers: [],
             searchTimeout: undefined,
-            statuses: [
-                { id: 0, label: 'Archived' },
-                { id: 1, label: 'Active' },
-                { id: 2, label: 'Stale' }
-            ]
+            statuses: PROJECT_STATUS_OPTIONS
 		}
 	},
 	computed: {
@@ -284,9 +284,7 @@ export default {
             if (!this.statuses || !project) {
                 return 'Unknown';
             }
-            
-            const status = this.statuses.find(s => s.id === project.status);
-            return status ? status.label : 'Archived'; 
+            return getProjectStatusLabel(project.status)
         }
 	}
 }

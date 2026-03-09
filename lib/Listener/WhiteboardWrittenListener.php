@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\ProjectCreatorAIO\Listener;
 
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
+use OCA\ProjectCreatorAIO\Service\ProjectActivityService;
 use OCA\ProjectCreatorAIO\Service\ProjectNotificationService;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
@@ -17,6 +18,7 @@ class WhiteboardWrittenListener implements IEventListener {
 	public function __construct(
 		private readonly ProjectMapper $projectMapper,
 		private readonly ProjectNotificationService $projectNotificationService,
+		private readonly ProjectActivityService $projectActivityService,
 		private readonly IUserSession $userSession,
 	) {
 	}
@@ -47,5 +49,6 @@ class WhiteboardWrittenListener implements IEventListener {
 		}
 
 		$this->projectNotificationService->notifyWhiteboardUpdated($project, $actor);
+		$this->projectActivityService->recordWhiteboardUpdated($project, $actor);
 	}
 }
