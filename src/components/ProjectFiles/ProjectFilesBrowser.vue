@@ -6,8 +6,7 @@
 					:type="'button'"
 					class="project-files__tab"
 					:class="{ 'project-files__tab--active': scope === 'shared' }"
-					@click="setScope('shared')"
-				>
+					@click="setScope('shared')">
 					Shared
 					<span class="project-files__tab-pill">{{ sharedFileCount }}</span>
 				</button>
@@ -15,25 +14,37 @@
 					:type="'button'"
 					class="project-files__tab"
 					:class="{ 'project-files__tab--active': scope === 'private' }"
-					@click="setScope('private')"
-				>
+					@click="setScope('private')">
 					Private
 					<span class="project-files__tab-pill">{{ privateFileCount }}</span>
 				</button>
 			</div>
 
 			<div class="project-files__tools">
-				<NcTextField v-model="search" label="Search files" input-label="Search files" placeholder="Search names">
+				<NcTextField
+					v-model="search"
+					label="Search files"
+					input-label="Search files"
+					placeholder="Search names">
 					<template #icon>
 						<Magnify :size="18" />
 					</template>
 				</NcTextField>
-				<button v-if="search.trim().length > 0" :type="'button'" class="project-files__clear" @click="clearSearch">
+				<button
+					v-if="search.trim().length > 0"
+					:type="'button'"
+					class="project-files__clear"
+					@click="clearSearch">
 					Clear
 				</button>
 			</div>
 		</div>
 
+		<div v-if="documentTypesLoading" class="project-files__muted">Loading OCR document types...</div>
+		<div v-else-if="documentTypesError" class="project-files__muted">{{ documentTypesError }}</div>
+		<div v-else-if="projectId && documentTypes.length === 0" class="project-files__muted">
+			No OCR document types are configured for this organization yet.
+		</div>
 		<div v-if="loading" class="project-files__muted">Loading file structure...</div>
 		<div v-else-if="error" class="project-files__muted">{{ error }}</div>
 		<div v-else class="project-files__grid">
@@ -50,8 +61,7 @@
 						:selected-id="selectedFolderId"
 						:show-counts="false"
 						@toggle="toggleFolder"
-						@select="selectFolder"
-					/>
+						@select="selectFolder" />
 				</div>
 			</div>
 
@@ -59,12 +69,11 @@
 				<div class="project-files__right-top">
 					<div class="project-files__breadcrumbs">
 						<button
-							v-for="(crumb, idx) in selectedChain"
+							v-for="crumb in selectedChain"
 							:key="`crumb-${crumb.id}`"
 							:type="'button'"
 							class="project-files__crumb"
-							@click="selectFolder(crumb)"
-						>
+							@click="selectFolder(crumb)">
 							{{ crumb.name }}
 						</button>
 						<span v-if="selectedChain.length === 0" class="project-files__muted">No folder selected</span>
@@ -73,24 +82,40 @@
 					<div class="project-files__actions">
 						<button
 							:type="'button'"
-							class="project-files__action"
+							class="project-files__btn"
 							:disabled="!selectedFolderNode"
-							@click="openNodeInFiles(selectedFolderNode)"
-						>
+							@click="openNodeInFiles(selectedFolderNode)">
 							<OpenInNew :size="18" />
-							Open
+							Open in Files
 						</button>
 						<button
 							:type="'button'"
-							class="project-files__action"
+							class="project-files__btn project-files__btn--primary"
+							:disabled="!selectedFolderNode || uploadBusy"
+							@click="triggerUpload">
+							<Upload :size="18" />
+							{{ uploadBusy ? 'Uploading...' : 'Upload files' }}
+						</button>
+						<button
+							:type="'button'"
+							class="project-files__btn project-files__btn--primary"
 							:disabled="!selectedFolderNode"
-							@click="downloadFolderZip(selectedFolderNode)"
-						>
+							@click="downloadFolderZip(selectedFolderNode)">
 							<Download :size="18" />
-							ZIP
+							Download ZIP
 						</button>
 					</div>
 				</div>
+
+				<input
+					ref="uploadInput"
+					class="project-files__upload-input"
+					type="file"
+					multiple
+					@change="onFilesPicked">
+
+				<div v-if="uploadError" class="project-files__upload-error">{{ uploadError }}</div>
+				<div v-else-if="uploadMessage" class="project-files__upload-success">{{ uploadMessage }}</div>
 
 				<div class="project-files__list">
 					<div v-if="showSearch" class="project-files__results">
@@ -98,16 +123,14 @@
 						<div v-if="searchResults.length === 0" class="project-files__empty">No matches.</div>
 						<ul v-else class="project-files__rows">
 							<li v-for="hit in searchResults" :key="`hit-${hit.node.id}`" class="project-files__row">
-								<button
-									:type="'button'"
-									class="project-files__row-main"
-									@click="activateSearchHit(hit)"
-								>
-									<FolderOutline v-if="hit.node.type === 'folder'" :size="18" class="project-files__row-icon" />
-									<FileOutline v-else :size="18" class="project-files__row-icon" />
-									<span class="project-files__row-name">{{ hit.node.name }}</span>
-									<span class="project-files__row-sub">{{ hit.pathLabel || 'Root' }}</span>
-								</button>
+								<div class="project-files__row-main" @click="activateSearchHit(hit)">
+									<FolderOutline v-if="hit.node.type === 'folder'" :size="20" class="project-files__row-icon" />
+									<FileOutline v-else :size="20" class="project-files__row-icon" />
+									<div class="project-files__row-info">
+										<span class="project-files__row-name">{{ hit.node.name }}</span>
+										<span class="project-files__row-sub">{{ hit.pathLabel || 'Root' }}</span>
+									</div>
+								</div>
 							</li>
 						</ul>
 					</div>
@@ -121,36 +144,74 @@
 								v-for="entry in sortedEntries"
 								:key="`entry-${entry.id}`"
 								class="project-files__row"
-								:class="{ 'project-files__row--highlight': highlightedNodeId !== null && String(highlightedNodeId) === String(entry.id) }"
-							>
-								<button
-									:type="'button'"
-									class="project-files__row-main"
-									@click="entry.type === 'folder' ? selectFolder(entry) : openFileInFiles(entry)"
-								>
-									<FolderOutline v-if="entry.type === 'folder'" :size="18" class="project-files__row-icon" />
-									<FileOutline v-else :size="18" class="project-files__row-icon" />
-									<span class="project-files__row-name">{{ entry.name }}</span>
-									<span class="project-files__row-sub">
-										<span v-if="entry.type === 'folder'">{{ countFiles(entry) }} files</span>
-										<span v-else>{{ formatBytes(entry.size) }}</span>
-									</span>
-								</button>
+								:class="{ 'project-files__row--highlight': highlightedNodeId !== null && String(highlightedNodeId) === String(entry.id) }">
 
-								<div class="project-files__row-actions">
+								<div
+									class="project-files__row-main"
+									@click="entry.type === 'folder' ? selectFolder(entry) : openFileInFiles(entry)">
+									<FolderOutline v-if="entry.type === 'folder'" :size="20" class="project-files__row-icon" />
+									<FileOutline v-else :size="20" class="project-files__row-icon" />
+
+									<div class="project-files__row-info">
+										<span class="project-files__row-name">{{ entry.name }}</span>
+										<span class="project-files__row-sub">
+											<span v-if="entry.type === 'folder'">{{ countFiles(entry) }} files</span>
+											<span v-else>{{ formatBytes(entry.size) }}</span>
+										</span>
+									</div>
+								</div>
+
+								<div v-if="isSupportedFile(entry)" class="project-files__row-ocr" @click.stop>
+									<select
+										class="project-files__type-select-inline"
+										:value="documentTypeValue(entry.id)"
+										:disabled="documentTypesLoading || isAssigning(entry.id) || documentTypes.length === 0"
+										@change="assignDocumentType(entry, $event.target.value)">
+										<option value="">{{ documentTypes.length === 0 ? 'No types' : 'Assign type...' }}</option>
+										<option v-for="type in documentTypes" :key="`doc-type-${type.id}`" :value="type.id">
+											{{ type.name }}
+										</option>
+									</select>
+
+									<div class="project-files__status-inline" :class="statusBadgeClass(entry.id)" :title="statusLabel(entry.id) + (fileFeedback(entry.id) ? ' - ' + fileFeedback(entry.id) : '')">
+										<component :is="statusIcon(entry.id)" :size="16" />
+									</div>
+								</div>
+								<div v-else class="project-files__row-ocr project-files__row-ocr--empty"></div>
+
+								<div class="project-files__row-actions" @click.stop>
+									<button
+										v-if="isSupportedFile(entry) && extractedEntries(entry.id).length > 0"
+										:type="'button'"
+										class="project-files__icon-btn"
+										title="View Extracted Data"
+										@click="openExtractedDataModal(entry.id)">
+										<EyeOutline :size="18" />
+									</button>
+									<button
+										v-if="isSupportedFile(entry) && canReprocess(entry.id)"
+										:type="'button'"
+										class="project-files__icon-btn"
+										title="Reprocess OCR"
+										@click="reprocessFile(entry)">
+										<Refresh :size="18" />
+									</button>
+									<div v-if="isSupportedFile(entry) && isProcessingBusy(entry.id)" class="project-files__loading-wrap">
+										<NcLoadingIcon :size="20" />
+									</div>
 									<button
 										:type="'button'"
-										class="project-files__mini"
-										@click.stop="openNodeInFiles(entry)"
-									>
+										class="project-files__icon-btn"
+										title="Open in Files"
+										@click="openNodeInFiles(entry)">
 										<OpenInNew :size="18" />
 									</button>
 									<button
 										v-if="entry.type === 'file'"
 										:type="'button'"
-										class="project-files__mini"
-										@click.stop="downloadFile(entry)"
-									>
+										class="project-files__icon-btn"
+										title="Download"
+										@click="downloadFile(entry)">
 										<Download :size="18" />
 									</button>
 								</div>
@@ -160,36 +221,103 @@
 				</div>
 			</div>
 		</div>
+
+		<!-- Extracted Data Modal -->
+		<div v-if="activeExtractedFileId" class="project-files__modal-overlay" @click="closeExtractedDataModal">
+			<div class="project-files__modal" @click.stop>
+				<div class="project-files__modal-header">
+					<h3 class="project-files__modal-title">Extracted Data</h3>
+					<button class="project-files__modal-close" @click="closeExtractedDataModal">
+						<Close :size="20" />
+					</button>
+				</div>
+				<div class="project-files__modal-content">
+					<div class="project-files__modal-filename">{{ activeExtractedFileName }}</div>
+					<div v-if="activeExtractedData.length === 0" class="project-files__empty">No data extracted yet.</div>
+					<table v-else class="project-files__data-table">
+						<tbody>
+							<tr v-for="item in activeExtractedData" :key="item.key">
+								<th>{{ item.name }}</th>
+								<td>{{ item.value }}</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
 	</div>
 </template>
 
 <script>
+import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
 import NcTextField from '@nextcloud/vue/components/NcTextField'
 import { generateRemoteUrl, generateUrl } from '@nextcloud/router'
 import { createClient } from 'webdav'
 
+import AlertCircleOutline from 'vue-material-design-icons/AlertCircleOutline.vue'
+import CheckCircleOutline from 'vue-material-design-icons/CheckCircleOutline.vue'
+import ClockOutline from 'vue-material-design-icons/ClockOutline.vue'
+import Close from 'vue-material-design-icons/Close.vue'
 import Download from 'vue-material-design-icons/Download.vue'
+import EyeOutline from 'vue-material-design-icons/EyeOutline.vue'
+import FileDocumentOutline from 'vue-material-design-icons/FileDocumentOutline.vue'
 import FileOutline from 'vue-material-design-icons/FileOutline.vue'
+import FileQuestionOutline from 'vue-material-design-icons/FileQuestionOutline.vue'
 import FolderOutline from 'vue-material-design-icons/FolderOutline.vue'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
+import Refresh from 'vue-material-design-icons/Refresh.vue'
+import Sync from 'vue-material-design-icons/Sync.vue'
+import Upload from 'vue-material-design-icons/Upload.vue'
 
+import { ProjectsService } from '../../Services/projects.js'
 import FolderTreeItem from './FolderTreeItem.vue'
 
-const webdavClient = createClient(generateRemoteUrl('dav'))
+function getRequestToken() {
+	// Nextcloud exposes it on `OC.requestToken` and as a meta tag.
+	const token = window?.OC?.requestToken
+		|| document?.querySelector?.('head meta[name="requesttoken"]')?.content
+		|| ''
+	return String(token || '')
+}
+
+const webdavClient = createClient(generateRemoteUrl('dav'), {
+	withCredentials: true,
+	headers: {
+		requesttoken: getRequestToken(),
+		'X-RequestToken': getRequestToken(),
+	},
+})
+const projectsService = ProjectsService.getInstance()
+const SUPPORTED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
 
 export default {
 	name: 'ProjectFilesBrowser',
 	components: {
+		AlertCircleOutline,
+		CheckCircleOutline,
+		ClockOutline,
+		Close,
 		Download,
+		EyeOutline,
+		FileDocumentOutline,
 		FileOutline,
+		FileQuestionOutline,
 		FolderOutline,
 		FolderTreeItem,
 		Magnify,
+		NcLoadingIcon,
 		NcTextField,
 		OpenInNew,
+		Refresh,
+		Sync,
+		Upload,
 	},
 	props: {
+		projectId: {
+			type: Number,
+			default: null,
+		},
 		sharedRoots: {
 			type: Array,
 			default: () => [],
@@ -206,6 +334,10 @@ export default {
 			type: String,
 			default: '',
 		},
+		documentTypesVersion: {
+			type: Number,
+			default: 0,
+		},
 	},
 	data() {
 		return {
@@ -220,6 +352,17 @@ export default {
 				shared: [],
 				private: [],
 			},
+			documentTypes: [],
+			documentTypesLoading: false,
+			documentTypesError: '',
+			processingByFileId: {},
+			processingLoadingByFileId: {},
+			assigningByFileId: {},
+			feedbackByFileId: {},
+			activeExtractedFileId: null,
+			uploadBusy: false,
+			uploadError: '',
+			uploadMessage: '',
 		}
 	},
 	computed: {
@@ -285,13 +428,43 @@ export default {
 		privateFileCount() {
 			return this.countFilesInRoots(this.privateRoots)
 		},
+		activeExtractedData() {
+			if (!this.activeExtractedFileId) return []
+			return this.extractedEntries(this.activeExtractedFileId)
+		},
+		activeExtractedFileName() {
+			if (!this.activeExtractedFileId) return ''
+			const entry = this.sortedEntries.find((e) => String(e.id) === String(this.activeExtractedFileId))
+			return entry ? entry.name : ''
+		},
 	},
 	watch: {
 		sharedRoots() {
 			this.ensureSelection('shared')
+			this.queueVisibleProcessingLoad()
+			this.clearUploadFeedback()
 		},
 		privateRoots() {
 			this.ensureSelection('private')
+			this.queueVisibleProcessingLoad()
+			this.clearUploadFeedback()
+		},
+		projectId: {
+			immediate: true,
+			handler() {
+				this.resetOcrState()
+				this.clearUploadFeedback()
+				this.loadDocumentTypes()
+			},
+		},
+		documentTypesVersion() {
+			this.loadDocumentTypes()
+		},
+		selectedFolderId() {
+			this.queueVisibleProcessingLoad()
+		},
+		scope() {
+			this.queueVisibleProcessingLoad()
 		},
 	},
 	mounted() {
@@ -299,6 +472,156 @@ export default {
 		this.ensureSelection('private')
 	},
 	methods: {
+		resetOcrState() {
+			this.documentTypes = []
+			this.documentTypesLoading = false
+			this.documentTypesError = ''
+			this.processingByFileId = {}
+			this.processingLoadingByFileId = {}
+			this.assigningByFileId = {}
+			this.feedbackByFileId = {}
+			this.activeExtractedFileId = null
+		},
+		clearUploadFeedback() {
+			this.uploadError = ''
+			this.uploadMessage = ''
+		},
+		triggerUpload() {
+			if (!this.selectedFolderNode || this.uploadBusy) {
+				return
+			}
+			this.clearUploadFeedback()
+			this.$refs.uploadInput?.click?.()
+		},
+		async onFilesPicked(event) {
+			const input = event?.target
+			const files = Array.from(input?.files || [])
+			// Allow selecting the same file twice in a row
+			if (input) {
+				input.value = ''
+			}
+
+			if (!this.selectedFolderNode || files.length === 0 || this.uploadBusy) {
+				return
+			}
+
+			const folderDavPath = this.normalizedDavPath(this.selectedFolderNode.path)
+			if (!folderDavPath) {
+				this.uploadError = 'Could not resolve destination folder.'
+				return
+			}
+
+			this.uploadBusy = true
+			this.uploadError = ''
+			this.uploadMessage = ''
+
+			const failures = []
+			let uploaded = 0
+
+			for (const file of files) {
+				const name = String(file?.name || '').trim()
+				if (name === '' || name.includes('/')) {
+					failures.push(name || '(unnamed file)')
+					continue
+				}
+				const target = `${folderDavPath.replace(/\/+$/, '')}/${name}`
+				try {
+					// webdav-client treats unknown objects as JSON (resulting in "{}" being uploaded).
+					// Always upload binary data as an ArrayBuffer.
+					const data = await this.readFileAsArrayBuffer(file)
+					const ok = await webdavClient.putFileContents(target, data, { overwrite: false })
+					if (ok) {
+						uploaded += 1
+					} else {
+						failures.push(name)
+					}
+				} catch (error) {
+					console.error('Upload failed:', error)
+					failures.push(name)
+				}
+			}
+
+			this.uploadBusy = false
+
+			if (uploaded > 0) {
+				this.uploadMessage = `Uploaded ${uploaded} file${uploaded === 1 ? '' : 's'}.`
+				this.$emit('refresh')
+			}
+			if (failures.length > 0) {
+				const label = failures.length === 1 ? failures[0] : `${failures.length} files`
+				this.uploadError = `Failed to upload ${label}.`
+			}
+		},
+		readFileAsArrayBuffer(file) {
+			if (file?.arrayBuffer) {
+				return file.arrayBuffer()
+			}
+			// Fallback for older browsers
+			return new Promise((resolve, reject) => {
+				const reader = new FileReader()
+				reader.onerror = () => reject(reader.error || new Error('Could not read file'))
+				reader.onload = () => resolve(reader.result)
+				reader.readAsArrayBuffer(file)
+			})
+		},
+		async loadDocumentTypes() {
+			const projectId = Number(this.projectId)
+			if (!Number.isFinite(projectId) || projectId <= 0) {
+				this.documentTypes = []
+				return
+			}
+
+			this.documentTypesLoading = true
+			this.documentTypesError = ''
+			try {
+				this.documentTypes = await projectsService.listProjectDocumentTypes(projectId)
+				this.queueVisibleProcessingLoad()
+			} catch (error) {
+				this.documentTypes = []
+				this.documentTypesError = error?.response?.data?.message || 'Could not load OCR document types.'
+			} finally {
+				this.documentTypesLoading = false
+			}
+		},
+		queueVisibleProcessingLoad() {
+			this.$nextTick(() => {
+				this.preloadVisibleProcessing(this.sortedEntries)
+			})
+		},
+		async preloadVisibleProcessing(entries) {
+			const projectId = Number(this.projectId)
+			if (!Number.isFinite(projectId) || projectId <= 0) {
+				return
+			}
+			for (const entry of Array.isArray(entries) ? entries : []) {
+				if (!this.isSupportedFile(entry)) {
+					continue
+				}
+				const key = String(entry.id)
+				if (Object.prototype.hasOwnProperty.call(this.processingByFileId, key) || this.processingLoadingByFileId[key]) {
+					continue
+				}
+				await this.loadFileProcessing(entry.id)
+			}
+		},
+		async loadFileProcessing(fileId) {
+			const projectId = Number(this.projectId)
+			if (!Number.isFinite(projectId) || projectId <= 0) {
+				return
+			}
+			const key = String(fileId)
+			this.$set(this.processingLoadingByFileId, key, true)
+			try {
+				const payload = await projectsService.getFileProcessing(projectId, Number(fileId))
+				if (payload?.processing) {
+					this.$set(this.processingByFileId, key, payload.processing)
+				}
+			} catch (error) {
+				this.$set(this.feedbackByFileId, key, error?.response?.data?.message || 'Could not load OCR status.')
+			} finally {
+				this.$set(this.processingLoadingByFileId, key, false)
+			}
+		},
 		setScope(scope) {
 			this.scope = scope
 			this.highlightedNodeId = null
@@ -440,7 +763,9 @@ export default {
 		normalizedDavPath(path) {
 			const parts = String(path).split('/')
 			if (parts.length >= 3) {
-				;[parts[1], parts[2]] = [parts[2], parts[1]]
+				const second = parts[1]
+				parts[1] = parts[2]
+				parts[2] = second
 			}
 			return parts.join('/')
 		},
@@ -512,6 +837,177 @@ export default {
 			}
 			return []
 		},
+		isSupportedFile(node) {
+			return !!(node && node.type === 'file' && SUPPORTED_MIME_TYPES.includes(String(node.mimetype || '').toLowerCase()))
+		},
+		documentTypeValue(fileId) {
+			const record = this.processingByFileId[String(fileId)] || null
+			return record?.document_type_id || ''
+		},
+		statusLabel(fileId) {
+			const record = this.processingByFileId[String(fileId)] || null
+			if (!record) {
+				return 'Unassigned'
+			}
+			if (record.ocr_status === 'failed') {
+				return 'Failed'
+			}
+			if (record.ocr_status === 'stale') {
+				return 'Stale'
+			}
+			if (record.ocr_status === 'processing') {
+				return 'Processing'
+			}
+			if (record.ocr_status === 'done') {
+				return 'Ready'
+			}
+			return 'Queued'
+		},
+		isProcessingBusy(fileId) {
+			const key = String(fileId)
+			return !!(this.processingLoadingByFileId[key] || this.assigningByFileId[key])
+		},
+		fileFeedback(fileId) {
+			return this.feedbackByFileId[String(fileId)] || ''
+		},
+		extractedEntries(fileId) {
+			const record = this.processingByFileId[String(fileId)] || null
+			const extracted = record?.extracted && typeof record.extracted === 'object' ? record.extracted : {}
+			const entries = Object.entries(extracted)
+				.map(([key, payload]) => {
+					const value = payload && typeof payload === 'object' ? payload.value : null
+					const name = payload && typeof payload === 'object' ? (payload.name || payload.label || key) : key
+					return {
+						key,
+						name,
+						value,
+					}
+				})
+				.filter((item) => item.value !== null && item.value !== '')
+
+			return entries
+		},
+		isAssigning(fileId) {
+			return !!this.assigningByFileId[String(fileId)]
+		},
+		statusIcon(fileId) {
+			const record = this.processingByFileId[String(fileId)] || null
+			if (!record) {
+				return 'FileQuestionOutline'
+			}
+			if (record.ocr_status === 'failed') {
+				return 'AlertCircleOutline'
+			}
+			if (record.ocr_status === 'stale') {
+				return 'ClockOutline'
+			}
+			if (record.ocr_status === 'processing') {
+				return 'Sync'
+			}
+			if (record.ocr_status === 'done') {
+				return 'CheckCircleOutline'
+			}
+			return 'ClockOutline'
+		},
+		statusBadgeClass(fileId) {
+			const record = this.processingByFileId[String(fileId)] || null
+			if (!record) return 'project-files__status-inline--muted'
+			if (record.ocr_status === 'failed') return 'project-files__status-inline--error'
+			if (record.ocr_status === 'done') return 'project-files__status-inline--success'
+			if (record.ocr_status === 'processing') return 'project-files__status-inline--spin'
+			return 'project-files__status-inline--pending'
+		},
+		isErrorFeedback(fileId) {
+			const feedback = this.fileFeedback(fileId)
+			if (!feedback) {
+				return false
+			}
+			return feedback.toLowerCase().includes('could not') || feedback.toLowerCase().includes('failed')
+		},
+		setProcessingResult(fileId, payload, successMessage, queuedMessage) {
+			const key = String(fileId)
+			if (payload?.processing) {
+				this.$set(this.processingByFileId, key, payload.processing)
+			}
+
+			const nextStatus = this.statusLabel(fileId)
+			if (nextStatus === 'Ready') {
+				return successMessage
+			}
+			if (nextStatus === 'Failed') {
+				return payload?.processing?.error_message || 'OCR processing failed.'
+			}
+			return queuedMessage
+		},
+		canReprocess(fileId) {
+			const record = this.processingByFileId[String(fileId)] || null
+			if (!record || !record.document_type_id) {
+				return false
+			}
+			if (this.isProcessingBusy(fileId)) {
+				return false
+			}
+			return record.ocr_status !== 'processing'
+		},
+		async assignDocumentType(node, documentTypeId) {
+			if (!this.isSupportedFile(node)) {
+				return
+			}
+			const projectId = Number(this.projectId)
+			const normalizedDocumentTypeId = Number(documentTypeId)
+			if (!Number.isFinite(projectId) || projectId <= 0 || !Number.isFinite(normalizedDocumentTypeId) || normalizedDocumentTypeId <= 0) {
+				return
+			}
+			const key = String(node.id)
+			this.$set(this.assigningByFileId, key, true)
+			this.$delete(this.feedbackByFileId, key)
+			try {
+				const payload = await projectsService.assignFileDocumentType(projectId, Number(node.id), normalizedDocumentTypeId)
+				const message = this.setProcessingResult(
+					node.id,
+					payload,
+					'Document processed successfully.',
+					'Document type assigned. OCR is queued.',
+				)
+				this.$set(this.feedbackByFileId, key, message)
+			} catch (error) {
+				this.$set(this.feedbackByFileId, key, error?.response?.data?.message || 'Could not assign document type.')
+			} finally {
+				this.$set(this.assigningByFileId, key, false)
+			}
+		},
+		async reprocessFile(node) {
+			if (!this.isSupportedFile(node)) {
+				return
+			}
+			const projectId = Number(this.projectId)
+			if (!Number.isFinite(projectId) || projectId <= 0) {
+				return
+			}
+			const key = String(node.id)
+			this.$set(this.assigningByFileId, key, true)
+			this.$delete(this.feedbackByFileId, key)
+			try {
+				const payload = await projectsService.reprocessFileProcessing(projectId, Number(node.id))
+				const message = this.setProcessingResult(
+					node.id,
+					payload,
+					'Document reprocessed successfully.',
+					'Document reprocessing is queued.',
+				)
+				this.$set(this.feedbackByFileId, key, message)
+			} catch (error) {
+				this.$set(this.feedbackByFileId, key, error?.response?.data?.message || 'Could not reprocess OCR for this file.')
+			} finally {
+				this.$set(this.assigningByFileId, key, false)
+			}
+		},
+		openExtractedDataModal(fileId) {
+			this.activeExtractedFileId = fileId
+		},
+		closeExtractedDataModal() {
+			this.activeExtractedFileId = null
+		},
 	},
 }
 </script>
@@ -519,48 +1015,76 @@ export default {
 <style scoped>
 .project-files {
 	display: grid;
-	gap: 12px;
+	gap: 16px;
+}
+
+.project-files__upload-input {
+	display: none;
+}
+
+.project-files__upload-error,
+.project-files__upload-success {
+	font-size: 14px;
+	padding: 10px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--color-border);
+	margin-top: 8px;
+}
+
+.project-files__upload-error {
+	background: rgba(255, 0, 0, 0.06);
+	color: var(--color-error-text, var(--color-text-maxcontrast));
+	border-color: rgba(255, 0, 0, 0.25);
+}
+
+.project-files__upload-success {
+	background: rgba(0, 128, 0, 0.06);
+	color: var(--color-success-text, var(--color-text-maxcontrast));
+	border-color: rgba(0, 128, 0, 0.25);
 }
 
 .project-files__header {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 12px;
+	gap: 16px;
 	align-items: center;
 	justify-content: space-between;
 }
 
 .project-files__tabs {
 	display: inline-flex;
-	border: 1px solid var(--color-border-dark);
-	border-radius: 999px;
-	overflow: hidden;
+	background: var(--color-background-dark);
+	border-radius: 8px;
+	padding: 4px;
+	gap: 4px;
 }
 
 .project-files__tab {
 	border: 0;
 	background: transparent;
-	padding: 8px 12px;
+	padding: 8px 16px;
 	cursor: pointer;
 	color: var(--color-text-maxcontrast);
 	font-weight: 700;
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
+	border-radius: 6px;
+	transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
 }
 
 .project-files__tab--active {
-	background: var(--color-background-hover);
+	background: var(--color-main-background);
 	color: var(--color-main-text);
+	box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .project-files__tab-pill {
-	min-width: 28px;
-	padding: 2px 8px;
-	border-radius: 999px;
-	background: var(--color-main-background);
-	border: 1px solid var(--color-border);
-	font-size: 12px;
+	min-width: 24px;
+	padding: 2px 6px;
+	border-radius: 12px;
+	background: var(--color-background-hover);
+	font-size: 11px;
 	color: var(--color-text-maxcontrast);
 }
 
@@ -569,33 +1093,36 @@ export default {
 	min-width: 260px;
 	max-width: 620px;
 	display: flex;
-	gap: 10px;
+	gap: 12px;
 	align-items: flex-end;
 }
 
 .project-files__clear {
-	border: 1px solid var(--color-border-dark);
-	background: transparent;
+	border: 1px solid var(--color-border);
+	background: var(--color-main-background);
 	color: var(--color-main-text);
-	border-radius: 10px;
-	padding: 8px 12px;
+	border-radius: 8px;
+	padding: 8px 16px;
 	cursor: pointer;
-	font-weight: 700;
+	font-weight: 600;
+	transition: all 0.2s;
 }
 
 .project-files__clear:hover {
 	background: var(--color-background-hover);
+	border-color: var(--color-border-dark);
 }
 
 .project-files__muted {
 	color: var(--color-text-maxcontrast);
+	font-size: 14px;
 }
 
 .project-files__grid {
 	display: grid;
-	grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
-	gap: 12px;
-	min-height: 380px;
+	grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+	gap: 16px;
+	min-height: 480px;
 }
 
 .project-files__pane {
@@ -605,6 +1132,7 @@ export default {
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
+	box-shadow: 0 2px 8px rgba(0,0,0,0.02);
 }
 
 .project-files__pane--left {
@@ -612,28 +1140,31 @@ export default {
 }
 
 .project-files__pane-title {
-	padding: 12px 14px;
+	padding: 14px 16px;
 	font-size: 12px;
+	font-weight: 700;
 	text-transform: uppercase;
-	letter-spacing: 0.06em;
+	letter-spacing: 0.05em;
 	color: var(--color-text-maxcontrast);
 	border-bottom: 1px solid var(--color-border);
 }
 
 .project-files__tree {
-	padding: 10px;
+	padding: 12px 8px;
 	overflow: auto;
 	min-height: 0;
 }
 
 .project-files__right-top {
-	padding: 10px 12px;
+	padding: 12px 16px;
 	border-bottom: 1px solid var(--color-border);
 	display: flex;
-	gap: 10px;
+	gap: 16px;
 	align-items: center;
 	justify-content: space-between;
 	flex-wrap: wrap;
+	background: var(--color-background-hover);
+	border-radius: 12px 12px 0 0;
 }
 
 .project-files__breadcrumbs {
@@ -645,49 +1176,65 @@ export default {
 }
 
 .project-files__crumb {
-	border: 1px solid var(--color-border-dark);
-	background: transparent;
+	border: 1px solid var(--color-border);
+	background: var(--color-main-background);
 	color: var(--color-main-text);
-	border-radius: 999px;
-	padding: 4px 10px;
+	border-radius: 8px;
+	padding: 6px 12px;
 	cursor: pointer;
 	font-size: 13px;
+	font-weight: 600;
 	max-width: 240px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	transition: all 0.2s;
 }
 
 .project-files__crumb:hover {
 	background: var(--color-background-hover);
+	border-color: var(--color-primary-element);
 }
 
 .project-files__actions {
 	display: inline-flex;
-	gap: 8px;
+	gap: 12px;
 }
 
-.project-files__action {
-	border: 1px solid var(--color-border-dark);
-	background: transparent;
+.project-files__btn {
+	border: 1px solid var(--color-border);
+	background: var(--color-main-background);
 	color: var(--color-main-text);
-	border-radius: 10px;
-	padding: 6px 10px;
+	border-radius: 8px;
+	padding: 8px 14px;
 	cursor: pointer;
-	font-weight: 700;
+	font-weight: 600;
 	font-size: 13px;
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: 8px;
+	transition: all 0.2s;
 }
 
-.project-files__action:disabled {
+.project-files__btn--primary {
+	background: var(--color-primary-element);
+	color: var(--color-primary-text, #fff);
+	border-color: var(--color-primary-element);
+}
+
+.project-files__btn:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
 
-.project-files__action:not(:disabled):hover {
+.project-files__btn:not(:disabled):hover {
 	background: var(--color-background-hover);
+	border-color: var(--color-border-dark);
+}
+
+.project-files__btn--primary:not(:disabled):hover {
+	background: var(--color-primary-element-hover, var(--color-primary-element));
+	filter: brightness(0.9);
 }
 
 .project-files__list {
@@ -696,92 +1243,281 @@ export default {
 	overflow: auto;
 }
 
+/* Rows mapping standard file explorer layout */
 .project-files__rows {
 	list-style: none;
 	margin: 0;
-	padding: 10px;
-	display: grid;
-	gap: 6px;
+	padding: 0;
 }
 
 .project-files__row {
 	display: flex;
-	gap: 10px;
 	align-items: center;
-	border: 1px solid var(--color-border);
-	border-radius: 10px;
-	background: var(--color-main-background);
+	padding: 8px 16px;
+	border-bottom: 1px solid var(--color-border);
+	transition: background-color 0.1s;
+}
+
+.project-files__row:last-child {
+	border-bottom: none;
+}
+
+.project-files__row:hover {
+	background: var(--color-background-hover);
 }
 
 .project-files__row--highlight {
-	border-color: var(--color-primary-element);
-	box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.05);
+	background: var(--color-primary-element-light);
 }
 
 .project-files__row-main {
 	flex: 1;
 	min-width: 0;
-	border: 0;
-	background: transparent;
-	padding: 10px 12px;
-	cursor: pointer;
-	color: var(--color-main-text);
-	display: grid;
-	grid-template-columns: 20px 1fr auto;
-	gap: 10px;
+	display: flex;
 	align-items: center;
-	text-align: left;
-}
-
-.project-files__row-main:hover {
-	background: var(--color-background-hover);
-	border-radius: 10px;
+	gap: 12px;
+	cursor: pointer;
 }
 
 .project-files__row-icon {
 	color: var(--color-text-maxcontrast);
+	flex-shrink: 0;
+}
+
+.project-files__row-info {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
 }
 
 .project-files__row-name {
-	min-width: 0;
+	font-weight: 600;
+	color: var(--color-main-text);
+	font-size: 14px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	font-weight: 700;
 }
 
 .project-files__row-sub {
 	color: var(--color-text-maxcontrast);
 	font-size: 12px;
-	white-space: nowrap;
-	padding-left: 12px;
 }
 
-.project-files__row-actions {
-	display: inline-flex;
-	gap: 6px;
-	padding-right: 10px;
+/* Row OCR Columns */
+.project-files__row-ocr {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 0 16px;
+	margin-left: 16px;
 }
 
-.project-files__mini {
-	border: 1px solid var(--color-border-dark);
+.project-files__row-ocr--empty {
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.project-files__type-select-inline {
+	border: 1px solid transparent;
 	background: transparent;
-	color: var(--color-main-text);
-	border-radius: 10px;
-	padding: 6px;
+	color: var(--color-text-maxcontrast);
+	font-size: 13px;
+	padding: 4px 20px 4px 8px;
+	border-radius: 4px;
 	cursor: pointer;
-	display: inline-flex;
+	max-width: 140px;
+	text-overflow: ellipsis;
+}
+
+.project-files__type-select-inline:hover,
+.project-files__type-select-inline:focus {
+	border-color: var(--color-border-dark);
+	color: var(--color-main-text);
+	background: var(--color-main-background);
+}
+
+.project-files__type-select-inline:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.project-files__status-inline {
+	display: flex;
 	align-items: center;
 	justify-content: center;
+	width: 24px;
 }
 
-.project-files__mini:hover {
+.project-files__status-inline--success {
+	color: var(--color-success, #008200);
+}
+
+.project-files__status-inline--error {
+	color: var(--color-error, #e9322d);
+}
+
+.project-files__status-inline--pending {
+	color: var(--color-warning, #ffa500);
+}
+
+.project-files__status-inline--muted {
+	color: var(--color-text-maxcontrast);
+}
+
+.project-files__status-inline--spin {
+	color: var(--color-primary-element);
+	animation: project-files-spin 2s linear infinite;
+}
+
+@keyframes project-files-spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
+}
+
+/* Actions inline */
+.project-files__row-actions {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 100px; /* reserving space so rows don't shift too much */
+	justify-content: flex-end;
+}
+
+.project-files__icon-btn {
+	background: transparent;
+	border: none;
+	border-radius: 4px;
+	width: 32px;
+	height: 32px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--color-text-maxcontrast);
+	cursor: pointer;
+	opacity: 0;
+	transition: all 0.15s;
+}
+
+.project-files__row:hover .project-files__icon-btn {
+	opacity: 1;
+}
+
+.project-files__icon-btn:hover {
+	background: var(--color-background-dark);
+	color: var(--color-main-text);
+}
+
+.project-files__loading-wrap {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+}
+
+/* Extracted Data Modal styles */
+.project-files__modal-overlay {
+	position: fixed;
+	top: 0; left: 0; right: 0; bottom: 0;
+	background: rgba(0, 0, 0, 0.4);
+	z-index: 10000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 16px;
+}
+
+.project-files__modal {
+	background: var(--color-main-background);
+	border-radius: 12px;
+	width: 100%;
+	max-width: 500px;
+	box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+	display: flex;
+	flex-direction: column;
+	max-height: 90vh;
+}
+
+.project-files__modal-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 20px;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.project-files__modal-title {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 600;
+	color: var(--color-main-text);
+}
+
+.project-files__modal-close {
+	background: transparent;
+	border: none;
+	cursor: pointer;
+	color: var(--color-text-maxcontrast);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 4px;
+	border-radius: 4px;
+}
+
+.project-files__modal-close:hover {
 	background: var(--color-background-hover);
+	color: var(--color-main-text);
+}
+
+.project-files__modal-content {
+	padding: 20px;
+	overflow-y: auto;
+}
+
+.project-files__modal-filename {
+	font-size: 14px;
+	color: var(--color-text-maxcontrast);
+	margin-bottom: 16px;
+	word-break: break-all;
+}
+
+.project-files__data-table {
+	width: 100%;
+	border-collapse: collapse;
+}
+
+.project-files__data-table th,
+.project-files__data-table td {
+	padding: 12px 14px;
+	border-bottom: 1px solid var(--color-border);
+	text-align: left;
+	font-size: 14px;
+}
+
+.project-files__data-table tr:last-child th,
+.project-files__data-table tr:last-child td {
+	border-bottom: none;
+}
+
+.project-files__data-table th {
+	font-weight: 600;
+	color: var(--color-text-maxcontrast);
+	width: 40%;
+}
+
+.project-files__data-table td {
+	color: var(--color-main-text);
+	font-weight: 600;
 }
 
 .project-files__empty {
-	padding: 16px;
+	padding: 20px;
 	color: var(--color-text-maxcontrast);
+	text-align: center;
 }
 
 @media (max-width: 900px) {
@@ -789,9 +1525,34 @@ export default {
 		grid-template-columns: 1fr;
 		min-height: auto;
 	}
-	.project-files__tools {
-		min-width: 100%;
-		max-width: none;
+
+		.project-files__tools {
+			min-width: 100%;
+			max-width: none;
+		}
+
+		.project-files__row {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+	.project-files__row-ocr {
+		margin-left: 0;
+		padding: 8px 0;
+		border-left: none;
+		justify-content: flex-start;
+	}
+
+		.project-files__row-actions {
+			justify-content: flex-start;
+			padding-top: 8px;
+		}
+
+		.project-files__row:hover .project-files__icon-btn {
+			opacity: 1; /* Always show or default to show on mobile logic via media queries */
+		}
+	.project-files__icon-btn {
+		opacity: 1;
 	}
 }
 </style>

@@ -95,6 +95,46 @@ return [
             "verb" => "GET",
         ],
         [
+            "name" => "ocr_api#listProjectDocumentTypes",
+            "url" => "/api/v1/projects/{projectId}/ocr/document-types",
+            "verb" => "GET",
+        ],
+        [
+            "name" => "ocr_api#assignFileDocumentType",
+            "url" => "/api/v1/projects/{projectId}/files/{fileId}/ocr/document-type",
+            "verb" => "PUT",
+        ],
+        [
+            "name" => "ocr_api#getFileProcessing",
+            "url" => "/api/v1/projects/{projectId}/files/{fileId}/ocr",
+            "verb" => "GET",
+        ],
+        [
+            "name" => "ocr_api#reprocessFile",
+            "url" => "/api/v1/projects/{projectId}/files/{fileId}/ocr/reprocess",
+            "verb" => "POST",
+        ],
+        [
+            "name" => "ocr_api#listOrganizationDocumentTypes",
+            "url" => "/api/v1/organizations/{organizationId}/ocr/document-types",
+            "verb" => "GET",
+        ],
+        [
+            "name" => "ocr_api#createOrganizationDocumentType",
+            "url" => "/api/v1/organizations/{organizationId}/ocr/document-types",
+            "verb" => "POST",
+        ],
+        [
+            "name" => "ocr_api#updateOrganizationDocumentType",
+            "url" => "/api/v1/organizations/{organizationId}/ocr/document-types/{id}",
+            "verb" => "PUT",
+        ],
+        [
+            "name" => "ocr_api#deleteOrganizationDocumentType",
+            "url" => "/api/v1/organizations/{organizationId}/ocr/document-types/{id}",
+            "verb" => "DELETE",
+        ],
+        [
             "name" => "project_api#getWhiteboardInfo",
             "url" => "/api/v1/projects/{projectId}/whiteboard",
             "verb" => "GET",

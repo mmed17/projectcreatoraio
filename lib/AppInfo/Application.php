@@ -3,9 +3,11 @@
 namespace OCA\ProjectCreatorAIO\AppInfo;
 
 use OCA\ProjectCreatorAIO\BackgroundJob\DetectStaleProjectsJob;
+use OCA\ProjectCreatorAIO\BackgroundJob\ProcessPendingFileProcessingJob;
 use OCA\ProjectCreatorAIO\BackgroundJob\PurgeArchivedProjectsJob;
 use OCA\ProjectCreatorAIO\BackgroundJob\SendProjectDigestJob;
 use OCA\ProjectCreatorAIO\Dashboard\ProjectsWidget;
+use OCA\ProjectCreatorAIO\Listener\FileProcessingWrittenListener;
 use OCA\ProjectCreatorAIO\Listener\WhiteboardWrittenListener;
 use OCA\ProjectCreatorAIO\Notification\Notifier;
 use OCA\ProjectCreatorAIO\Service\DeckDefaultCardsService;
@@ -39,6 +41,7 @@ class Application extends App implements IBootstrap {
 		$context->registerDashboardWidget(ProjectsWidget::class);
 		$context->registerNotifierService(Notifier::class);
 		$context->registerEventListener(NodeWrittenEvent::class, WhiteboardWrittenListener::class);
+		$context->registerEventListener(NodeWrittenEvent::class, FileProcessingWrittenListener::class);
 
         $context->registerService('ProjectMapper', function (IAppContainer $c) {
             return new ProjectMapper(
@@ -85,6 +88,13 @@ class Application extends App implements IBootstrap {
 			);
 		});
 
+		$context->registerService(ProcessPendingFileProcessingJob::class, function (IAppContainer $c) {
+			return new ProcessPendingFileProcessingJob(
+				$c->getServer()->get(ITimeFactory::class),
+				$c->getServer()->query(\OCA\ProjectCreatorAIO\Service\FileProcessingPipelineService::class),
+			);
+		});
+
 	}
 
 	public function boot(IBootContext $context): void {
@@ -97,6 +107,9 @@ class Application extends App implements IBootstrap {
 			}
 			if (!$jobList->has(PurgeArchivedProjectsJob::class, null)) {
 				$jobList->add(PurgeArchivedProjectsJob::class);
+			}
+			if (!$jobList->has(ProcessPendingFileProcessingJob::class, null)) {
+				$jobList->add(ProcessPendingFileProcessingJob::class);
 			}
 		});
 	}

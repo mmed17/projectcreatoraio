@@ -245,6 +245,182 @@ export class ProjectsService {
     }
 
 	/**
+	 * List active OCR document types available to a project.
+	 *
+	 * @param {number} projectId
+	 * @returns {Promise<Array<object>>}
+	 */
+	async listProjectDocumentTypes(projectId) {
+		try {
+			const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}/ocr/document-types`)
+			const response = await axios.get(url, {
+				headers: {
+					'OCS-APIRequest': 'true',
+					'Content-Type': 'application/json',
+				},
+			})
+
+			return response?.data?.document_types ?? []
+		} catch (e) {
+			console.error('Failed to list project OCR document types:', e)
+			throw e
+		}
+	}
+
+	/**
+	 * List OCR document types managed by an organization admin.
+	 *
+	 * @param {number} organizationId
+	 * @param {boolean} includeInactive
+	 * @returns {Promise<Array<object>>}
+	 */
+	async listOrganizationDocumentTypes(organizationId, includeInactive = true) {
+		try {
+			const url = generateUrl(`/apps/projectcreatoraio/api/v1/organizations/${organizationId}/ocr/document-types`)
+			const response = await axios.get(url, {
+				params: {
+					include_inactive: includeInactive ? 1 : 0,
+				},
+				headers: {
+					'OCS-APIRequest': 'true',
+					'Content-Type': 'application/json',
+				},
+			})
+
+			return response?.data?.document_types ?? []
+		} catch (e) {
+			console.error('Failed to list organization OCR document types:', e)
+			throw e
+		}
+	}
+
+	/**
+	 * Create a new organization OCR document type.
+	 *
+	 * @param {number} organizationId
+	 * @param {{name:string,fields:Array<object>,is_active?:boolean|number}} payload
+	 * @returns {Promise<object|null>}
+	 */
+	async createOrganizationDocumentType(organizationId, payload) {
+		const url = generateUrl(`/apps/projectcreatoraio/api/v1/organizations/${organizationId}/ocr/document-types`)
+		const response = await axios.post(url, payload, {
+			headers: {
+				'OCS-APIRequest': 'true',
+				'Content-Type': 'application/json',
+			},
+		})
+
+		return response?.data ?? null
+	}
+
+	/**
+	 * Update an existing organization OCR document type.
+	 *
+	 * @param {number} organizationId
+	 * @param {number} documentTypeId
+	 * @param {{name?:string,fields?:Array<object>,is_active?:boolean|number}} payload
+	 * @returns {Promise<object|null>}
+	 */
+	async updateOrganizationDocumentType(organizationId, documentTypeId, payload) {
+		const url = generateUrl(`/apps/projectcreatoraio/api/v1/organizations/${organizationId}/ocr/document-types/${documentTypeId}`)
+		const response = await axios.put(url, payload, {
+			headers: {
+				'OCS-APIRequest': 'true',
+				'Content-Type': 'application/json',
+			},
+		})
+
+		return response?.data ?? null
+	}
+
+	/**
+	 * Delete an organization OCR document type.
+	 *
+	 * @param {number} organizationId
+	 * @param {number} documentTypeId
+	 * @returns {Promise<boolean>}
+	 */
+	async deleteOrganizationDocumentType(organizationId, documentTypeId) {
+		const url = generateUrl(`/apps/projectcreatoraio/api/v1/organizations/${organizationId}/ocr/document-types/${documentTypeId}`)
+		const response = await axios.delete(url, {
+			headers: {
+				'OCS-APIRequest': 'true',
+				'Content-Type': 'application/json',
+			},
+		})
+
+		return response?.data?.deleted === true
+	}
+
+	/**
+	 * Assign an OCR document type to a project file.
+	 *
+	 * @param {number} projectId
+	 * @param {number} fileId
+	 * @param {number} documentTypeId
+	 * @returns {Promise<object|null>}
+	 */
+	async assignFileDocumentType(projectId, fileId, documentTypeId) {
+		const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}/files/${fileId}/ocr/document-type`)
+		const response = await axios.put(url, {
+			document_type_id: documentTypeId,
+		}, {
+			headers: {
+				'OCS-APIRequest': 'true',
+				'Content-Type': 'application/json',
+			},
+		})
+
+		return response?.data ?? null
+	}
+
+	/**
+	 * Get OCR processing information for a project file.
+	 *
+	 * @param {number} projectId
+	 * @param {number} fileId
+	 * @returns {Promise<object|null>}
+	 */
+	async getFileProcessing(projectId, fileId) {
+		try {
+			const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}/files/${fileId}/ocr`)
+			const response = await axios.get(url, {
+				headers: {
+					'OCS-APIRequest': 'true',
+					'Content-Type': 'application/json',
+				},
+			})
+
+			return response?.data ?? null
+		} catch (e) {
+			if (e?.response?.status === 404) {
+				return null
+			}
+			console.error('Failed to fetch file OCR processing:', e)
+			throw e
+		}
+	}
+
+	/**
+	 * Reprocess OCR for a project file with an existing document type assignment.
+	 *
+	 * @param {number} projectId
+	 * @param {number} fileId
+	 * @returns {Promise<object|null>}
+	 */
+	async reprocessFileProcessing(projectId, fileId) {
+		const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}/files/${fileId}/ocr/reprocess`)
+		const response = await axios.post(url, {}, {
+			headers: {
+				'OCS-APIRequest': 'true',
+				'Content-Type': 'application/json',
+			},
+		})
+
+		return response?.data ?? null
+	}
+
+	/**
 	 *
 	 * @param {number} projectId
 	 * @returns {Promise<{fileId:number,name:string,mimetype:string,size:number,mtime:number,path:string}|null>}

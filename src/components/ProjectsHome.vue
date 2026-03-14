@@ -621,22 +621,40 @@
 									<FolderOpen :size="20" />
 									Project Files
 								</h3>
+								<p class="projects-home__section-subtitle">
+									Manage project documents and OCR document types from here.
+								</p>
 							</div>
-							<NcButton
-								type="secondary"
-								:disabled="!selectedProject.folderPath"
-								@click.stop.prevent="downloadProject(selectedProject)">
-								<template #icon>
-									<Download :size="18" />
-								</template>
-								Download ZIP
-							</NcButton>
+							<div class="projects-home__tab-toolbar-actions">
+								<NcButton
+									v-if="canManageProjects && selectedProjectOrganizationId"
+									type="tertiary"
+									class="projects-home__document-types-button"
+									@click.stop.prevent="showOcrDocumentTypesModal = true">
+									<template #icon>
+										<Pencil :size="18" />
+									</template>
+									Document types
+								</NcButton>
+								<NcButton
+									type="secondary"
+									:disabled="!selectedProject.folderPath"
+									@click.stop.prevent="downloadProject(selectedProject)">
+									<template #icon>
+										<Download :size="18" />
+									</template>
+									Download ZIP
+								</NcButton>
+							</div>
 						</div>
 						<ProjectFilesBrowser
+							:project-id="Number(selectedProject.id) || null"
 							:shared-roots="projectFiles.shared"
 							:private-roots="projectFiles.private"
+							:document-types-version="ocrDocumentTypesVersion"
 							:loading="filesLoading"
-							:error="filesError" />
+							:error="filesError"
+							@refresh="refreshProjectFiles" />
 					</div>
 
 					<!-- Members Tab -->
@@ -878,6 +896,12 @@
 				</div>
 			</div>
 		</NcModal>
+
+		<OcrDocumentTypesModal
+			:show="showOcrDocumentTypesModal"
+			:organization-id="selectedProjectOrganizationId"
+			@close="showOcrDocumentTypesModal = false"
+			@updated="handleOcrDocumentTypesUpdated" />
 	</div>
 </template>
 
@@ -936,6 +960,7 @@ import WhiteboardBoard from './ProjectWhiteboard/WhiteboardBoard.vue'
 import ProjectCreator from './ProjectCreator.vue'
 import ProjectNotesList from './ProjectNotesList.vue'
 import ProjectCardVisibilityTab from './ProjectCardVisibilityTab.vue'
+import OcrDocumentTypesModal from './OcrDocumentTypesModal.vue'
 
 const projectsService = ProjectsService.getInstance()
 const webdavClient = createClient(generateRemoteUrl('dav'))
@@ -962,12 +987,12 @@ export default {
 		MapMarker,
 		MenuClose,
 		MenuOpen,
-			NcButton,
-			NcEmptyContent,
-			NcTextField,
-			NcSelect,
-			NcModal,
-			NcLoadingIcon,
+		NcButton,
+		NcEmptyContent,
+		NcTextField,
+		NcSelect,
+		NcModal,
+		NcLoadingIcon,
 		NoteText,
 		OfficeBuilding,
 		OpenInNew,
@@ -978,6 +1003,7 @@ export default {
 		ProjectCreator,
 		ProjectNotesList,
 		ProjectCardVisibilityTab,
+		OcrDocumentTypesModal,
 		ViewDashboard,
 	},
 	data() {
@@ -1016,6 +1042,8 @@ export default {
 			memberInviteLoading: false,
 			memberInviteMessage: '',
 			memberSearchTimeout: null,
+			showOcrDocumentTypesModal: false,
+			ocrDocumentTypesVersion: 0,
 			showProjectProfileModal: false,
 			projectProfileDraft: {
 				name: '',
@@ -1085,6 +1113,19 @@ export default {
 		},
 		canEditSelectedProjectDetails() {
 			return this.hasProjectAccess && !!this.selectedProject
+		},
+		selectedProjectOrganizationId() {
+			const selectedProjectOrg = Number(this.selectedProject?.organization_id)
+			if (Number.isFinite(selectedProjectOrg) && selectedProjectOrg > 0) {
+				return selectedProjectOrg
+			}
+
+			const contextOrg = Number(this.context?.organizationId)
+			if (Number.isFinite(contextOrg) && contextOrg > 0) {
+				return contextOrg
+			}
+
+			return null
 		},
 		isSelectedProjectCombi() {
 			return Number(this.selectedProject?.type) === 0
@@ -1493,10 +1534,21 @@ export default {
 				this.filesLoading = false
 			}
 		},
+		async refreshProjectFiles() {
+			const projectId = Number(this.selectedProject?.id)
+			if (!Number.isFinite(projectId) || projectId <= 0) {
+				return
+			}
+			await this.loadProjectFiles(projectId)
+			this.loadedFilesProjectId = projectId
+		},
 		resetFilesState() {
 			this.filesError = ''
 			this.filesLoading = false
 			this.projectFiles = { private: [], shared: [] }
+		},
+		handleOcrDocumentTypesUpdated() {
+			this.ocrDocumentTypesVersion += 1
 		},
 		resetMembersState() {
 			this.projectMembers = []
@@ -2189,8 +2241,38 @@ export default {
 .projects-home__tab-toolbar {
 	display: flex;
 	justify-content: space-between;
-	align-items: center;
+	align-items: flex-start;
+	gap: 16px;
 	margin-bottom: 16px;
+}
+
+.projects-home__tab-toolbar-left {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+
+.projects-home__tab-toolbar-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.projects-home__document-types-button :deep(button) {
+	background: #fff;
+	border: 1px solid var(--color-border-dark);
+	box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+	color: var(--color-main-text);
+}
+
+.projects-home__document-types-button :deep(button:hover),
+.projects-home__document-types-button :deep(button:focus-visible) {
+	background: #fff;
+	border-color: var(--color-primary-element);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary-element) 14%, transparent);
 }
 
 /* Detail Grid */
@@ -2630,6 +2712,19 @@ export default {
 
 	.projects-home__detail-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.projects-home__tab-toolbar {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.projects-home__tab-toolbar-actions {
+		justify-content: stretch;
+	}
+
+	.projects-home__tab-toolbar-actions :deep(button) {
+		width: 100%;
 	}
 
 	.projects-home__split-view {

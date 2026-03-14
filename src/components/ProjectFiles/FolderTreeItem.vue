@@ -1,5 +1,5 @@
 <template>
-	<div>
+	<div class="folder-tree-node">
 		<button
 			class="folder-tree-item"
 			:class="{ 'folder-tree-item--selected': isSelected }"
@@ -7,17 +7,19 @@
 			:style="rowStyle"
 			@click="$emit('select', node)"
 		>
-			<span v-if="hasChildren" class="folder-tree-item__chev" @click.stop="$emit('toggle', node)">
-				<ChevronDown v-if="isExpanded" :size="18" />
-				<ChevronRight v-else :size="18" />
+			<span class="folder-tree-item__chev-wrapper" @click.stop="$emit('toggle', node)">
+				<span v-if="hasChildren" class="folder-tree-item__chev">
+					<ChevronDown v-if="isExpanded" :size="18" />
+					<ChevronRight v-else :size="18" />
+				</span>
+				<span v-else class="folder-tree-item__chev folder-tree-item__chev--empty" />
 			</span>
-			<span v-else class="folder-tree-item__chev folder-tree-item__chev--empty" />
-			<FolderOutline class="folder-tree-item__icon" :size="18" />
+			<FolderOutline class="folder-tree-item__icon" :class="{ 'folder-tree-item__icon--selected': isSelected }" :size="20" />
 			<span class="folder-tree-item__name">{{ node.name }}</span>
-			<span v-if="fileCount !== null" class="folder-tree-item__meta">{{ fileCount }} files</span>
+			<span v-if="fileCount !== null" class="folder-tree-item__meta">{{ fileCount }}</span>
 		</button>
 
-		<div v-if="isExpanded" class="folder-tree-item__children">
+		<div v-show="isExpanded" class="folder-tree-item__children">
 			<FolderTreeItem
 				v-for="child in childFolders"
 				:key="child.id"
@@ -88,7 +90,7 @@ export default {
 		},
 		rowStyle() {
 			return {
-				paddingLeft: `${12 + this.depth * 14}px`,
+				paddingLeft: `${8 + this.depth * 14}px`,
 			}
 		},
 		fileCount() {
@@ -118,19 +120,25 @@ export default {
 </script>
 
 <style scoped>
+.folder-tree-node {
+	display: flex;
+	flex-direction: column;
+}
+
 .folder-tree-item {
 	width: 100%;
 	border: 0;
 	background: transparent;
 	color: var(--color-main-text);
 	text-align: left;
-	display: grid;
-	grid-template-columns: 20px 20px 1fr auto;
-	gap: 8px;
+	display: flex;
 	align-items: center;
-	padding: 8px 10px;
+	gap: 6px;
+	padding: 6px 10px;
 	border-radius: 8px;
 	cursor: pointer;
+	transition: background-color 0.15s ease, color 0.15s ease;
+	margin-bottom: 2px;
 }
 
 .folder-tree-item:hover {
@@ -138,43 +146,67 @@ export default {
 }
 
 .folder-tree-item--selected {
-	background: var(--color-background-hover);
-	outline: 1px solid var(--color-border-dark);
+	background: var(--color-primary-element-light, rgba(0, 130, 201, 0.1));
+	color: var(--color-primary-element);
+}
+
+.folder-tree-item__chev-wrapper {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .folder-tree-item__chev {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 20px;
-	height: 20px;
-	border-radius: 6px;
+	width: 24px;
+	height: 24px;
+	border-radius: 4px;
+	color: var(--color-text-maxcontrast);
+	transition: background-color 0.15s, color 0.15s;
 }
 
 .folder-tree-item__chev:hover {
-	background: rgba(127, 127, 127, 0.12);
+	background: var(--color-background-dark);
+	color: var(--color-main-text);
 }
 
-.folder-tree-item__chev--empty:hover {
-	background: transparent;
+.folder-tree-item__chev--empty {
+	visibility: hidden;
 }
 
 .folder-tree-item__icon {
 	color: var(--color-text-maxcontrast);
+	margin-right: 2px;
+}
+
+.folder-tree-item__icon--selected {
+	color: var(--color-primary-element);
 }
 
 .folder-tree-item__name {
+	flex: 1;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	font-size: 14px;
+	font-weight: 600;
 }
 
 .folder-tree-item__meta {
+	background: var(--color-background-dark);
 	color: var(--color-text-maxcontrast);
-	font-size: 12px;
-	font-weight: 600;
-	padding-left: 8px;
+	font-size: 11px;
+	font-weight: 700;
+	padding: 2px 6px;
+	border-radius: 12px;
+}
+
+.folder-tree-item--selected .folder-tree-item__meta {
+	background: var(--color-primary-element);
+	color: var(--color-primary-text, #fff);
 }
 
 .folder-tree-item__children {
