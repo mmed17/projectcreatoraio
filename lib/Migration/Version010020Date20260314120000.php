@@ -46,11 +46,20 @@ class Version010020Date20260314120000 extends SimpleMigrationStep
         if (!$schema->hasTable('project_ocr_doc_types')) {
             return;
         }
+        $table = $schema->getTable('project_ocr_doc_types');
+        $hasLabelColumn = $table->hasColumn('label');
+        $hasTypeKeyColumn = $table->hasColumn('type_key');
 
         $qb = $this->db->getQueryBuilder();
-        $result = $qb->select('id', 'name', 'label', 'type_key', 'fields_json')
-            ->from('project_ocr_doc_types')
-            ->executeQuery();
+        $qb->select('id', 'name', 'fields_json')
+            ->from('project_ocr_doc_types');
+        if ($hasLabelColumn) {
+            $qb->addSelect('label');
+        }
+        if ($hasTypeKeyColumn) {
+            $qb->addSelect('type_key');
+        }
+        $result = $qb->executeQuery();
 
         while (($row = $result->fetch()) !== false) {
             $name = $this->normalizeDocumentTypeName($row);
