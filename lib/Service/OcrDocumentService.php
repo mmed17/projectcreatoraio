@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OCA\ProjectCreatorAIO\Service;
 
+use DateTime;
 use OCA\ProjectCreatorAIO\Db\OrganizationDocumentType;
 use OCA\ProjectCreatorAIO\Db\OrganizationDocumentTypeMapper;
 use OCA\ProjectCreatorAIO\Db\Project;
@@ -21,6 +22,9 @@ class OcrDocumentService
         'application/pdf',
         'image/jpeg',
         'image/png',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
     ];
 
     public function __construct(
@@ -109,7 +113,7 @@ class OcrDocumentService
         $file = $this->resolveProjectFile($project, $userId, $fileId);
         $mimeType = trim((string) $file->getMimeType());
         if (!in_array($mimeType, self::SUPPORTED_MIME_TYPES, true)) {
-            throw new OCSException('Only PDF, JPEG, and PNG files can be processed.', 400);
+            throw new OCSException('Only supported OCR file types can be processed (PDF, JPEG, PNG, DOCX, XLSX, XLS).', 400);
         }
 
         $userFolder = $this->rootFolder->getUserFolder($userId);
@@ -154,7 +158,7 @@ class OcrDocumentService
         $file = $this->resolveProjectFile($project, $userId, $fileId);
         $mimeType = trim((string) $file->getMimeType());
         if (!in_array($mimeType, self::SUPPORTED_MIME_TYPES, true)) {
-            throw new OCSException('Only PDF, JPEG, and PNG files can be processed.', 400);
+            throw new OCSException('Only supported OCR file types can be processed (PDF, JPEG, PNG, DOCX, XLSX, XLS).', 400);
         }
 
         $userFolder = $this->rootFolder->getUserFolder($userId);
@@ -169,6 +173,28 @@ class OcrDocumentService
             $mimeType,
             $documentType->getId(),
         );
+    }
+
+    public function updateExtractedFields(Project $project, int $fileId, array $fields): ProjectFileProcessing
+    {
+        $record = $this->processingMapper->findByProjectAndFileId((int) $project->getId(), $fileId);
+        if ($record === null || $record->getDocumentTypeId() === null) {
+            throw new OCSNotFoundException('OCR processing record not found for this file.');
+        }
+
+        $documentType = $this->requireOrganizationDocumentType(
+            (int) $project->getOrganizationId(),
+            (int) $record->getDocumentTypeId(),
+        );
+
+        $normalizedExtracted = $this->normalizeExtractedFields($documentType->getFields(), $fields);
+
+        $record->setExtractedJson(json_encode($normalizedExtracted, JSON_UNESCAPED_SLASHES));
+        $record->setOcrStatus('done');
+        $record->setErrorMessage(null);
+        $record->setProcessedAt(new DateTime());
+
+        return $this->processingMapper->saveRecord($record);
     }
 
     public function requireOrganizationDocumentType(int $organizationId, int $documentTypeId): OrganizationDocumentType
@@ -302,5 +328,77 @@ class OcrDocumentService
         }
 
         return substr($fieldName, 0, 255);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $documentTypeFields
+     * @param array<mixed> $submittedFields
+     * @return array<string, array{name:string,value:?string,confidence:string}>
+     */
+    private function normalizeExtractedFields(array $documentTypeFields, array $submittedFields): array
+    {
+        $allowedFieldNames = [];
+        foreach ($documentTypeFields as $field) {
+            $name = trim((string) ($field['name'] ?? ''));
+            if ($name !== '') {
+                $allowedFieldNames[] = $name;
+            }
+        }
+
+        if ($allowedFieldNames === []) {
+            throw new OCSException('Document type has no extraction fields.', 400);
+        }
+
+        $submittedValues = [];
+        foreach ($submittedFields as $key => $rawValue) {
+            $fieldName = '';
+            $value = $rawValue;
+
+            if (is_array($rawValue) && array_key_exists('name', $rawValue)) {
+                $fieldName = trim((string) $rawValue['name']);
+                $value = $rawValue['value'] ?? null;
+            } elseif (is_string($key)) {
+                $fieldName = trim($key);
+                if (is_array($rawValue) && array_key_exists('value', $rawValue)) {
+                    $value = $rawValue['value'];
+                }
+            }
+
+            if ($fieldName === '') {
+                continue;
+            }
+
+            $submittedValues[$fieldName] = $this->normalizeExtractedValue($value);
+        }
+
+        $normalized = [];
+        foreach (array_values(array_unique($allowedFieldNames)) as $fieldName) {
+            $value = $submittedValues[$fieldName] ?? null;
+            $normalized[$fieldName] = [
+                'name' => $fieldName,
+                'value' => $value,
+                'confidence' => $value === null ? 'low' : 'manual',
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function normalizeExtractedValue(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (!is_scalar($value)) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+        if ($normalized === '') {
+            return null;
+        }
+
+        return substr($normalized, 0, 4000);
     }
 }

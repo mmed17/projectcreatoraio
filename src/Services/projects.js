@@ -421,6 +421,28 @@ export class ProjectsService {
 	}
 
 	/**
+	 * Update extracted OCR field values manually for a project file.
+	 *
+	 * @param {number} projectId
+	 * @param {number} fileId
+	 * @param {Record<string, string|null>} fields
+	 * @returns {Promise<object|null>}
+	 */
+	async updateFileExtractedFields(projectId, fileId, fields) {
+		const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}/files/${fileId}/ocr/extracted`)
+		const response = await axios.put(url, {
+			fields,
+		}, {
+			headers: {
+				'OCS-APIRequest': 'true',
+				'Content-Type': 'application/json',
+			},
+		})
+
+		return response?.data ?? null
+	}
+
+	/**
 	 *
 	 * @param {number} projectId
 	 * @returns {Promise<{fileId:number,name:string,mimetype:string,size:number,mtime:number,path:string}|null>}

@@ -27,7 +27,7 @@ class PythonDocumentExtractionClient
      */
     public function extract(DocumentFilePayload $payload, array $fieldDefinitions): DocumentExtractionResult
     {
-        $baseUrl = trim($this->config->getAppValue(Application::APP_ID, 'python_ocr_base_url', 'http://localhost:8085'));
+        $baseUrl = trim($this->config->getAppValue(Application::APP_ID, 'python_ocr_base_url', 'http://ocr-nextcloud-api:8085'));
         if ($baseUrl === '') {
             throw new OCSException('Python OCR service URL is not configured.', 500);
         }

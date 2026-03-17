@@ -193,6 +193,24 @@ class OcrApiController extends Controller
 
     #[NoCSRFRequired]
     #[NoAdminRequired]
+    public function updateFileExtractedFields(int $projectId, int $fileId): DataResponse
+    {
+        $project = $this->requireProject($projectId);
+        $this->assertCanAccessProject($project);
+
+        $params = $this->request->getParams();
+        $fields = is_array($params['fields'] ?? null) ? $params['fields'] : null;
+        if ($fields === null) {
+            throw new OCSException('A fields payload is required.', 400);
+        }
+
+        $record = $this->ocrDocumentService->updateExtractedFields($project, $fileId, $fields);
+
+        return new DataResponse($this->buildProcessingPayload($project, $record));
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
     public function reprocessFile(int $projectId, int $fileId): DataResponse
     {
         $project = $this->requireProject($projectId);

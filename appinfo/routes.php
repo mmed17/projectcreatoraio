@@ -110,6 +110,11 @@ return [
             "verb" => "GET",
         ],
         [
+            "name" => "ocr_api#updateFileExtractedFields",
+            "url" => "/api/v1/projects/{projectId}/files/{fileId}/ocr/extracted",
+            "verb" => "PUT",
+        ],
+        [
             "name" => "ocr_api#reprocessFile",
             "url" => "/api/v1/projects/{projectId}/files/{fileId}/ocr/reprocess",
             "verb" => "POST",

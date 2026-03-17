@@ -614,10 +614,15 @@ export default {
 			const diff = Math.floor((start - today) / (1000 * 60 * 60 * 24))
 			return diff > 0 ? diff : null
 		},
+		formatWeekCountFromDays(days) {
+			const weeks = days / 7
+			const fixed = Math.abs(weeks - Math.round(weeks)) < 1e-9 ? String(Math.round(weeks)) : weeks.toFixed(1)
+			return `${fixed} week${weeks === 1 ? '' : 's'}`
+		},
 		formatFutureStartHint(item) {
 			const days = this.getDaysUntilStart(item)
 			if (!days) return ''
-			return `Starts in ${days} day${days === 1 ? '' : 's'}`
+			return `Starts in ${this.formatWeekCountFromDays(days)}`
 		},
 		getIsoWeekInfo(date) {
 			const d = this.toDateOnly(date)

@@ -181,7 +181,7 @@
 
 								<div class="project-files__row-actions" @click.stop>
 									<button
-										v-if="isSupportedFile(entry) && extractedEntries(entry.id).length > 0"
+										v-if="isSupportedFile(entry) && canOpenExtractedDataModal(entry.id)"
 										:type="'button'"
 										class="project-files__icon-btn"
 										title="View Extracted Data"
@@ -234,14 +234,34 @@
 				<div class="project-files__modal-content">
 					<div class="project-files__modal-filename">{{ activeExtractedFileName }}</div>
 					<div v-if="activeExtractedData.length === 0" class="project-files__empty">No data extracted yet.</div>
-					<table v-else class="project-files__data-table">
+					<div v-if="activeExtractedData.length > 0 && activeMissingFieldsCount > 0" class="project-files__modal-warning">
+						{{ activeMissingFieldsCount }} field{{ activeMissingFieldsCount === 1 ? '' : 's' }} still missing.
+					</div>
+					<table v-if="activeExtractedData.length > 0" class="project-files__data-table">
 						<tbody>
 							<tr v-for="item in activeExtractedData" :key="item.key">
-								<th>{{ item.name }}</th>
-								<td>{{ item.value }}</td>
+								<th>
+									{{ item.name }}
+									<span v-if="item.missing" class="project-files__missing-pill">Missing</span>
+								</th>
+								<td>
+									<input
+										class="project-files__field-input"
+										:value="activeExtractedDraft[item.key] ?? ''"
+										@input="setActiveExtractedDraft(item.key, $event.target.value)">
+								</td>
 							</tr>
 						</tbody>
 					</table>
+					<div v-if="activeExtractedData.length > 0" class="project-files__modal-actions">
+						<button
+							:type="'button'"
+							class="project-files__btn project-files__btn--primary"
+							:disabled="isSavingExtracted(activeExtractedFileId)"
+							@click="saveActiveExtractedData">
+							{{ isSavingExtracted(activeExtractedFileId) ? 'Saving...' : 'Save extracted fields' }}
+						</button>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -289,7 +309,14 @@ const webdavClient = createClient(generateRemoteUrl('dav'), {
 	},
 })
 const projectsService = ProjectsService.getInstance()
-const SUPPORTED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
+const SUPPORTED_MIME_TYPES = [
+	'application/pdf',
+	'image/jpeg',
+	'image/png',
+	'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+	'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+	'application/vnd.ms-excel',
+]
 
 export default {
 	name: 'ProjectFilesBrowser',
@@ -360,6 +387,8 @@ export default {
 			assigningByFileId: {},
 			feedbackByFileId: {},
 			activeExtractedFileId: null,
+			activeExtractedDraft: {},
+			savingExtractedFileId: null,
 			uploadBusy: false,
 			uploadError: '',
 			uploadMessage: '',
@@ -430,12 +459,16 @@ export default {
 		},
 		activeExtractedData() {
 			if (!this.activeExtractedFileId) return []
-			return this.extractedEntries(this.activeExtractedFileId)
+			return this.extractedEntries(this.activeExtractedFileId, true)
 		},
 		activeExtractedFileName() {
 			if (!this.activeExtractedFileId) return ''
 			const entry = this.sortedEntries.find((e) => String(e.id) === String(this.activeExtractedFileId))
 			return entry ? entry.name : ''
+		},
+		activeMissingFieldsCount() {
+			if (!this.activeExtractedFileId) return 0
+			return this.missingFieldsCount(this.activeExtractedFileId)
 		},
 	},
 	watch: {
@@ -481,6 +514,8 @@ export default {
 			this.assigningByFileId = {}
 			this.feedbackByFileId = {}
 			this.activeExtractedFileId = null
+			this.activeExtractedDraft = {}
+			this.savingExtractedFileId = null
 		},
 		clearUploadFeedback() {
 			this.uploadError = ''
@@ -859,6 +894,10 @@ export default {
 				return 'Processing'
 			}
 			if (record.ocr_status === 'done') {
+				if (this.hasPartialExtraction(fileId)) {
+					const missingCount = this.missingFieldsCount(fileId)
+					return missingCount > 0 ? `Partial (${missingCount} missing)` : 'Partial'
+				}
 				return 'Ready'
 			}
 			return 'Queued'
@@ -870,22 +909,79 @@ export default {
 		fileFeedback(fileId) {
 			return this.feedbackByFileId[String(fileId)] || ''
 		},
-		extractedEntries(fileId) {
+		extractedEntries(fileId, includeEmpty = false) {
 			const record = this.processingByFileId[String(fileId)] || null
 			const extracted = record?.extracted && typeof record.extracted === 'object' ? record.extracted : {}
-			const entries = Object.entries(extracted)
-				.map(([key, payload]) => {
-					const value = payload && typeof payload === 'object' ? payload.value : null
-					const name = payload && typeof payload === 'object' ? (payload.name || payload.label || key) : key
-					return {
+			const entriesByKey = {}
+			const ordered = []
+			for (const name of this.expectedFieldNames(fileId)) {
+				if (!entriesByKey[name]) {
+					const payload = extracted[name] && typeof extracted[name] === 'object' ? extracted[name] : {}
+					const value = payload.value ?? null
+					entriesByKey[name] = {
+						key: name,
+						name,
+						value,
+						missing: value === null || String(value).trim() === '',
+					}
+					ordered.push(entriesByKey[name])
+				}
+			}
+
+			for (const [key, payload] of Object.entries(extracted)) {
+				const value = payload && typeof payload === 'object' ? payload.value : null
+				const name = payload && typeof payload === 'object' ? (payload.name || payload.label || key) : key
+				if (!entriesByKey[key]) {
+					entriesByKey[key] = {
 						key,
 						name,
 						value,
+						missing: value === null || String(value).trim() === '',
 					}
-				})
-				.filter((item) => item.value !== null && item.value !== '')
+					ordered.push(entriesByKey[key])
+				}
+			}
 
-			return entries
+			if (includeEmpty) {
+				return ordered
+			}
+
+			return ordered.filter((item) => !item.missing)
+		},
+		expectedFieldNames(fileId) {
+			const record = this.processingByFileId[String(fileId)] || null
+			const documentTypeId = Number(record?.document_type_id ?? 0)
+			if (!Number.isFinite(documentTypeId) || documentTypeId <= 0) {
+				return []
+			}
+
+			const documentType = this.documentTypes.find((type) => Number(type?.id) === documentTypeId) || null
+			const fields = Array.isArray(documentType?.fields) ? documentType.fields : []
+			return fields
+				.map((field) => {
+					if (typeof field === 'string') {
+						return field.trim()
+					}
+					const normalized = field && typeof field === 'object' ? field : {}
+					return String(normalized?.name || normalized?.label || normalized?.key || '').trim()
+				})
+				.filter((name) => name !== '')
+		},
+		missingFieldsCount(fileId) {
+			return this.extractedEntries(fileId, true).filter((item) => item.missing).length
+		},
+		hasPartialExtraction(fileId) {
+			const record = this.processingByFileId[String(fileId)] || null
+			if (!record || record.ocr_status !== 'done') {
+				return false
+			}
+			const entries = this.extractedEntries(fileId, true)
+			if (entries.length === 0) {
+				return false
+			}
+			const filled = entries.filter((item) => !item.missing).length
+			const missing = entries.length - filled
+			return filled > 0 && missing > 0
 		},
 		isAssigning(fileId) {
 			return !!this.assigningByFileId[String(fileId)]
@@ -905,6 +1001,9 @@ export default {
 				return 'Sync'
 			}
 			if (record.ocr_status === 'done') {
+				if (this.hasPartialExtraction(fileId)) {
+					return 'AlertCircleOutline'
+				}
 				return 'CheckCircleOutline'
 			}
 			return 'ClockOutline'
@@ -913,6 +1012,7 @@ export default {
 			const record = this.processingByFileId[String(fileId)] || null
 			if (!record) return 'project-files__status-inline--muted'
 			if (record.ocr_status === 'failed') return 'project-files__status-inline--error'
+			if (record.ocr_status === 'done' && this.hasPartialExtraction(fileId)) return 'project-files__status-inline--partial'
 			if (record.ocr_status === 'done') return 'project-files__status-inline--success'
 			if (record.ocr_status === 'processing') return 'project-files__status-inline--spin'
 			return 'project-files__status-inline--pending'
@@ -931,6 +1031,9 @@ export default {
 			}
 
 			const nextStatus = this.statusLabel(fileId)
+			if (nextStatus.startsWith('Partial')) {
+				return 'Document processed with missing fields.'
+			}
 			if (nextStatus === 'Ready') {
 				return successMessage
 			}
@@ -948,6 +1051,16 @@ export default {
 				return false
 			}
 			return record.ocr_status !== 'processing'
+		},
+		canOpenExtractedDataModal(fileId) {
+			const record = this.processingByFileId[String(fileId)] || null
+			return !!(record && record.document_type_id)
+		},
+		setActiveExtractedDraft(fieldName, value) {
+			this.$set(this.activeExtractedDraft, fieldName, String(value ?? ''))
+		},
+		isSavingExtracted(fileId) {
+			return String(this.savingExtractedFileId || '') === String(fileId || '')
 		},
 		async assignDocumentType(node, documentTypeId) {
 			if (!this.isSupportedFile(node)) {
@@ -1004,9 +1117,38 @@ export default {
 		},
 		openExtractedDataModal(fileId) {
 			this.activeExtractedFileId = fileId
+			const draft = {}
+			for (const item of this.extractedEntries(fileId, true)) {
+				draft[item.key] = item.value === null || item.value === undefined ? '' : String(item.value)
+			}
+			this.activeExtractedDraft = draft
 		},
 		closeExtractedDataModal() {
 			this.activeExtractedFileId = null
+			this.activeExtractedDraft = {}
+			this.savingExtractedFileId = null
+		},
+		async saveActiveExtractedData() {
+			const projectId = Number(this.projectId)
+			const fileId = Number(this.activeExtractedFileId)
+			if (!Number.isFinite(projectId) || projectId <= 0 || !Number.isFinite(fileId) || fileId <= 0) {
+				return
+			}
+
+			this.savingExtractedFileId = fileId
+			const key = String(fileId)
+			this.$delete(this.feedbackByFileId, key)
+			try {
+				const payload = await projectsService.updateFileExtractedFields(projectId, fileId, this.activeExtractedDraft)
+				if (payload?.processing) {
+					this.$set(this.processingByFileId, key, payload.processing)
+				}
+				this.$set(this.feedbackByFileId, key, 'Extracted fields saved.')
+			} catch (error) {
+				this.$set(this.feedbackByFileId, key, error?.response?.data?.message || 'Could not save extracted fields.')
+			} finally {
+				this.savingExtractedFileId = null
+			}
 		},
 	},
 }
@@ -1362,6 +1504,10 @@ export default {
 	color: var(--color-warning, #ffa500);
 }
 
+.project-files__status-inline--partial {
+	color: #a06700;
+}
+
 .project-files__status-inline--muted {
 	color: var(--color-text-maxcontrast);
 }
@@ -1485,6 +1631,16 @@ export default {
 	word-break: break-all;
 }
 
+.project-files__modal-warning {
+	margin-bottom: 12px;
+	padding: 8px 10px;
+	font-size: 13px;
+	border-radius: 6px;
+	background: rgba(255, 184, 0, 0.12);
+	color: #a06700;
+	border: 1px solid rgba(255, 184, 0, 0.35);
+}
+
 .project-files__data-table {
 	width: 100%;
 	border-collapse: collapse;
@@ -1509,9 +1665,31 @@ export default {
 	width: 40%;
 }
 
-.project-files__data-table td {
+.project-files__missing-pill {
+	display: inline-flex;
+	margin-left: 8px;
+	padding: 2px 6px;
+	font-size: 11px;
+	border-radius: 999px;
+	background: rgba(255, 184, 0, 0.12);
+	color: #a06700;
+	border: 1px solid rgba(255, 184, 0, 0.35);
+}
+
+.project-files__field-input {
+	width: 100%;
+	border: 1px solid var(--color-border);
+	background: var(--color-main-background);
 	color: var(--color-main-text);
-	font-weight: 600;
+	border-radius: 6px;
+	padding: 8px 10px;
+	font-size: 13px;
+}
+
+.project-files__modal-actions {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 14px;
 }
 
 .project-files__empty {
