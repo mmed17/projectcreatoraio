@@ -265,16 +265,6 @@ class TimelinePlanningService
 			}
 		}
 
-		$stackOrder = (int) ($row['order'] ?? -1);
-		if ($stackOrder === 4) {
-			$modified = (int) ($row['last_modified'] ?? 0);
-			if ($modified > 0) {
-				$dt = new DateTime('@' . $modified);
-				$dt->setTime(0, 0, 0);
-				return $dt;
-			}
-		}
-
 		return null;
 	}
 }

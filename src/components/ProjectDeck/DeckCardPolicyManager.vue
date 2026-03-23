@@ -26,7 +26,7 @@
 			<div class="pc-app-header">
 				<div class="pc-header-titles">
 					<h2>Card Permissions</h2>
-					<p class="muted">Assign move and approve permissions to specific cards.</p>
+					<p class="muted">Assign move, sign, and verify permissions to specific cards.</p>
 				</div>
 				<div class="pc-header-actions">
 					<NcButton type="tertiary" @click="showMembersModal = true">
@@ -72,13 +72,14 @@
 							<th class="pc-col-name">Card Name</th>
 							<th class="pc-col-stack">Stack</th>
 							<th class="pc-col-perms">Who can Move</th>
-							<th class="pc-col-perms">Who can Approve</th>
+							<th class="pc-col-perms">Who can Sign</th>
+							<th class="pc-col-perms">Who can Verify</th>
 							<th class="pc-col-actions"></th>
 						</tr>
 					</thead>
 					<tbody>
 						<tr v-if="filteredCards.length === 0">
-							<td colspan="6" class="pc-empty-row">No cards match your filters.</td>
+							<td colspan="7" class="pc-empty-row">No cards match your filters.</td>
 						</tr>
 						<tr v-for="card in filteredCards" :key="card.id" 
 							:class="{ 'is-selected': isSelected(card.id), 'is-custom': card.hasExplicitPolicy }"
@@ -106,11 +107,20 @@
 							</td>
 							<td class="pc-col-perms">
 								<div class="pc-role-chips">
-									<span v-for="rk in getEffectivePerms(card, 'approve')" :key="rk" class="pc-role-chip" :style="chipStyleByKey(rk)">
+									<span v-for="rk in getEffectivePerms(card, 'sign')" :key="`${card.id}-s-${rk}`" class="pc-role-chip" :style="chipStyleByKey(rk)">
 										<span class="pc-dot" :style="{ background: roleColorByKey(rk) }"></span>
 										{{ roleNameByKey(rk) }}
 									</span>
-									<span v-if="!getEffectivePerms(card, 'approve').length" class="muted-dash">—</span>
+									<span v-if="!getEffectivePerms(card, 'sign').length" class="muted-dash">—</span>
+								</div>
+							</td>
+							<td class="pc-col-perms">
+								<div class="pc-role-chips">
+									<span v-for="rk in getEffectivePerms(card, 'verify')" :key="`${card.id}-v-${rk}`" class="pc-role-chip" :style="chipStyleByKey(rk)">
+										<span class="pc-dot" :style="{ background: roleColorByKey(rk) }"></span>
+										{{ roleNameByKey(rk) }}
+									</span>
+									<span v-if="!getEffectivePerms(card, 'verify').length" class="muted-dash">—</span>
 								</div>
 							</td>
 							<td class="pc-col-actions" @click.stop>
@@ -137,8 +147,12 @@
 							<NcSelect v-model="bulkEdits.move" :options="roleOptions" label="label" track-by="value" :multiple="true" :close-on-select="false" placeholder="Select roles..." />
 						</div>
 						<div class="pc-fab-field">
-							<label>Approve:</label>
-							<NcSelect v-model="bulkEdits.approve" :options="roleOptions" label="label" track-by="value" :multiple="true" :close-on-select="false" placeholder="Select roles..." />
+							<label>Sign:</label>
+							<NcSelect v-model="bulkEdits.sign" :options="roleOptions" label="label" track-by="value" :multiple="true" :close-on-select="false" placeholder="Select roles..." />
+						</div>
+						<div class="pc-fab-field">
+							<label>Verify:</label>
+							<NcSelect v-model="bulkEdits.verify" :options="roleOptions" label="label" track-by="value" :multiple="true" :close-on-select="false" placeholder="Select roles..." />
 						</div>
 					</div>
 
@@ -161,8 +175,12 @@
 					<NcSelect v-model="defaults.move" :options="roleOptions" label="label" track-by="value" :multiple="true" :close-on-select="false" />
 				</div>
 				<div class="pc-modal-field">
-					<label>Who can approve / mark done</label>
-					<NcSelect v-model="defaults.approve" :options="roleOptions" label="label" track-by="value" :multiple="true" :close-on-select="false" />
+					<label>Who can sign cards</label>
+					<NcSelect v-model="defaults.sign" :options="roleOptions" label="label" track-by="value" :multiple="true" :close-on-select="false" />
+				</div>
+				<div class="pc-modal-field">
+					<label>Who can verify / mark done</label>
+					<NcSelect v-model="defaults.verify" :options="roleOptions" label="label" track-by="value" :multiple="true" :close-on-select="false" />
 				</div>
 				<div class="pc-modal-footer">
 					<NcButton @click="showDefaultsModal = false">Cancel</NcButton>
@@ -366,11 +384,11 @@ export default {
 			loading: false,
 			error: '',
 			
-			settings: { permissionMode: 'legacy', approvedStackId: null },
+			settings: { permissionMode: 'legacy', approvedStackId: null, doneStackId: null },
 			roles: [],
 			memberships: [],
-			defaults: { move: [], approve: [] },
-			defaultRoleKeys: { move: [], approve: [] },
+			defaults: { move: [], sign: [], verify: [] },
+			defaultRoleKeys: { move: [], sign: [], verify: [] },
 			
 			cards: [],
 			stacks: [],
@@ -399,7 +417,7 @@ export default {
 			newMembership: { role: null, user: null },
 			newRole: { name: '', roleKey: '', color: '#111111' },
 			newRoleKeyTouched: false,
-			bulkEdits: { move: [], approve: [] },
+			bulkEdits: { move: [], sign: [], verify: [] },
 			
 			// Spinners
 			savingDefaults: false,
@@ -459,13 +477,16 @@ export default {
 			if (newIds.length === 1) {
 				const card = this.cards.find(c => c.id === newIds[0])
 				if (card) {
-					const mKeys = card.hasExplicitPolicy ? (card.policy?.move || []) : (this.defaultRoleKeys.move || [])
-					const aKeys = card.hasExplicitPolicy ? (card.policy?.approve || []) : (this.defaultRoleKeys.approve || [])
-					this.bulkEdits.move = mKeys.map(v => ({ value: v, label: this.roleOptions.find(o => o.value === v)?.label || v }))
-					this.bulkEdits.approve = aKeys.map(v => ({ value: v, label: this.roleOptions.find(o => o.value === v)?.label || v }))
+					const perms = card.effectivePolicy || {}
+					const moveKeys = perms.move || []
+					const signKeys = perms.sign || []
+					const verifyKeys = perms.verify || []
+					this.bulkEdits.move = moveKeys.map(v => ({ value: v, label: this.roleOptions.find(o => o.value === v)?.label || v }))
+					this.bulkEdits.sign = signKeys.map(v => ({ value: v, label: this.roleOptions.find(o => o.value === v)?.label || v }))
+					this.bulkEdits.verify = verifyKeys.map(v => ({ value: v, label: this.roleOptions.find(o => o.value === v)?.label || v }))
 				}
 			} else if (newIds.length === 0) {
-				this.bulkEdits = { move: [], approve: [] }
+				this.bulkEdits = { move: [], sign: [], verify: [] }
 			}
 		},
 		'newRole.name'(val) {
@@ -513,13 +534,20 @@ export default {
 					deckService.listStacks(this.boardIdNum),
 				])
 				const data = this.unwrap(raw)
-				this.settings = data.settings || { permissionMode: 'legacy', approvedStackId: null }
+				this.settings = data.settings || { permissionMode: 'legacy', approvedStackId: null, doneStackId: null }
 				this.roles = data.roles || []
 				this.memberships = data.memberships || []
-				this.defaultRoleKeys = data.defaultRoleKeys || { move: [], approve: [] }
+				const defaults = data.defaultRoleKeys || { move: [], sign: [], verify: [] }
+				const legacyApprove = Array.isArray(defaults.approve) ? defaults.approve : []
+				this.defaultRoleKeys = {
+					move: defaults.move || [],
+					sign: defaults.sign || legacyApprove,
+					verify: defaults.verify || legacyApprove,
+				}
 				this.defaults = {
 					move: (this.defaultRoleKeys.move || []).map(v => ({ value: v, label: this.roleOptions.find(o => o.value === v)?.label || v })),
-					approve: (this.defaultRoleKeys.approve || []).map(v => ({ value: v, label: this.roleOptions.find(o => o.value === v)?.label || v })),
+					sign: (this.defaultRoleKeys.sign || []).map(v => ({ value: v, label: this.roleOptions.find(o => o.value === v)?.label || v })),
+					verify: (this.defaultRoleKeys.verify || []).map(v => ({ value: v, label: this.roleOptions.find(o => o.value === v)?.label || v })),
 				}
 				this.stacks = (stacks || []).map(s => ({ id: Number(s.id), title: String(s.title || '') }))
 				this.cards = data.cards || []
@@ -629,9 +657,10 @@ export default {
 				// Defaults
 				const defaults = payload.defaults || {}
 				const move = (defaults.move || []).map(String).filter(k => finalRoleKeys.has(k))
-				const approve = (defaults.approve || []).map(String).filter(k => finalRoleKeys.has(k))
+				const sign = (defaults.sign || defaults.approve || []).map(String).filter(k => finalRoleKeys.has(k))
+				const verify = (defaults.verify || defaults.approve || []).map(String).filter(k => finalRoleKeys.has(k))
 				const view = (defaults.view || []).map(String).filter(k => finalRoleKeys.has(k))
-				await deckService.updateCardPolicyDefaults(this.boardIdNum, { move, approve, view })
+				await deckService.updateCardPolicyDefaults(this.boardIdNum, { move, sign, verify, view })
 
 				// Stacks
 				let stacks = await deckService.listStacks(this.boardIdNum)
@@ -717,21 +746,24 @@ export default {
 
 					const policy = c?.policy || {}
 					const moveKeys = (policy.move || []).map(String)
-					const approveKeys = (policy.approve || []).map(String)
+					const signKeys = (policy.sign || policy.approve || []).map(String)
+					const verifyKeys = (policy.verify || policy.approve || []).map(String)
 					const viewKeys = (policy.view || []).map(String)
-					const hadAnyKeys = moveKeys.length > 0 || approveKeys.length > 0 || viewKeys.length > 0
+					const hadAnyKeys = moveKeys.length > 0 || signKeys.length > 0 || verifyKeys.length > 0 || viewKeys.length > 0
 					const filteredMove = moveKeys.filter(k => finalRoleKeys.has(k))
-					const filteredApprove = approveKeys.filter(k => finalRoleKeys.has(k))
+					const filteredSign = signKeys.filter(k => finalRoleKeys.has(k))
+					const filteredVerify = verifyKeys.filter(k => finalRoleKeys.has(k))
 					const filteredView = viewKeys.filter(k => finalRoleKeys.has(k))
 
-					for (const k of [...moveKeys, ...approveKeys, ...viewKeys]) {
+					for (const k of [...moveKeys, ...signKeys, ...verifyKeys, ...viewKeys]) {
 						if (k && !finalRoleKeys.has(k)) report.missingRoleKeys.add(k)
 					}
 
-					if (filteredMove.length || filteredApprove.length || filteredView.length) {
+					if (filteredMove.length || filteredSign.length || filteredVerify.length || filteredView.length) {
 						await deckService.setCardPolicy(this.boardIdNum, Number(targetCard.id), {
 							move: filteredMove,
-							approve: filteredApprove,
+							sign: filteredSign,
+							verify: filteredVerify,
 							view: filteredView,
 						})
 						report.appliedCardPolicies++
@@ -771,6 +803,9 @@ export default {
 		
 		getEffectivePerms(card, type) {
 			if (card.hasExplicitPolicy && card.policy) {
+				if (type === 'sign' || type === 'verify') {
+					return card.policy[type] || card.policy.approve || []
+				}
 				return card.policy[type] || []
 			}
 			return this.defaultRoleKeys[type] || []
@@ -803,7 +838,8 @@ export default {
 			try {
 				await deckService.updateCardPolicyDefaults(this.boardIdNum, {
 					move: this.defaults.move.map(o => o.value),
-					approve: this.defaults.approve.map(o => o.value),
+					sign: this.defaults.sign.map(o => o.value),
+					verify: this.defaults.verify.map(o => o.value),
 				})
 				showSuccess('Board defaults updated')
 				this.showDefaultsModal = false
@@ -830,7 +866,8 @@ export default {
 			try {
 				const payload = {
 					move: this.bulkEdits.move.map(o => o.value),
-					approve: this.bulkEdits.approve.map(o => o.value),
+					sign: this.bulkEdits.sign.map(o => o.value),
+					verify: this.bulkEdits.verify.map(o => o.value),
 				}
 				for (let i = 0; i < this.selectedCardIds.length; i += 5) {
 					const batch = this.selectedCardIds.slice(i, i + 5)
@@ -965,11 +1002,13 @@ export default {
 				this.memberships = this.memberships.filter(m => Number(m.roleId) !== roleId)
 				this.defaultRoleKeys = {
 					move: (this.defaultRoleKeys.move || []).filter(key => key !== roleKey),
-					approve: (this.defaultRoleKeys.approve || []).filter(key => key !== roleKey),
+					sign: (this.defaultRoleKeys.sign || []).filter(key => key !== roleKey),
+					verify: (this.defaultRoleKeys.verify || []).filter(key => key !== roleKey),
 				}
 				this.defaults = {
 					move: (this.defaults.move || []).filter(o => o?.value !== roleKey),
-					approve: (this.defaults.approve || []).filter(o => o?.value !== roleKey),
+					sign: (this.defaults.sign || []).filter(o => o?.value !== roleKey),
+					verify: (this.defaults.verify || []).filter(o => o?.value !== roleKey),
 				}
 				showSuccess('Role deleted')
 				await this.load()

@@ -173,11 +173,14 @@ class DeckDefaultCardsService
 				$title = (string) ($cardTemplate['title'] ?? '');
 				if ($title !== '' && isset($policyByTitle[$title])) {
 					$policy = $policyByTitle[$title];
+					$signKeys = (array) ($policy['sign'] ?? $policy['approve'] ?? []);
+					$verifyKeys = (array) ($policy['verify'] ?? $policy['approve'] ?? []);
 					$this->cardPolicyService->setCardPolicyByRoleKeys(
 						$boardId,
 						(int) $card->getId(),
 						(array) ($policy['move'] ?? []),
-						(array) ($policy['approve'] ?? []),
+						$signKeys,
+						$verifyKeys,
 					);
 				}
 
@@ -197,7 +200,7 @@ class DeckDefaultCardsService
 	}
 
 	/**
-	 * @return array<string, array{move: string[], approve: string[]}>
+	 * @return array<string, array{move: string[], sign: string[], verify: string[]}>
 	 */
 	private function getCardPolicyByTitle(int $projectType): array
 	{
@@ -205,30 +208,41 @@ class DeckDefaultCardsService
 			return [];
 		}
 
-		return [
+		$policyByTitle = [
 			// Process steps
-			'Garantie overeenkomst' => ['move' => ['client_developer'], 'approve' => ['cpl']],
-			'VO' => ['move' => ['client_developer'], 'approve' => ['cpl']],
-			'DO' => ['move' => ['client_developer'], 'approve' => ['cpl']],
-			'Intake inplannen & hosten' => ['move' => ['cpl'], 'approve' => ['cpl']],
-			'Intakeverslag' => ['move' => ['cpl'], 'approve' => ['cpl']],
-			'Huisnummerbesluit' => ['move' => ['client_developer', 'cpl'], 'approve' => ['cpl']],
-			'Hoogbouwoverleg inplannen' => ['move' => ['cpl'], 'approve' => ['cpl']],
-			'VO inpandige tekeningen' => ['move' => ['client_developer'], 'approve' => ['grid_operator']],
-			'DO inpandige tekeningen' => ['move' => ['client_developer'], 'approve' => ['grid_operator']],
-			'Verslag inpandig overleg' => ['move' => ['client_developer'], 'approve' => ['grid_operator']],
-			'Blokkenschema' => ['move' => ['client_developer'], 'approve' => ['grid_operator']],
-			'Aanvraag particuliere grond' => ['move' => ['client_developer'], 'approve' => ['cpl']],
-			'Bodemrapport' => ['move' => ['client_developer'], 'approve' => ['cpl']],
-			'Saneringsevaluatierapport' => ['move' => ['client_developer'], 'approve' => ['cpl']],
-			'Zakelijkrecht' => ['move' => ['client_developer'], 'approve' => ['cpl']],
+			'Garantie overeenkomst' => ['move' => ['client_developer'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'VO' => ['move' => ['client_developer'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'DO' => ['move' => ['client_developer'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'Intake inplannen & hosten' => ['move' => ['cpl'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'Intakeverslag' => ['move' => ['cpl'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'Huisnummerbesluit' => ['move' => ['client_developer', 'cpl'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'Hoogbouwoverleg inplannen' => ['move' => ['cpl'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'VO inpandige tekeningen' => ['move' => ['client_developer'], 'sign' => ['grid_operator'], 'verify' => ['grid_operator']],
+			'DO inpandige tekeningen' => ['move' => ['client_developer'], 'sign' => ['grid_operator'], 'verify' => ['grid_operator']],
+			'Verslag inpandig overleg' => ['move' => ['client_developer'], 'sign' => ['grid_operator'], 'verify' => ['grid_operator']],
+			'Blokkenschema' => ['move' => ['client_developer'], 'sign' => ['grid_operator'], 'verify' => ['grid_operator']],
+			'Aanvraag particuliere grond' => ['move' => ['client_developer'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'Bodemrapport' => ['move' => ['client_developer'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'Saneringsevaluatierapport' => ['move' => ['client_developer'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'Zakelijkrecht' => ['move' => ['client_developer'], 'sign' => ['cpl'], 'verify' => ['cpl']],
 
 			// Next priority
-			'Piekvermogensformulier' => ['move' => ['client_developer'], 'approve' => ['cpl']],
-			'Situatie tekening' => ['move' => ['client_developer'], 'approve' => ['grid_operator']],
-			'Intakeformulier' => ['move' => ['client_developer'], 'approve' => ['cpl']],
-			'Quickscan' => ['move' => ['client_developer'], 'approve' => ['cpl']],
-			'AVP' => ['move' => ['grid_operator'], 'approve' => ['grid_operator']],
+			'Piekvermogensformulier' => ['move' => ['client_developer'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'Situatie tekening' => ['move' => ['client_developer'], 'sign' => ['grid_operator'], 'verify' => ['grid_operator']],
+			'Intakeformulier' => ['move' => ['client_developer'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'Quickscan' => ['move' => ['client_developer'], 'sign' => ['cpl'], 'verify' => ['cpl']],
+			'AVP' => ['move' => ['grid_operator'], 'sign' => ['grid_operator'], 'verify' => ['grid_operator']],
 		];
+
+		// For Combi defaults, keep sign/verify aligned with a single approval role-set.
+		foreach ($policyByTitle as &$policy) {
+			$approval = (array) ($policy['approve'] ?? $policy['sign'] ?? $policy['verify'] ?? []);
+			$policy['sign'] = $approval;
+			$policy['verify'] = $approval;
+			unset($policy['approve']);
+		}
+		unset($policy);
+
+		return $policyByTitle;
 	}
 }
