@@ -16,7 +16,8 @@ use Throwable;
 
 class DeckDefaultCardsService
 {
-	private const IMPORTANT_LABEL_TITLE = 'Belangrijk';
+	private const IMPORTANT_LABEL_TITLE = 'Kritieke Processtap';
+	private const LEGACY_IMPORTANT_LABEL_TITLES = ['Belangrijk'];
 	private const IMPORTANT_LABEL_COLOR = 'FF0000';
 
 	public function __construct(
@@ -120,9 +121,32 @@ class DeckDefaultCardsService
 
 	private function ensureImportantLabelId(int $boardId, Board $board, IUser $owner): ?int
 	{
-		$labelId = $this->findLabelIdByTitle($board, self::IMPORTANT_LABEL_TITLE);
-		if ($labelId !== null) {
-			return $labelId;
+		$label = $this->findLabelByTitle($board, self::IMPORTANT_LABEL_TITLE);
+		if ($label !== null) {
+			return (int) $label->getId();
+		}
+
+		foreach (self::LEGACY_IMPORTANT_LABEL_TITLES as $legacyTitle) {
+			$legacyLabel = $this->findLabelByTitle($board, $legacyTitle);
+			if ($legacyLabel === null) {
+				continue;
+			}
+
+			try {
+				$updatedLabel = $this->labelService->update(
+					(int) $legacyLabel->getId(),
+					self::IMPORTANT_LABEL_TITLE,
+					self::IMPORTANT_LABEL_COLOR
+				);
+				return (int) $updatedLabel->getId();
+			} catch (Throwable $e) {
+				$this->logger->warning('Unable to rename legacy important label; using existing label title', [
+					'boardId' => $boardId,
+					'legacyTitle' => $legacyTitle,
+					'exception' => $e,
+				]);
+				return (int) $legacyLabel->getId();
+			}
 		}
 
 		try {
@@ -132,7 +156,8 @@ class DeckDefaultCardsService
 		} catch (Throwable $e) {
 			try {
 				$refreshedBoard = $this->boardService->find($boardId, true);
-				return $this->findLabelIdByTitle($refreshedBoard, self::IMPORTANT_LABEL_TITLE);
+				$refreshedLabel = $this->findLabelByTitle($refreshedBoard, self::IMPORTANT_LABEL_TITLE);
+				return $refreshedLabel !== null ? (int) $refreshedLabel->getId() : null;
 			} catch (Throwable $e2) {
 				$this->logger->warning('Unable to create/find important label; important cards will be unlabelled', [
 					'boardId' => $boardId,
@@ -143,12 +168,12 @@ class DeckDefaultCardsService
 		}
 	}
 
-	private function findLabelIdByTitle(Board $board, string $title): ?int
+	private function findLabelByTitle(Board $board, string $title): ?Label
 	{
 		$labels = $board->getLabels() ?? [];
 		foreach ($labels as $label) {
 			if ($label instanceof Label && $label->getTitle() === $title) {
-				return (int)$label->getId();
+				return $label;
 			}
 		}
 		return null;
