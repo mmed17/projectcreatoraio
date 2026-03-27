@@ -627,7 +627,7 @@
 							</div>
 							<div class="projects-home__tab-toolbar-actions">
 								<NcButton
-									v-if="canManageProjects && selectedProjectOrganizationId"
+									v-if="hasProjectAccess && selectedProjectOrganizationId"
 									type="tertiary"
 									class="projects-home__document-types-button"
 									@click.stop.prevent="showOcrDocumentTypesModal = true">

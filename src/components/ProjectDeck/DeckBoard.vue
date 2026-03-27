@@ -55,6 +55,32 @@
 				</div>
 			</div>
 
+			<!-- Permissions Overview Section -->
+			<div v-if="!loading && !error" class="pc-collapsible-section" :class="{ 'is-open': !isOverviewCollapsed }">
+				<button class="pc-collapsible-header" @click="toggleOverview">
+					<div class="pc-collapsible-title">
+						<span class="pc-collapsible-icon">📊</span>
+						<div>
+							<h3>Permissions Overview</h3>
+							<p class="muted">See what each member is allowed to do on this board</p>
+						</div>
+					</div>
+					<div class="pc-collapsible-chevron" :class="{ 'is-rotated': !isOverviewCollapsed }">
+						▼
+					</div>
+				</button>
+
+				<div v-show="!isOverviewCollapsed" class="pc-collapsible-body">
+					<div v-if="overviewError" class="deck-board__muted">
+						{{ overviewError }}
+					</div>
+					<div v-else-if="!overviewReady" class="deck-board__muted">
+						Loading permissions overview...
+					</div>
+					<div ref="permissionsOverviewMount" class="deck-permissions-overview-mount" />
+				</div>
+			</div>
+
 			<div v-if="loading" class="deck-board__muted">
 				Loading board...
 			</div>
@@ -106,19 +132,23 @@ export default {
 			default: null,
 		},
 	},
-	data() {
-		return {
-			isPermissionsCollapsed: true,
-			board: null,
-			permissions: null,
-			error: '',
-			loading: false,
-			projectMembers: [],
-			embeddedReady: false,
-			embeddedError: '',
-			embeddedHandle: null,
-		}
-	},
+		data() {
+			return {
+				isPermissionsCollapsed: true,
+				isOverviewCollapsed: true,
+				board: null,
+				permissions: null,
+				error: '',
+				loading: false,
+				projectMembers: [],
+				embeddedReady: false,
+				embeddedError: '',
+				embeddedHandle: null,
+				overviewHandle: null,
+				overviewReady: false,
+				overviewError: '',
+			}
+		},
 	computed: {
 		boardTitle() {
 			return this.board?.title || 'Deck board'
@@ -155,9 +185,10 @@ export default {
 			this.loadProjectMembers()
 		},
 	},
-	beforeDestroy() {
-		this.unmountEmbedded()
-	},
+		beforeDestroy() {
+			this.unmountEmbedded()
+			this.unmountPermissionsOverview()
+		},
 	methods: {
 		async load() {
 			this.resetState()
@@ -207,6 +238,9 @@ export default {
 			this.error = ''
 			this.embeddedReady = false
 			this.embeddedError = ''
+			this.overviewReady = false
+			this.overviewError = ''
+			this.unmountPermissionsOverview()
 		},
 		openBoard() {
 			if (!this.deckBoardUrl) {
@@ -295,6 +329,62 @@ export default {
 			} catch (e) {
 				this.unmountEmbedded()
 				this.embeddedError = 'Could not mount Deck tasks UI.'
+			}
+		},
+		async toggleOverview() {
+			this.isOverviewCollapsed = !this.isOverviewCollapsed
+			if (!this.isOverviewCollapsed && !this.overviewHandle) {
+				await this.$nextTick()
+				await this.mountPermissionsOverview()
+			}
+		},
+		unmountPermissionsOverview() {
+			if (this.overviewHandle && typeof this.overviewHandle.destroy === 'function') {
+				try {
+					this.overviewHandle.destroy()
+				} catch (e) {
+					// ignore
+				}
+			}
+			this.overviewHandle = null
+			this.overviewReady = false
+		},
+		async mountPermissionsOverview() {
+			this.overviewError = ''
+			this.overviewReady = false
+
+			const boardId = Number(this.boardId)
+			if (!Number.isFinite(boardId) || boardId <= 0) {
+				this.unmountPermissionsOverview()
+				return
+			}
+
+			const ok = await this.ensureEmbeddedApiLoaded()
+			if (!ok) {
+				this.overviewError = 'Deck embedded UI is not available.'
+				return
+			}
+
+			if (!window?.OCA?.Deck?.EmbeddedPermissionsOverview?.mount) {
+				this.overviewError = 'Permissions overview is not available. Build and deploy the Deck app update, then reload.'
+				return
+			}
+
+			this.unmountPermissionsOverview()
+
+			const el = this.$refs.permissionsOverviewMount
+			if (!el) {
+				this.overviewError = 'Could not mount permissions overview.'
+				return
+			}
+			el.innerHTML = ''
+
+			try {
+				this.overviewHandle = window.OCA.Deck.EmbeddedPermissionsOverview.mount({ el, boardId })
+				this.overviewReady = true
+			} catch (e) {
+				this.unmountPermissionsOverview()
+				this.overviewError = 'Could not mount permissions overview.'
 			}
 		},
 	},
@@ -463,5 +553,14 @@ export default {
 @keyframes slideDown {
 	from { opacity: 0; transform: translateY(-10px); }
 	to { opacity: 1; transform: translateY(0); }
+}
+
+.deck-permissions-overview-mount {
+	width: 100%;
+	min-height: 300px;
+	border: 1px solid var(--color-border);
+	border-radius: 8px;
+	background: var(--color-main-background);
+	overflow: hidden;
 }
 </style>

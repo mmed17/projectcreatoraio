@@ -109,8 +109,9 @@ class FileProcessingPipelineService
     private function markExtractionCompleted(ProjectFileProcessing $record, array $parsed): ProjectFileProcessing
     {
         $record->setExtractedJson(json_encode($parsed, JSON_UNESCAPED_SLASHES));
-        $this->setStatuses($record, 'done');
-        $record->setErrorMessage(null);
+        $missingFields = $this->findMissingFieldNames($parsed);
+        $this->setStatuses($record, $missingFields === [] ? 'done' : 'aborted');
+        $record->setErrorMessage($missingFields === [] ? null : $this->buildMissingFieldsMessage($missingFields));
         $record->setProcessedAt(new DateTime());
 
         return $this->processingMapper->saveRecord($record);
@@ -159,5 +160,34 @@ class FileProcessingPipelineService
         }
 
         return substr($message, 0, 2000);
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $parsed
+     * @return string[]
+     */
+    private function findMissingFieldNames(array $parsed): array
+    {
+        $missing = [];
+
+        foreach ($parsed as $fieldName => $payload) {
+            $value = is_array($payload) ? ($payload['value'] ?? null) : null;
+            if (!is_scalar($value) || trim((string) $value) === '') {
+                $missing[] = is_string($fieldName) && trim($fieldName) !== '' ? $fieldName : 'Unknown field';
+            }
+        }
+
+        return $missing;
+    }
+
+    /**
+     * @param string[] $missingFields
+     */
+    private function buildMissingFieldsMessage(array $missingFields): string
+    {
+        $preview = implode(', ', array_slice($missingFields, 0, 5));
+        $suffix = count($missingFields) > 5 ? ', ...' : '';
+
+        return sprintf('Processing aborted. Missing required fields: %s%s.', $preview, $suffix);
     }
 }

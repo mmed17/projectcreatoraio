@@ -91,7 +91,7 @@
 						<button
 							:type="'button'"
 							class="project-files__btn project-files__btn--primary"
-							:disabled="!selectedFolderNode || uploadBusy"
+							:disabled="!selectedFolderNode || uploadBusy || documentTypesLoading || documentTypes.length === 0"
 							@click="triggerUpload">
 							<Upload :size="18" />
 							{{ uploadBusy ? 'Uploading...' : 'Upload files' }}
@@ -113,6 +113,65 @@
 					type="file"
 					multiple
 					@change="onFilesPicked">
+
+				<div v-if="showUploadModal" class="project-files__modal-overlay" @click="closeUploadModal">
+					<div class="project-files__modal project-files__upload-modal" @click.stop>
+						<div class="project-files__modal-header">
+							<h3 class="project-files__modal-title">Upload Files</h3>
+							<button class="project-files__modal-close" @click="closeUploadModal">
+								<Close :size="20" />
+							</button>
+						</div>
+						<div class="project-files__modal-content">
+							<div class="project-files__modal-filename">{{ selectedFolderNode?.name || 'Selected folder' }}</div>
+							<label class="project-files__upload-modal-label" for="project-files-upload-type">Document type</label>
+							<select
+								id="project-files-upload-type"
+								v-model="uploadDocumentTypeId"
+								class="project-files__upload-type-select"
+								:disabled="documentTypesLoading || documentTypes.length === 0 || uploadBusy">
+								<option value="">{{ documentTypes.length === 0 ? 'No document types' : 'Select document type...' }}</option>
+								<option v-for="type in documentTypes" :key="`upload-doc-type-${type.id}`" :value="String(type.id)">
+									{{ type.name }}
+								</option>
+							</select>
+							<div class="project-files__upload-modal-row">
+								<button
+									:type="'button'"
+									class="project-files__btn"
+									:disabled="uploadBusy"
+									@click="$refs.uploadInput?.click?.()">
+									Choose files
+								</button>
+								<span class="project-files__upload-modal-hint">
+									{{ selectedUploadFiles.length === 0 ? 'No files selected yet.' : `${selectedUploadFiles.length} file${selectedUploadFiles.length === 1 ? '' : 's'} selected.` }}
+								</span>
+							</div>
+							<ul v-if="selectedUploadFiles.length > 0" class="project-files__upload-file-list">
+								<li v-for="file in selectedUploadFiles" :key="`upload-file-${file.name}-${file.size}`" class="project-files__upload-file-item">
+									<span>{{ file.name }}</span>
+									<span>{{ formatBytes(file.size) }}</span>
+								</li>
+							</ul>
+							<div class="project-files__modal-actions">
+								<button
+									:type="'button'"
+									class="project-files__btn"
+									:disabled="uploadBusy"
+									@click="closeUploadModal">
+									Cancel
+								</button>
+								<button
+									:type="'button'"
+									class="project-files__btn project-files__btn--primary"
+									:disabled="uploadBusy || !uploadDocumentTypeId || selectedUploadFiles.length === 0"
+									@click="uploadSelectedFiles">
+									{{ uploadBusy ? 'Uploading...' : 'Upload and process' }}
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
 
 				<div v-if="uploadError" class="project-files__upload-error">{{ uploadError }}</div>
 				<div v-else-if="uploadMessage" class="project-files__upload-success">{{ uploadMessage }}</div>
@@ -162,16 +221,9 @@
 								</div>
 
 								<div v-if="isSupportedFile(entry)" class="project-files__row-ocr" @click.stop>
-									<select
-										class="project-files__type-select-inline"
-										:value="documentTypeValue(entry.id)"
-										:disabled="documentTypesLoading || isAssigning(entry.id) || documentTypes.length === 0"
-										@change="assignDocumentType(entry, $event.target.value)">
-										<option value="">{{ documentTypes.length === 0 ? 'No types' : 'Assign type...' }}</option>
-										<option v-for="type in documentTypes" :key="`doc-type-${type.id}`" :value="type.id">
-											{{ type.name }}
-										</option>
-									</select>
+									<span class="project-files__type-label-inline">
+										{{ processingDocumentTypeLabel(entry.id) }}
+									</span>
 
 									<div class="project-files__status-inline" :class="statusBadgeClass(entry.id)" :title="statusLabel(entry.id) + (fileFeedback(entry.id) ? ' - ' + fileFeedback(entry.id) : '')">
 										<component :is="statusIcon(entry.id)" :size="16" />
@@ -392,6 +444,11 @@ export default {
 			uploadBusy: false,
 			uploadError: '',
 			uploadMessage: '',
+			showUploadModal: false,
+			uploadDocumentTypeId: '',
+			selectedUploadFiles: [],
+			pendingUploadTargets: [],
+			resolvingPendingUploads: false,
 		}
 	},
 	computed: {
@@ -475,11 +532,13 @@ export default {
 		sharedRoots() {
 			this.ensureSelection('shared')
 			this.queueVisibleProcessingLoad()
+			this.resolvePendingUploadedFiles()
 			this.clearUploadFeedback()
 		},
 		privateRoots() {
 			this.ensureSelection('private')
 			this.queueVisibleProcessingLoad()
+			this.resolvePendingUploadedFiles()
 			this.clearUploadFeedback()
 		},
 		projectId: {
@@ -487,6 +546,7 @@ export default {
 			handler() {
 				this.resetOcrState()
 				this.clearUploadFeedback()
+				this.resetPendingUploadProcessing()
 				this.loadDocumentTypes()
 			},
 		},
@@ -521,12 +581,24 @@ export default {
 			this.uploadError = ''
 			this.uploadMessage = ''
 		},
+		resetPendingUploadProcessing() {
+			this.pendingUploadTargets = []
+			this.resolvingPendingUploads = false
+		},
 		triggerUpload() {
 			if (!this.selectedFolderNode || this.uploadBusy) {
 				return
 			}
 			this.clearUploadFeedback()
-			this.$refs.uploadInput?.click?.()
+			this.selectedUploadFiles = []
+			this.showUploadModal = true
+		},
+		closeUploadModal() {
+			if (this.uploadBusy) {
+				return
+			}
+			this.showUploadModal = false
+			this.selectedUploadFiles = []
 		},
 		async onFilesPicked(event) {
 			const input = event?.target
@@ -536,7 +608,25 @@ export default {
 				input.value = ''
 			}
 
-			if (!this.selectedFolderNode || files.length === 0 || this.uploadBusy) {
+			if (files.length === 0) {
+				return
+			}
+			if (!this.showUploadModal) {
+				this.triggerUpload()
+			}
+			if (!this.selectedFolderNode || this.uploadBusy) {
+				return
+			}
+			this.selectedUploadFiles = files
+		},
+		async uploadSelectedFiles() {
+			if (!this.selectedFolderNode || this.selectedUploadFiles.length === 0 || this.uploadBusy) {
+				return
+			}
+
+			const uploadDocumentTypeId = Number(this.uploadDocumentTypeId)
+			if (!Number.isFinite(uploadDocumentTypeId) || uploadDocumentTypeId <= 0) {
+				this.uploadError = 'Select a document type before uploading.'
 				return
 			}
 
@@ -551,9 +641,10 @@ export default {
 			this.uploadMessage = ''
 
 			const failures = []
+			const uploadedTargets = []
 			let uploaded = 0
 
-			for (const file of files) {
+			for (const file of this.selectedUploadFiles) {
 				const name = String(file?.name || '').trim()
 				if (name === '' || name.includes('/')) {
 					failures.push(name || '(unnamed file)')
@@ -567,6 +658,10 @@ export default {
 					const ok = await webdavClient.putFileContents(target, data, { overwrite: false })
 					if (ok) {
 						uploaded += 1
+						uploadedTargets.push({
+							path: this.joinNodePath(this.selectedFolderNode.path, name),
+							documentTypeId: uploadDocumentTypeId,
+						})
 					} else {
 						failures.push(name)
 					}
@@ -579,7 +674,13 @@ export default {
 			this.uploadBusy = false
 
 			if (uploaded > 0) {
+				this.pendingUploadTargets = [
+					...this.pendingUploadTargets,
+					...uploadedTargets,
+				]
 				this.uploadMessage = `Uploaded ${uploaded} file${uploaded === 1 ? '' : 's'}.`
+				this.showUploadModal = false
+				this.selectedUploadFiles = []
 				this.$emit('refresh')
 			}
 			if (failures.length > 0) {
@@ -804,6 +905,57 @@ export default {
 			}
 			return parts.join('/')
 		},
+		joinNodePath(basePath, fileName) {
+			const base = String(basePath || '').replace(/\/+$/, '')
+			const name = String(fileName || '').replace(/^\/+/, '')
+			return `${base}/${name}`
+		},
+		findNodeByPath(nodes, targetPath) {
+			const normalizedTarget = String(targetPath || '').replace(/\/+$/, '')
+			const list = Array.isArray(nodes) ? nodes : []
+			for (const node of list) {
+				if (!node) {
+					continue
+				}
+				const nodePath = String(node.path || '').replace(/\/+$/, '')
+				if (nodePath === normalizedTarget) {
+					return node
+				}
+				if (Array.isArray(node.children) && node.children.length > 0) {
+					const childMatch = this.findNodeByPath(node.children, normalizedTarget)
+					if (childMatch) {
+						return childMatch
+					}
+				}
+			}
+			return null
+		},
+		async resolvePendingUploadedFiles() {
+			if (this.resolvingPendingUploads || this.pendingUploadTargets.length === 0) {
+				return
+			}
+			const projectId = Number(this.projectId)
+			if (!Number.isFinite(projectId) || projectId <= 0) {
+				return
+			}
+
+			this.resolvingPendingUploads = true
+			const remaining = []
+			for (const pendingTarget of this.pendingUploadTargets) {
+				const targetPath = pendingTarget?.path || ''
+				const node = this.findNodeByPath([...this.sharedRoots, ...this.privateRoots], targetPath)
+				if (!node) {
+					remaining.push(pendingTarget)
+					continue
+				}
+				if (!this.isSupportedFile(node)) {
+					continue
+				}
+				await this.assignDocumentType(node, pendingTarget.documentTypeId, true)
+			}
+			this.pendingUploadTargets = remaining
+			this.resolvingPendingUploads = false
+		},
 		formatBytes(bytes) {
 			const value = typeof bytes === 'number' ? bytes : Number(bytes)
 			if (!Number.isFinite(value) || value <= 0) {
@@ -879,13 +1031,26 @@ export default {
 			const record = this.processingByFileId[String(fileId)] || null
 			return record?.document_type_id || ''
 		},
+		processingDocumentTypeLabel(fileId) {
+			const record = this.processingByFileId[String(fileId)] || null
+			const documentTypeId = Number(record?.document_type_id ?? 0)
+			if (!Number.isFinite(documentTypeId) || documentTypeId <= 0) {
+				return 'No type'
+			}
+			const documentType = this.documentTypes.find((type) => Number(type?.id) === documentTypeId) || null
+			return documentType?.name || 'Unknown type'
+		},
 		statusLabel(fileId) {
 			const record = this.processingByFileId[String(fileId)] || null
 			if (!record) {
-				return 'Unassigned'
+				return 'Not processed'
 			}
 			if (record.ocr_status === 'failed') {
 				return 'Failed'
+			}
+			if (record.ocr_status === 'aborted') {
+				const missingCount = this.missingFieldsCount(fileId)
+				return missingCount > 0 ? `Aborted (${missingCount} missing)` : 'Aborted'
 			}
 			if (record.ocr_status === 'stale') {
 				return 'Stale'
@@ -994,6 +1159,9 @@ export default {
 			if (record.ocr_status === 'failed') {
 				return 'AlertCircleOutline'
 			}
+			if (record.ocr_status === 'aborted') {
+				return 'AlertCircleOutline'
+			}
 			if (record.ocr_status === 'stale') {
 				return 'ClockOutline'
 			}
@@ -1012,6 +1180,7 @@ export default {
 			const record = this.processingByFileId[String(fileId)] || null
 			if (!record) return 'project-files__status-inline--muted'
 			if (record.ocr_status === 'failed') return 'project-files__status-inline--error'
+			if (record.ocr_status === 'aborted') return 'project-files__status-inline--partial'
 			if (record.ocr_status === 'done' && this.hasPartialExtraction(fileId)) return 'project-files__status-inline--partial'
 			if (record.ocr_status === 'done') return 'project-files__status-inline--success'
 			if (record.ocr_status === 'processing') return 'project-files__status-inline--spin'
@@ -1031,6 +1200,9 @@ export default {
 			}
 
 			const nextStatus = this.statusLabel(fileId)
+			if (nextStatus.startsWith('Aborted')) {
+				return payload?.processing?.error_message || 'Document processing aborted due to missing fields.'
+			}
 			if (nextStatus.startsWith('Partial')) {
 				return 'Document processed with missing fields.'
 			}
@@ -1044,7 +1216,7 @@ export default {
 		},
 		canReprocess(fileId) {
 			const record = this.processingByFileId[String(fileId)] || null
-			if (!record || !record.document_type_id) {
+			if (!record) {
 				return false
 			}
 			if (this.isProcessingBusy(fileId)) {
@@ -1054,7 +1226,7 @@ export default {
 		},
 		canOpenExtractedDataModal(fileId) {
 			const record = this.processingByFileId[String(fileId)] || null
-			return !!(record && record.document_type_id)
+			return !!(record && (record.document_type_id || this.extractedEntries(fileId, true).length > 0))
 		},
 		setActiveExtractedDraft(fieldName, value) {
 			this.$set(this.activeExtractedDraft, fieldName, String(value ?? ''))
@@ -1062,7 +1234,7 @@ export default {
 		isSavingExtracted(fileId) {
 			return String(this.savingExtractedFileId || '') === String(fileId || '')
 		},
-		async assignDocumentType(node, documentTypeId) {
+		async assignDocumentType(node, documentTypeId, silent = false) {
 			if (!this.isSupportedFile(node)) {
 				return
 			}
@@ -1082,7 +1254,9 @@ export default {
 					'Document processed successfully.',
 					'Document type assigned. OCR is queued.',
 				)
-				this.$set(this.feedbackByFileId, key, message)
+				if (!silent || message) {
+					this.$set(this.feedbackByFileId, key, message)
+				}
 			} catch (error) {
 				this.$set(this.feedbackByFileId, key, error?.response?.data?.message || 'Could not assign document type.')
 			} finally {
@@ -1343,6 +1517,22 @@ export default {
 	gap: 12px;
 }
 
+.project-files__upload-type-select {
+	border: 1px solid var(--color-border);
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	border-radius: 8px;
+	padding: 8px 12px;
+	font-size: 13px;
+	font-weight: 600;
+	width: 100%;
+}
+
+.project-files__upload-type-select:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
 .project-files__btn {
 	border: 1px solid var(--color-border);
 	background: var(--color-main-background);
@@ -1461,28 +1651,14 @@ export default {
 	pointer-events: none;
 }
 
-.project-files__type-select-inline {
-	border: 1px solid transparent;
-	background: transparent;
+.project-files__type-label-inline {
 	color: var(--color-text-maxcontrast);
 	font-size: 13px;
-	padding: 4px 20px 4px 8px;
-	border-radius: 4px;
-	cursor: pointer;
-	max-width: 140px;
+	font-weight: 600;
+	max-width: 160px;
+	overflow: hidden;
 	text-overflow: ellipsis;
-}
-
-.project-files__type-select-inline:hover,
-.project-files__type-select-inline:focus {
-	border-color: var(--color-border-dark);
-	color: var(--color-main-text);
-	background: var(--color-main-background);
-}
-
-.project-files__type-select-inline:disabled {
-	opacity: 0.6;
-	cursor: not-allowed;
+	white-space: nowrap;
 }
 
 .project-files__status-inline {
@@ -1587,6 +1763,10 @@ export default {
 	max-height: 90vh;
 }
 
+.project-files__upload-modal {
+	max-width: 560px;
+}
+
 .project-files__modal-header {
 	display: flex;
 	align-items: center;
@@ -1629,6 +1809,51 @@ export default {
 	color: var(--color-text-maxcontrast);
 	margin-bottom: 16px;
 	word-break: break-all;
+}
+
+.project-files__upload-modal-label {
+	display: block;
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--color-main-text);
+	margin-bottom: 8px;
+}
+
+.project-files__upload-modal-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 16px;
+}
+
+.project-files__upload-modal-hint {
+	color: var(--color-text-maxcontrast);
+	font-size: 13px;
+}
+
+.project-files__upload-file-list {
+	list-style: none;
+	margin: 16px 0 0;
+	padding: 0;
+	border: 1px solid var(--color-border);
+	border-radius: 10px;
+	max-height: 220px;
+	overflow: auto;
+}
+
+.project-files__upload-file-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 12px;
+	border-bottom: 1px solid var(--color-border);
+	font-size: 13px;
+	color: var(--color-main-text);
+}
+
+.project-files__upload-file-item:last-child {
+	border-bottom: none;
 }
 
 .project-files__modal-warning {
