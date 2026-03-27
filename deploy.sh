@@ -15,8 +15,14 @@ set -euo pipefail
 
 cd "${REMOTE_APP_DIR}"
 
-echo "Pulling latest changes from ${REMOTE_BRANCH}"
-git pull origin "${REMOTE_BRANCH}"
+echo "Fetching latest changes from ${REMOTE_BRANCH}"
+git fetch origin "${REMOTE_BRANCH}"
+
+echo "Resetting working tree to origin/${REMOTE_BRANCH}"
+git reset --hard FETCH_HEAD
+
+echo "Installing dependencies from lockfile"
+npm ci
 
 echo "Building frontend assets"
 npm run build
