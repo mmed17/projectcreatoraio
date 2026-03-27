@@ -253,10 +253,6 @@ class OcrApiController extends Controller
             throw new OCSNotFoundException('Organization not found');
         }
 
-        if (($membership['role'] ?? null) !== 'admin') {
-            throw new OCSForbiddenException('Only organization admins can manage document types');
-        }
-
         return $userId;
     }
 
