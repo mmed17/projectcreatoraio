@@ -87,6 +87,11 @@ class ProjectRetentionService
 		];
 	}
 
+	public function deleteProject(Project $project): void
+	{
+		$this->purgeProject($project);
+	}
+
 	private function purgeProject(Project $project): void
 	{
 		$projectId = (int) ($project->getId() ?? 0);

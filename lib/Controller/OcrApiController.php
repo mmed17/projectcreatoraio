@@ -10,6 +10,7 @@ use OCA\ProjectCreatorAIO\Db\ProjectFileProcessing;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Service\FileProcessingPipelineService;
 use OCA\ProjectCreatorAIO\Service\OcrDocumentService;
+use OCA\ProjectCreatorAIO\Service\ProjectDeckOcrAttachmentService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
@@ -32,6 +33,7 @@ class OcrApiController extends Controller
         private readonly ProjectMapper $projectMapper,
         private readonly OcrDocumentService $ocrDocumentService,
         private readonly FileProcessingPipelineService $fileProcessingPipelineService,
+        private readonly ProjectDeckOcrAttachmentService $projectDeckOcrAttachmentService,
     ) {
         parent::__construct($appName, $request);
     }
@@ -220,6 +222,35 @@ class OcrApiController extends Controller
         $record = $this->fileProcessingPipelineService->processRecord($record);
 
         return new DataResponse($this->buildProcessingPayload($project, $record));
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function uploadCardAttachment(int $projectId, int $cardId, ?int $document_type_id = null): DataResponse
+    {
+        $project = $this->requireProject($projectId);
+        $userId = $this->assertCanAccessProject($project);
+
+        $params = $this->request->getParams();
+        if (is_array($params) && array_key_exists('document_type_id', $params)) {
+            $rawDocumentTypeId = $params['document_type_id'];
+            if (is_int($rawDocumentTypeId)) {
+                $document_type_id = $rawDocumentTypeId;
+            } elseif (is_numeric((string) $rawDocumentTypeId)) {
+                $document_type_id = (int) $rawDocumentTypeId;
+            }
+        }
+
+        if (!is_int($document_type_id) || $document_type_id <= 0) {
+            throw new OCSException('A document type ID is required.', 400);
+        }
+
+        $result = $this->projectDeckOcrAttachmentService->uploadAndAttach($project, $userId, $cardId, $document_type_id);
+        if (($result['status'] ?? '') === 'rejected') {
+            return new DataResponse($result, 422);
+        }
+
+        return new DataResponse($result, 201);
     }
 
     private function requireProject(int $projectId): Project

@@ -111,36 +111,17 @@ class OcrDocumentService
         }
 
         $file = $this->resolveProjectFile($project, $userId, $fileId);
-        $mimeType = trim((string) $file->getMimeType());
-        if (!in_array($mimeType, self::SUPPORTED_MIME_TYPES, true)) {
-            throw new OCSException('Only supported OCR file types can be processed (PDF, JPEG, PNG, DOCX, XLSX, XLS).', 400);
+        return $this->createOrResetProcessingRecord($project, $file, $documentType, $userId);
+    }
+
+    public function createProcessingRecordForFile(Project $project, File $file, int $documentTypeId, ?string $userId = null): ProjectFileProcessing
+    {
+        $documentType = $this->requireOrganizationDocumentType((int) $project->getOrganizationId(), $documentTypeId);
+        if ((int) $documentType->getIsActive() !== 1) {
+            throw new OCSException('This OCR document type is inactive.', 400);
         }
 
-        $userFolder = $this->rootFolder->getUserFolder($userId);
-        $relativePath = (string) $userFolder->getRelativePath($file->getPath());
-        $filePath = $relativePath !== '' ? $relativePath : (string) $file->getPath();
-
-        $existingRecord = $this->processingMapper->findByProjectAndFileId((int) $project->getId(), $fileId);
-        if ($existingRecord === null) {
-            return $this->processingMapper->createRecord(
-                (int) $project->getId(),
-                (int) $project->getOrganizationId(),
-                $fileId,
-                $filePath,
-                (string) $file->getName(),
-                $mimeType,
-                $documentType,
-            );
-        }
-
-        return $this->resetRecordForProcessing(
-            $existingRecord,
-            $project,
-            $filePath,
-            (string) $file->getName(),
-            $mimeType,
-            $documentType->getId(),
-        );
+        return $this->createOrResetProcessingRecord($project, $file, $documentType, $userId);
     }
 
     public function queueFileReprocess(Project $project, string $userId, int $fileId): ProjectFileProcessing
@@ -237,6 +218,54 @@ class OcrDocumentService
         }
 
         throw new OCSNotFoundException('File not found in project scope.');
+    }
+
+    private function createOrResetProcessingRecord(
+        Project $project,
+        File $file,
+        OrganizationDocumentType $documentType,
+        ?string $userId = null,
+    ): ProjectFileProcessing {
+        $mimeType = trim((string) $file->getMimeType());
+        if (!in_array($mimeType, self::SUPPORTED_MIME_TYPES, true)) {
+            throw new OCSException('Only supported OCR file types can be processed (PDF, JPEG, PNG, DOCX, XLSX, XLS).', 400);
+        }
+
+        $filePath = $this->resolveFilePath($file, $userId);
+        $existingRecord = $this->processingMapper->findByProjectAndFileId((int) $project->getId(), (int) $file->getId());
+        if ($existingRecord === null) {
+            return $this->processingMapper->createRecord(
+                (int) $project->getId(),
+                (int) $project->getOrganizationId(),
+                (int) $file->getId(),
+                $filePath,
+                (string) $file->getName(),
+                $mimeType,
+                $documentType,
+            );
+        }
+
+        return $this->resetRecordForProcessing(
+            $existingRecord,
+            $project,
+            $filePath,
+            (string) $file->getName(),
+            $mimeType,
+            (int) $documentType->getId(),
+        );
+    }
+
+    private function resolveFilePath(File $file, ?string $userId = null): string
+    {
+        if ($userId !== null && $userId !== '') {
+            $userFolder = $this->rootFolder->getUserFolder($userId);
+            $relativePath = (string) $userFolder->getRelativePath($file->getPath());
+            if ($relativePath !== '') {
+                return $relativePath;
+            }
+        }
+
+        return (string) $file->getPath();
     }
 
     private function pathMatchesRoot(string $relativePath, string $rootPath): bool

@@ -269,10 +269,24 @@
 									</option>
 								</select>
 							</label>
+							<NcButton
+								v-if="canDeleteSelectedProject"
+								type="tertiary"
+								:disabled="projectDeleting"
+								class="projects-home__delete-button"
+								@click="deleteSelectedProject">
+								<template #icon>
+									<Delete :size="16" />
+								</template>
+								{{ projectDeleting ? 'Deleting...' : 'Delete project' }}
+							</NcButton>
 						</div>
 					</div>
 					<p v-if="canEditProjectStatus && statusUpdateError" class="projects-home__inline-error">
 						{{ statusUpdateError }}
+					</p>
+					<p v-if="projectDeleteError" class="projects-home__inline-error">
+						{{ projectDeleteError }}
 					</p>
 				</header>
 
@@ -921,6 +935,7 @@ import ChartGantt from 'vue-material-design-icons/ChartGantt.vue'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
 import Draw from 'vue-material-design-icons/Draw.vue'
 import Download from 'vue-material-design-icons/Download.vue'
+import Delete from 'vue-material-design-icons/Delete.vue'
 import FilterRemove from 'vue-material-design-icons/FilterRemove.vue'
 import FolderOpen from 'vue-material-design-icons/FolderOpen.vue'
 import FolderOutline from 'vue-material-design-icons/FolderOutline.vue'
@@ -976,6 +991,7 @@ export default {
 		ChevronLeft,
 		DeckAnalytics,
 		DeckBoard,
+		Delete,
 		Draw,
 		Download,
 		FilterRemove,
@@ -1014,6 +1030,8 @@ export default {
 			filesLoading: false,
 			statusUpdating: false,
 			statusUpdateError: '',
+			projectDeleting: false,
+			projectDeleteError: '',
 			showCreateModal: false,
 			activeTab: 'overview',
 			sortKey: 'default',
@@ -1104,6 +1122,17 @@ export default {
 			return ownerId !== '' && currentUserId !== '' && ownerId === currentUserId
 		},
 		canEditProjectTitle() {
+			if (this.canManageProjects) {
+				return true
+			}
+			const ownerId = String(this.selectedProject?.ownerId || '').trim()
+			const currentUserId = String(this.context?.userId || '').trim()
+			return ownerId !== '' && currentUserId !== '' && ownerId === currentUserId
+		},
+		canDeleteSelectedProject() {
+			if (!this.selectedProject) {
+				return false
+			}
 			if (this.canManageProjects) {
 				return true
 			}
@@ -1441,6 +1470,45 @@ export default {
 				this.statusUpdating = false
 			}
 		},
+		async deleteSelectedProject() {
+			if (!this.selectedProject || this.projectDeleting || !this.canDeleteSelectedProject) {
+				return
+			}
+
+			const projectId = Number(this.selectedProject.id)
+			if (!Number.isFinite(projectId) || projectId <= 0) {
+				return
+			}
+
+			const projectName = String(this.selectedProject.name || 'this project').trim() || 'this project'
+			const confirmed = window.confirm(`Delete "${projectName}"? This also removes its shared files, private folders, board, notes, timeline, and membership group.`)
+			if (!confirmed) {
+				return
+			}
+
+			this.projectDeleting = true
+			this.projectDeleteError = ''
+
+			try {
+				await projectsService.delete(projectId)
+				this.resetProjectProfileEditor()
+				this.resetMembersState()
+				this.resetFilesState()
+				this.selectedProject = null
+				this.selectedProjectId = null
+				this.activeTab = 'overview'
+				this.loadedMembersProjectId = null
+				this.loadedFilesProjectId = null
+				if (this.isNarrow) {
+					this.mobilePane = 'list'
+				}
+				await this.loadProjects()
+			} catch (error) {
+				this.projectDeleteError = error?.response?.data?.message || 'Could not delete project.'
+			} finally {
+				this.projectDeleting = false
+			}
+		},
 		async loadContext() {
 			this.contextError = ''
 			try {
@@ -1483,6 +1551,7 @@ export default {
 		async selectProject(project) {
 			this.activeTab = 'overview'
 			this.statusUpdateError = ''
+			this.projectDeleteError = ''
 			this.memberInviteMessage = ''
 			this.membersError = ''
 			this.resetProjectProfileEditor()
@@ -2079,6 +2148,8 @@ export default {
 
 .projects-home__hero-actions {
 	display: flex;
+	align-items: flex-end;
+	gap: 10px;
 	flex-shrink: 0;
 }
 
@@ -2097,6 +2168,40 @@ export default {
 
 .projects-home__status-select {
 	min-width: 180px;
+}
+
+.projects-home__delete-button {
+	--button-size: 36px;
+	--button-border-radius: 10px;
+	align-self: flex-end;
+	min-height: 36px;
+	padding: 0 12px;
+	border: 1px solid #e11919;
+	background: #e11919;
+	color: #fff;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1;
+	box-shadow: 0 1px 2px rgba(148, 23, 23, 0.18);
+}
+
+.projects-home__delete-button:hover,
+.projects-home__delete-button:focus-visible {
+	border-color: #c91515;
+	background: #c91515;
+	color: #fff;
+}
+
+.projects-home__delete-button:active {
+	border-color: #b51212;
+	background: #b51212;
+}
+
+.projects-home__delete-button:disabled {
+	border-color: rgba(225, 25, 25, 0.45);
+	background: rgba(225, 25, 25, 0.45);
+	color: rgba(255, 255, 255, 0.9);
+	box-shadow: none;
 }
 
 /* Badges */

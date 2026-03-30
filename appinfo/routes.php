@@ -120,6 +120,11 @@ return [
             "verb" => "POST",
         ],
         [
+            "name" => "ocr_api#uploadCardAttachment",
+            "url" => "/api/v1/projects/{projectId}/cards/{cardId}/ocr/attachments",
+            "verb" => "POST",
+        ],
+        [
             "name" => "ocr_api#listOrganizationDocumentTypes",
             "url" => "/api/v1/organizations/{organizationId}/ocr/document-types",
             "verb" => "GET",
@@ -148,6 +153,11 @@ return [
             "name" => "project_api#update",
             "url" => "/api/v1/projects/{id}",
             "verb" => "PUT",
+        ],
+        [
+            "name" => "project_api#delete",
+            "url" => "/api/v1/projects/{projectId}",
+            "verb" => "DELETE",
         ],
         // Timeline API routes
         [

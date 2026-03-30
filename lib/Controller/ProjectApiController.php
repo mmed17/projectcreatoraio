@@ -3,6 +3,7 @@ namespace OCA\Projectcreatoraio\Controller;
 
 use OCA\ProjectCreatorAIO\Service\ProjectService;
 use OCA\ProjectCreatorAIO\Service\ProjectActivityService;
+use OCA\ProjectCreatorAIO\Service\ProjectRetentionService;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectNote;
 use OCA\Organization\Db\UserMapper as OrganizationUserMapper;
@@ -34,6 +35,7 @@ class ProjectApiController extends Controller
         protected ProjectNoteMapper $noteMapper,
         protected ProjectService $projectService,
         private ProjectActivityService $projectActivityService,
+        private ProjectRetentionService $projectRetentionService,
         private IGroupManager $iGroupManager,
         private OrganizationUserMapper $organizationUserMapper,
         private IRootFolder $rootFolder,
@@ -966,6 +968,29 @@ class ProjectApiController extends Controller
         return new DataResponse($updatedProject);
     }
 
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function delete(int $projectId): DataResponse
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project with ID $projectId not found");
+        }
+
+        $this->assertCanAccessProject($project);
+
+        if (!$this->canDeleteProject($project)) {
+            throw new OCSForbiddenException('Only organization admins or the project owner can delete this project');
+        }
+
+        $this->projectRetentionService->deleteProject($project);
+
+        return new DataResponse([
+            'deleted' => true,
+            'projectId' => $projectId,
+        ]);
+    }
+
     private function canAdministerProject(Project $project): bool
     {
         $currentUser = $this->userSession->getUser();
@@ -990,6 +1015,21 @@ class ProjectApiController extends Controller
     }
 
     private function canEditPreparationWeeks(Project $project): bool
+    {
+        if ($this->canAdministerProject($project)) {
+            return true;
+        }
+
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            return false;
+        }
+
+        $ownerId = trim((string) $project->getOwnerId());
+        return $ownerId !== '' && $ownerId === $currentUser->getUID();
+    }
+
+    private function canDeleteProject(Project $project): bool
     {
         if ($this->canAdministerProject($project)) {
             return true;

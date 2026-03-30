@@ -98,6 +98,24 @@ export class ProjectsService {
     }
 
     /**
+     * Delete a project.
+     *
+     * @param {number} projectId
+     * @returns {Promise<boolean>}
+     */
+    async delete(projectId) {
+        const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}`)
+        const response = await axios.delete(url, {
+            headers: {
+                'OCS-APIRequest': 'true',
+                'Content-Type': 'application/json',
+            },
+        })
+
+        return response?.data?.deleted === true
+    }
+
+    /**
      * Get Combi card-visibility questionnaire state for a project.
      *
      * @param {number} projectId
