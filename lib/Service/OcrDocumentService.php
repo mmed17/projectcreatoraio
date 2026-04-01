@@ -163,16 +163,26 @@ class OcrDocumentService
             throw new OCSNotFoundException('OCR processing record not found for this file.');
         }
 
+        return $this->applyExtractedFields($project, $record, $fields);
+    }
+
+    public function applyExtractedFields(Project $project, ProjectFileProcessing $record, array $fields): ProjectFileProcessing
+    {
+        if ($record->getDocumentTypeId() === null) {
+            throw new OCSNotFoundException('OCR processing record not found for this file.');
+        }
+
         $documentType = $this->requireOrganizationDocumentType(
             (int) $project->getOrganizationId(),
             (int) $record->getDocumentTypeId(),
         );
 
         $normalizedExtracted = $this->normalizeExtractedFields($documentType->getFields(), $fields);
+        $missingFields = $this->findMissingFieldNamesFromExtracted($normalizedExtracted);
 
         $record->setExtractedJson(json_encode($normalizedExtracted, JSON_UNESCAPED_SLASHES));
-        $record->setOcrStatus('done');
-        $record->setErrorMessage(null);
+        $record->setOcrStatus($missingFields === [] ? 'done' : 'aborted');
+        $record->setErrorMessage($missingFields === [] ? null : $this->buildMissingFieldsMessage($missingFields));
         $record->setProcessedAt(new DateTime());
 
         return $this->processingMapper->saveRecord($record);
@@ -357,6 +367,34 @@ class OcrDocumentService
         }
 
         return substr($fieldName, 0, 255);
+    }
+
+    /**
+     * @param array<string, array{name:string,value:?string,confidence:string}> $extracted
+     * @return string[]
+     */
+    private function findMissingFieldNamesFromExtracted(array $extracted): array
+    {
+        $missing = [];
+        foreach ($extracted as $fieldName => $payload) {
+            $value = $payload['value'] ?? null;
+            if (!is_scalar($value) || trim((string) $value) === '') {
+                $missing[] = (string) $fieldName;
+            }
+        }
+
+        return $missing;
+    }
+
+    /**
+     * @param string[] $missingFields
+     */
+    private function buildMissingFieldsMessage(array $missingFields): string
+    {
+        $preview = implode(', ', array_slice($missingFields, 0, 5));
+        $suffix = count($missingFields) > 5 ? ', ...' : '';
+
+        return sprintf('Processing aborted. Missing required fields: %s%s.', $preview, $suffix);
     }
 
     /**

@@ -125,6 +125,11 @@ return [
             "verb" => "POST",
         ],
         [
+            "name" => "ocr_api#finalizeCardAttachment",
+            "url" => "/api/v1/projects/{projectId}/cards/{cardId}/ocr/attachments/finalize",
+            "verb" => "POST",
+        ],
+        [
             "name" => "ocr_api#listOrganizationDocumentTypes",
             "url" => "/api/v1/organizations/{organizationId}/ocr/document-types",
             "verb" => "GET",

@@ -2,6 +2,8 @@
 
 namespace OCA\ProjectCreatorAIO\Service;
 
+use DateInterval;
+use DateTime;
 use OCA\Deck\Db\Board;
 use OCA\Deck\Db\Label;
 use OCA\Deck\Db\Stack;
@@ -19,6 +21,7 @@ class DeckDefaultCardsService
 	private const IMPORTANT_LABEL_TITLE = 'Kritieke Processtap';
 	private const LEGACY_IMPORTANT_LABEL_TITLES = ['Belangrijk'];
 	private const IMPORTANT_LABEL_COLOR = 'FF0000';
+	private const DEFAULT_CARD_DEADLINE_INTERVAL = 'P3M';
 
 	public function __construct(
 		private readonly CardService $cardService,
@@ -192,7 +195,8 @@ class DeckDefaultCardsService
 					'plain',
 					(int)$index,
 					$ownerUid,
-					''
+					'',
+					$this->buildDefaultCardDeadline(),
 				);
 
 				$title = (string) ($cardTemplate['title'] ?? '');
@@ -222,6 +226,11 @@ class DeckDefaultCardsService
 				continue;
 			}
 		}
+	}
+
+	private function buildDefaultCardDeadline(): DateTime
+	{
+		return (new DateTime())->add(new DateInterval(self::DEFAULT_CARD_DEADLINE_INTERVAL));
 	}
 
 	/**

@@ -49,8 +49,6 @@ class ProjectDeckOcrAttachmentService
 
 			if ($record->getOcrStatus() !== 'done') {
 				$missingFields = $this->extractMissingFields($record);
-				$this->deleteProcessingRecord($record);
-				$this->deleteFileQuietly($stagedFile);
 
 				return [
 					'status' => 'rejected',
@@ -77,6 +75,44 @@ class ProjectDeckOcrAttachmentService
 				$this->deleteProcessingRecord($record);
 			}
 			$this->deleteFileQuietly($stagedFile);
+			throw $e;
+		}
+	}
+
+	public function finalizePendingAttachment(Project $project, string $userId, int $cardId, int $processingId, array $fields): array
+	{
+		$this->assertCardBelongsToProject($project, $cardId);
+
+		$record = $this->processingMapper->find($processingId);
+		if (!$record instanceof ProjectFileProcessing || (int) $record->getProjectId() !== (int) $project->getId()) {
+			throw new OCSException('OCR processing record not found.', 404);
+		}
+
+		$file = $this->resolveFileNode((int) $record->getFileId());
+		$record = $this->ocrDocumentService->applyExtractedFields($project, $record, $fields);
+		if ($record->getOcrStatus() !== 'done') {
+			return [
+				'status' => 'rejected',
+				'message' => $record->getErrorMessage() ?: 'Upload rejected because OCR could not extract all required fields.',
+				'missing_fields' => $this->extractMissingFields($record),
+				'processing' => $record->jsonSerialize(),
+			];
+		}
+
+		try {
+			$finalFile = $this->moveFileToCardFolder($project, $userId, $cardId, $file);
+			$record = $this->refreshProcessingRecordAfterFinalize($record, $finalFile, $userId);
+
+			$attachment = $this->cardFileAttachmentService->attachExistingFileToCard($cardId, $finalFile, $userId);
+			$attachment = $this->attachmentService->enrichAttachment($attachment);
+			$this->attachmentService->postAttachmentCreated($attachment);
+
+			return [
+				'status' => 'accepted',
+				'attachment' => $attachment,
+				'processing' => $record->jsonSerialize(),
+			];
+		} catch (\Throwable $e) {
 			throw $e;
 		}
 	}
@@ -202,6 +238,17 @@ class ProjectDeckOcrAttachmentService
 			}
 		}
 		return array_values(array_filter($missing, static fn (string $field): bool => trim($field) !== ''));
+	}
+
+	private function resolveFileNode(int $fileId): File
+	{
+		foreach ($this->rootFolder->getById($fileId) as $node) {
+			if ($node instanceof File) {
+				return $node;
+			}
+		}
+
+		throw new OCSException('OCR source file no longer exists.', 404);
 	}
 
 	private function getUploadedFile(): array

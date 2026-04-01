@@ -253,6 +253,31 @@ class OcrApiController extends Controller
         return new DataResponse($result, 201);
     }
 
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
+    public function finalizeCardAttachment(int $projectId, int $cardId): DataResponse
+    {
+        $project = $this->requireProject($projectId);
+        $userId = $this->assertCanAccessProject($project);
+
+        $params = $this->request->getParams();
+        $processingId = is_numeric((string) ($params['processing_id'] ?? null)) ? (int) $params['processing_id'] : 0;
+        $fields = is_array($params['fields'] ?? null) ? $params['fields'] : null;
+        if ($processingId <= 0) {
+            throw new OCSException('A processing ID is required.', 400);
+        }
+        if ($fields === null) {
+            throw new OCSException('A fields payload is required.', 400);
+        }
+
+        $result = $this->projectDeckOcrAttachmentService->finalizePendingAttachment($project, $userId, $cardId, $processingId, $fields);
+        if (($result['status'] ?? '') === 'rejected') {
+            return new DataResponse($result, 422);
+        }
+
+        return new DataResponse($result, 201);
+    }
+
     private function requireProject(int $projectId): Project
     {
         $project = $this->projectMapper->find($projectId);
