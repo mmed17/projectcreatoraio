@@ -13,6 +13,7 @@ use OCA\Deck\Service\PermissionService;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectFileProcessing;
 use OCA\ProjectCreatorAIO\Db\ProjectFileProcessingMapper;
+use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCP\AppFramework\OCS\OCSException;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -31,6 +32,7 @@ class ProjectDeckOcrAttachmentService
 		private OcrDocumentService $ocrDocumentService,
 		private FileProcessingPipelineService $fileProcessingPipelineService,
 		private ProjectFileProcessingMapper $processingMapper,
+		private ProjectMapper $projectMapper,
 		private CardFileAttachmentService $cardFileAttachmentService,
 		private AttachmentService $attachmentService,
 	) {
@@ -39,12 +41,13 @@ class ProjectDeckOcrAttachmentService
 	public function uploadAndAttach(Project $project, string $userId, int $cardId, int $documentTypeId): array
 	{
 		$this->assertCardBelongsToProject($project, $cardId);
+		$storageScope = $this->getRequestedStorageScope();
 
 		$stagedFile = $this->createStagedFile($project, $userId);
 		$record = null;
 
 		try {
-			$record = $this->ocrDocumentService->createProcessingRecordForFile($project, $stagedFile, $documentTypeId, $userId);
+			$record = $this->ocrDocumentService->createProcessingRecordForFile($project, $stagedFile, $documentTypeId, $userId, $storageScope);
 			$record = $this->fileProcessingPipelineService->processRecord($record);
 
 			if ($record->getOcrStatus() !== 'done') {
@@ -58,7 +61,7 @@ class ProjectDeckOcrAttachmentService
 				];
 			}
 
-			$finalFile = $this->moveFileToCardFolder($project, $userId, $cardId, $stagedFile);
+			$finalFile = $this->moveFileToCardFolder($project, $userId, $cardId, $stagedFile, $storageScope);
 			$record = $this->refreshProcessingRecordAfterFinalize($record, $finalFile, $userId);
 
 			$attachment = $this->cardFileAttachmentService->attachExistingFileToCard($cardId, $finalFile, $userId);
@@ -100,7 +103,8 @@ class ProjectDeckOcrAttachmentService
 		}
 
 		try {
-			$finalFile = $this->moveFileToCardFolder($project, $userId, $cardId, $file);
+			$storageScope = $this->normalizeStorageScope((string) ($record->getStorageScope() ?? 'shared'));
+			$finalFile = $this->moveFileToCardFolder($project, $userId, $cardId, $file, $storageScope);
 			$record = $this->refreshProcessingRecordAfterFinalize($record, $finalFile, $userId);
 
 			$attachment = $this->cardFileAttachmentService->attachExistingFileToCard($cardId, $finalFile, $userId);
@@ -147,10 +151,10 @@ class ProjectDeckOcrAttachmentService
 		return $target;
 	}
 
-	private function moveFileToCardFolder(Project $project, string $userId, int $cardId, File $file): File
+	private function moveFileToCardFolder(Project $project, string $userId, int $cardId, File $file, string $storageScope = 'shared'): File
 	{
 		$userFolder = $this->rootFolder->getUserFolder($userId);
-		$destinationFolder = $this->ensureFolder($userFolder, $this->buildCardFolderPath($project, $cardId));
+		$destinationFolder = $this->ensureFolder($userFolder, $this->buildCardFolderPath($project, $cardId, $storageScope, $userId));
 		$targetName = $destinationFolder->getNonExistingName($file->getName());
 		$targetPath = rtrim($destinationFolder->getPath(), '/') . '/' . $targetName;
 		$moved = $file->move($targetPath);
@@ -160,20 +164,60 @@ class ProjectDeckOcrAttachmentService
 		return $moved;
 	}
 
-	private function buildCardFolderPath(Project $project, int $cardId): string
+	private function buildCardFolderPath(Project $project, int $cardId, string $storageScope, string $userId): string
 	{
+		$storageScope = $this->normalizeStorageScope($storageScope);
+		if ($storageScope === 'private') {
+			$privateRoot = $this->resolvePrivateRootFolderName($project, $userId);
+			if ($privateRoot === '') {
+				throw new OCSException('Private project folder is missing for this user.', 400);
+			}
+			return $privateRoot . '/Scrumban/' . $this->resolveCardFolderName($cardId);
+		}
+
 		$projectFolderPath = trim((string) $project->getFolderPath(), '/');
 		if ($projectFolderPath === '') {
 			throw new OCSException('Project folder path is missing.', 400);
 		}
 
+		return basename($projectFolderPath) . '/Scrumban/' . $this->resolveCardFolderName($cardId);
+	}
+
+	private function resolveCardFolderName(int $cardId): string
+	{
 		$card = $this->cardMapper->find($cardId, false);
 		$cardFolderName = $this->toSafeFolderName((string) $card->getTitle());
-		if ($cardFolderName === '') {
-			$cardFolderName = 'Card';
+		return $cardFolderName !== '' ? $cardFolderName : 'Card';
+	}
+
+	private function resolvePrivateRootFolderName(Project $project, string $userId): string
+	{
+		$link = $this->projectMapper->findPrivateFolderForUser((int) ($project->getId() ?? 0), $userId);
+		if ($link === null) {
+			return '';
 		}
 
-		return basename($projectFolderPath) . '/Scrumban/' . $cardFolderName;
+		$folderId = (int) ($link->getFolderId() ?? 0);
+		if ($folderId > 0) {
+			$userFolder = $this->rootFolder->getUserFolder($userId);
+			$node = $userFolder->getFirstNodeById($folderId);
+			if ($node instanceof Folder) {
+				return trim((string) $userFolder->getRelativePath($node->getPath()), '/');
+			}
+		}
+
+		return trim(basename((string) ($link->getFolderPath() ?? '')), '/');
+	}
+
+	private function getRequestedStorageScope(): string
+	{
+		return $this->normalizeStorageScope((string) $this->request->getParam('storage_scope', 'shared'));
+	}
+
+	private function normalizeStorageScope(string $storageScope): string
+	{
+		$storageScope = strtolower(trim($storageScope));
+		return $storageScope === 'private' ? 'private' : 'shared';
 	}
 
 	private function ensureFolder(Folder $baseFolder, string $path): Folder

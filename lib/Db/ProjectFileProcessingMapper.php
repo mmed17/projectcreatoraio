@@ -22,6 +22,7 @@ class ProjectFileProcessingMapper extends QBMapper
         'file_name',
         'mime_type',
         'document_type_id',
+        'storage_scope',
         'ocr_status',
         'extracted_json',
         'error_message',
@@ -119,6 +120,7 @@ class ProjectFileProcessingMapper extends QBMapper
         string $fileName,
         string $mimeType,
         OrganizationDocumentType $documentType,
+        string $storageScope = 'shared',
     ): ProjectFileProcessing {
         $record = new ProjectFileProcessing();
         $record->setProjectId($projectId);
@@ -128,6 +130,7 @@ class ProjectFileProcessingMapper extends QBMapper
         $record->setFileName($fileName);
         $record->setMimeType($mimeType);
         $record->setDocumentTypeId($documentType->getId());
+        $record->setStorageScope($storageScope);
         $record->setOcrStatus('pending');
 
         $now = new DateTime();

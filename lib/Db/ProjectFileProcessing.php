@@ -18,6 +18,7 @@ class ProjectFileProcessing extends Entity implements JsonSerializable
     protected ?string $fileName = null;
     protected ?string $mimeType = null;
     protected ?int $documentTypeId = null;
+    protected ?string $storageScope = null;
     protected ?string $ocrStatus = null;
     protected ?string $extractedJson = null;
     protected ?string $errorMessage = null;
@@ -34,6 +35,7 @@ class ProjectFileProcessing extends Entity implements JsonSerializable
         $this->addType('fileName', Types::STRING);
         $this->addType('mimeType', Types::STRING);
         $this->addType('documentTypeId', Types::INTEGER);
+        $this->addType('storageScope', Types::STRING);
         $this->addType('ocrStatus', Types::STRING);
         $this->addType('extractedJson', Types::TEXT);
         $this->addType('errorMessage', Types::TEXT);
@@ -53,6 +55,7 @@ class ProjectFileProcessing extends Entity implements JsonSerializable
             'file_name' => $this->fileName,
             'mime_type' => $this->mimeType,
             'document_type_id' => $this->documentTypeId,
+            'storage_scope' => $this->storageScope,
             'ocr_status' => $this->ocrStatus,
             'extracted' => $this->decodeExtractedJson(),
             'error_message' => $this->errorMessage,

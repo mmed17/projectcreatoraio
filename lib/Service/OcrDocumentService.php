@@ -114,14 +114,14 @@ class OcrDocumentService
         return $this->createOrResetProcessingRecord($project, $file, $documentType, $userId);
     }
 
-    public function createProcessingRecordForFile(Project $project, File $file, int $documentTypeId, ?string $userId = null): ProjectFileProcessing
+    public function createProcessingRecordForFile(Project $project, File $file, int $documentTypeId, ?string $userId = null, string $storageScope = 'shared'): ProjectFileProcessing
     {
         $documentType = $this->requireOrganizationDocumentType((int) $project->getOrganizationId(), $documentTypeId);
         if ((int) $documentType->getIsActive() !== 1) {
             throw new OCSException('This OCR document type is inactive.', 400);
         }
 
-        return $this->createOrResetProcessingRecord($project, $file, $documentType, $userId);
+        return $this->createOrResetProcessingRecord($project, $file, $documentType, $userId, $storageScope);
     }
 
     public function queueFileReprocess(Project $project, string $userId, int $fileId): ProjectFileProcessing
@@ -153,6 +153,7 @@ class OcrDocumentService
             (string) $file->getName(),
             $mimeType,
             $documentType->getId(),
+            (string) ($existingRecord->getStorageScope() ?? 'shared'),
         );
     }
 
@@ -235,6 +236,7 @@ class OcrDocumentService
         File $file,
         OrganizationDocumentType $documentType,
         ?string $userId = null,
+        string $storageScope = 'shared',
     ): ProjectFileProcessing {
         $mimeType = trim((string) $file->getMimeType());
         if (!in_array($mimeType, self::SUPPORTED_MIME_TYPES, true)) {
@@ -252,6 +254,7 @@ class OcrDocumentService
                 (string) $file->getName(),
                 $mimeType,
                 $documentType,
+                $storageScope,
             );
         }
 
@@ -262,6 +265,7 @@ class OcrDocumentService
             (string) $file->getName(),
             $mimeType,
             (int) $documentType->getId(),
+            $storageScope,
         );
     }
 
@@ -297,12 +301,14 @@ class OcrDocumentService
         string $fileName,
         string $mimeType,
         int $documentTypeId,
+        string $storageScope = 'shared',
     ): ProjectFileProcessing {
         $record->setOrganizationId((int) $project->getOrganizationId());
         $record->setFilePath($filePath);
         $record->setFileName($fileName);
         $record->setMimeType($mimeType);
         $record->setDocumentTypeId($documentTypeId);
+        $record->setStorageScope($storageScope);
         $record->setOcrStatus('pending');
         $record->setExtractedJson(null);
         $record->setErrorMessage(null);
