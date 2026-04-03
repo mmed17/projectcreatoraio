@@ -35,6 +35,7 @@ class ProjectDigestService {
 	public function sendDailyDigests(?DateTimeInterface $now = null): void {
 		$currentTime = $now instanceof DateTimeInterface ? DateTime::createFromInterface($now) : new DateTime();
 		$initialNotBefore = (clone $currentTime)->sub(new DateInterval(self::INITIAL_LOOKBACK));
+		$digestsByRecipient = [];
 
 		foreach ($this->projectMapper->list() as $project) {
 			$projectId = (int) ($project->getId() ?? 0);
@@ -43,12 +44,26 @@ class ProjectDigestService {
 			}
 
 			foreach ($this->memberResolver->getProjectMembers($project) as $recipient) {
-				$this->processRecipient($project, $recipient, $currentTime, $initialNotBefore);
+				$this->collectRecipientProjectDigest($digestsByRecipient, $project, $recipient, $initialNotBefore);
 			}
+		}
+
+		foreach ($digestsByRecipient as $digest) {
+			$this->sendRecipientDigest($digest, $currentTime);
 		}
 	}
 
-	private function processRecipient(Project $project, IUser $recipient, DateTimeInterface $currentTime, DateTimeInterface $initialNotBefore): void {
+	/**
+	 * @param array<string, array{
+	 *   recipient: IUser,
+	 *   projects: array<int, array{
+	 *     project: Project,
+	 *     events: ProjectActivityEvent[],
+	 *     lastEventId: int
+	 *   }>
+	 * }> $digestsByRecipient
+	 */
+	private function collectRecipientProjectDigest(array &$digestsByRecipient, Project $project, IUser $recipient, DateTimeInterface $initialNotBefore): void {
 		$projectId = (int) ($project->getId() ?? 0);
 		$recipientUid = trim((string) $recipient->getUID());
 		if ($projectId <= 0 || $recipientUid === '') {
@@ -66,48 +81,106 @@ class ProjectDigestService {
 			return;
 		}
 
+		$lastEvent = end($events);
+		if (!$lastEvent instanceof ProjectActivityEvent) {
+			return;
+		}
+
+		if (!isset($digestsByRecipient[$recipientUid])) {
+			$digestsByRecipient[$recipientUid] = [
+				'recipient' => $recipient,
+				'projects' => [],
+			];
+		}
+
+		$digestsByRecipient[$recipientUid]['projects'][] = [
+			'project' => $project,
+			'events' => $events,
+			'lastEventId' => (int) $lastEvent->getId(),
+		];
+	}
+
+	/**
+	 * @param array{
+	 *   recipient: IUser,
+	 *   projects: array<int, array{
+	 *     project: Project,
+	 *     events: ProjectActivityEvent[],
+	 *     lastEventId: int
+	 *   }>
+	 * } $digest
+	 */
+	private function sendRecipientDigest(array $digest, DateTimeInterface $currentTime): void {
+		$recipient = $digest['recipient'];
+		$recipientUid = trim((string) $recipient->getUID());
+		if ($recipientUid === '' || $digest['projects'] === []) {
+			return;
+		}
+
 		$email = trim((string) ($recipient->getEMailAddress() ?? ''));
 		if ($email === '') {
 			$this->logger->warning('Skipping project digest because recipient has no email address', [
-				'projectId' => $projectId,
 				'userUid' => $recipientUid,
+				'projectIds' => array_map(
+					static fn (array $projectDigest): int => (int) (($projectDigest['project']->getId()) ?? 0),
+					$digest['projects'],
+				),
 			]);
 			return;
 		}
 
 		try {
-			$this->sendDigest($project, $recipient, $events);
-			$lastEvent = end($events);
-			if ($lastEvent instanceof ProjectActivityEvent) {
-				$this->cursorMapper->advanceCursor($projectId, $recipientUid, (int) $lastEvent->getId(), $currentTime);
+			$this->sendDigest($recipient, $digest['projects']);
+			foreach ($digest['projects'] as $projectDigest) {
+				$projectId = (int) (($projectDigest['project']->getId()) ?? 0);
+				if ($projectId <= 0) {
+					continue;
+				}
+
+				$this->cursorMapper->advanceCursor($projectId, $recipientUid, $projectDigest['lastEventId'], $currentTime);
 			}
 		} catch (\Throwable $e) {
 			$this->logger->error('Failed to send project digest email', [
 				'exception' => $e,
-				'projectId' => $projectId,
 				'userUid' => $recipientUid,
+				'projectIds' => array_map(
+					static fn (array $projectDigest): int => (int) (($projectDigest['project']->getId()) ?? 0),
+					$digest['projects'],
+				),
 			]);
 		}
 	}
 
 	/**
-	 * @param ProjectActivityEvent[] $events
+	 * @param array<int, array{
+	 *   project: Project,
+	 *   events: ProjectActivityEvent[],
+	 *   lastEventId: int
+	 * }> $projectDigests
 	 */
-	private function sendDigest(Project $project, IUser $recipient, array $events): void {
-		$projectName = $this->getProjectName($project);
-		$subject = sprintf('%s: daily activity summary (%d)', $projectName, count($events));
+	private function sendDigest(IUser $recipient, array $projectDigests): void {
+		$totalEvents = 0;
+		foreach ($projectDigests as $projectDigest) {
+			$totalEvents += count($projectDigest['events']);
+		}
+
+		$subject = sprintf('Daily project activity summary (%d)', $totalEvents);
 		$template = $this->mailer->createEMailTemplate('project_activity_digest', [
-			'projectName' => $projectName,
 			'recipientUid' => $recipient->getUID(),
 		]);
 		$template->setSubject($subject);
 		$template->addHeader();
 		$template->addHeading($subject);
-		$template->addBodyText(sprintf('Here is the latest activity for project %s.', $projectName));
+		$template->addBodyText('Here is the latest activity across your projects.');
 
-		foreach ($events as $event) {
-			[$text, $meta] = $this->formatEvent($event);
-			$template->addBodyListItem($text, $meta, '', $text, $meta);
+		foreach ($projectDigests as $projectDigest) {
+			$projectName = $this->getProjectName($projectDigest['project']);
+			$template->addHeading(sprintf('%s (%d)', $projectName, count($projectDigest['events'])));
+
+			foreach ($projectDigest['events'] as $event) {
+				[$text, $meta] = $this->formatEvent($event);
+				$template->addBodyListItem($text, $meta, '', $text, $meta);
+			}
 		}
 
 		$template->addBodyButton('Open Projects', $this->urlGenerator->linkToRouteAbsolute('projectcreatoraio.page.index'));
