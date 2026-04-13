@@ -56,7 +56,7 @@ class ProjectApiController extends Controller
         $this->assertCanAccessProject($project);
 
         $notes = $this->projectService->getProjectNotes($projectId);
-        $payload = $project->jsonSerialize();
+        $payload = $this->projectService->buildProjectPayload($project);
         $payload['public_note'] = $notes['public'] ?? '';
         $payload['private_note'] = $notes['private'] ?? '';
         $payload['private_note_available'] = (bool) ($notes['private_available'] ?? true);
@@ -703,7 +703,7 @@ class ProjectApiController extends Controller
             }
         }
 
-        return new DataResponse($results);
+        return new DataResponse($this->projectService->buildProjectPayloads($results));
     }
 
     #[NoCSRFRequired]

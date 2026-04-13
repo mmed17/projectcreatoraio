@@ -30,6 +30,7 @@ class ProjectMapper extends QBMapper
         string $ownerId,
         string $boardId,
         string $projectGroupGid,
+        ?string $talkConversationToken,
         int $folderId,
         string $folderPath,
         array $privateFolders,
@@ -53,6 +54,7 @@ class ProjectMapper extends QBMapper
         $project->setOwnerId($ownerId);
         $project->setBoardId($boardId);
         $project->setProjectGroupGid($projectGroupGid);
+        $project->setTalkConversationToken($talkConversationToken);
         $project->setFolderId($folderId);
         $project->setFolderPath($folderPath);
         $project->setClientName($clientName);
@@ -322,6 +324,11 @@ class ProjectMapper extends QBMapper
     public function createPrivateFolderLink(int $projectId, string $userId, int $folderId, string $folderPath): PrivateFolderLink
     {
         return $this->linkMapper->createLink($projectId, $userId, $folderId, $folderPath);
+    }
+
+    public function deletePrivateFolderLink(int $projectId, string $userId): void
+    {
+        $this->linkMapper->deleteByProjectAndUser($projectId, $userId);
     }
 
     /**

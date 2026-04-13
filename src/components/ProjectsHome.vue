@@ -252,8 +252,17 @@
 								{{ selectedProject.description || 'No description provided' }}
 							</p>
 						</div>
-						<div v-if="canEditProjectStatus" class="projects-home__hero-actions">
-							<label class="projects-home__status-editor" for="projects-status-editor">
+						<div class="projects-home__hero-actions">
+							<NcButton
+								v-if="selectedProject.talk_url"
+								type="secondary"
+								@click="openChat(selectedProject)">
+								<template #icon>
+									<OpenInNew :size="14" />
+								</template>
+								Open chat
+							</NcButton>
+							<label v-if="canEditProjectStatus" class="projects-home__status-editor" for="projects-status-editor">
 								<span class="projects-home__status-editor-label">Status</span>
 								<select
 									id="projects-status-editor"
@@ -1724,6 +1733,12 @@ export default {
 			}
 			const url = generateUrl(`/apps/deck/board/${project.boardId}`)
 			window.open(url, '_blank')
+		},
+		openChat(project) {
+			if (!project?.talk_url) {
+				return
+			}
+			window.open(project.talk_url, '_blank', 'noopener')
 		},
 		openFolder(project) {
 			if (!project.folderPath) {

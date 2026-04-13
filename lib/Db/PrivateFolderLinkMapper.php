@@ -64,4 +64,12 @@ class PrivateFolderLinkMapper extends QBMapper {
             ->where($qb->expr()->eq('project_id', $qb->createNamedParameter($projectId, IQueryBuilder::PARAM_INT)))
             ->executeStatement();
     }
+
+    public function deleteByProjectAndUser(int $projectId, string $userId): void {
+        $qb = $this->db->getQueryBuilder();
+        $qb->delete($this->getTableName())
+            ->where($qb->expr()->eq('project_id', $qb->createNamedParameter($projectId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->executeStatement();
+    }
 }

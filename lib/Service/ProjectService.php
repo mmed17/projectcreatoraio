@@ -68,6 +68,7 @@ class ProjectService
         private readonly ProjectNotificationService $projectNotificationService,
         private readonly ProjectActivityService $projectActivityService,
         private readonly ProjectDeckActivityService $projectDeckActivityService,
+        private readonly ProjectTalkIntegrationService $projectTalkIntegrationService,
     ) {
     }
 
@@ -96,6 +97,7 @@ class ProjectService
         $createdBoard = null;
         $createdGroup = null;
         $createdFolders = [];
+        $createdConversationToken = null;
 
         try {
             $owner = $this->userSession->getUser();
@@ -150,6 +152,15 @@ class ProjectService
             }
 
             $whiteBoardId = (string) $createdWhiteBoardId;
+            $memberIds = array_values(array_unique(array_merge($members, [$owner->getUID()])));
+            if ($this->projectTalkIntegrationService->isAvailable()) {
+                $conversation = $this->projectTalkIntegrationService->createProjectConversation(
+                    $name,
+                    $owner,
+                    $memberIds,
+                );
+                $createdConversationToken = $conversation['token'];
+            }
 
             $project = $this->projectMapper->createProject(
                 $organization,
@@ -160,6 +171,7 @@ class ProjectService
                 $owner->getUID(),
                 $createdBoard->getId(),
                 $group->getGID(),
+                $createdConversationToken,
                 $createdFolders['shared']['id'],
                 $createdFolders['shared']['name'],
                 $createdFolders['private'],
@@ -196,6 +208,9 @@ class ProjectService
             return $project;
 
         } catch (Throwable $e) {
+            if ($createdConversationToken !== null && $createdConversationToken !== '') {
+                $this->projectTalkIntegrationService->deleteConversation($createdConversationToken);
+            }
 
             $this->cleanupResources(
                 $createdBoard,
@@ -353,6 +368,7 @@ class ProjectService
         $alreadyMember = $this->groupManager->isInGroup($userId, $groupGid);
         $group = null;
         $addedToGroup = false;
+        $privateFolderProvisioning = ['created' => false, 'folder' => null];
 
         if (!$alreadyMember) {
             $group = $this->groupManager->get($groupGid);
@@ -365,8 +381,17 @@ class ProjectService
         }
 
         try {
-            $this->ensurePrivateFolderForMember($project, $userId);
+            $privateFolderProvisioning = $this->ensurePrivateFolderForMember($project, $userId);
+            $conversationToken = trim((string) ($project->getTalkConversationToken() ?? ''));
+            if ($addedToGroup && $conversationToken !== '') {
+                $this->projectTalkIntegrationService->addUserToConversation(
+                    $conversationToken,
+                    $user,
+                    $this->userSession->getUser(),
+                );
+            }
         } catch (Throwable $e) {
+            $this->rollbackPrivateFolderProvisioning($project, $userId, $privateFolderProvisioning);
             if ($addedToGroup && $group !== null) {
                 $group->removeUser($user);
             }
@@ -430,7 +455,10 @@ class ProjectService
         return $memberIds;
     }
 
-    private function ensurePrivateFolderForMember(Project $project, string $userId): void
+    /**
+     * @return array{created: bool, folder: ?Folder}
+     */
+    private function ensurePrivateFolderForMember(Project $project, string $userId): array
     {
         $projectId = (int) ($project->getId() ?? 0);
         if ($projectId <= 0) {
@@ -439,7 +467,7 @@ class ProjectService
 
         $existingLink = $this->projectMapper->findPrivateFolderForUser($projectId, $userId);
         if ($existingLink !== null) {
-            return;
+            return ['created' => false, 'folder' => null];
         }
 
         try {
@@ -458,8 +486,29 @@ class ProjectService
                 (int) $privateFolder->getId(),
                 $privateFolder->getPath(),
             );
+            return ['created' => true, 'folder' => $privateFolder];
         } catch (Throwable $e) {
             throw new OCSException('Unable to provision private files for invited member.', 500);
+        }
+    }
+
+    /**
+     * @param array{created: bool, folder: ?Folder} $privateFolderProvisioning
+     */
+    private function rollbackPrivateFolderProvisioning(Project $project, string $userId, array $privateFolderProvisioning): void
+    {
+        if (($privateFolderProvisioning['created'] ?? false) !== true) {
+            return;
+        }
+
+        $projectId = (int) ($project->getId() ?? 0);
+        if ($projectId > 0) {
+            $this->projectMapper->deletePrivateFolderLink($projectId, $userId);
+        }
+
+        $folder = $privateFolderProvisioning['folder'] ?? null;
+        if ($folder instanceof Folder && $folder->isDeletable()) {
+            $folder->delete();
         }
     }
 
@@ -476,6 +525,25 @@ class ProjectService
             'email' => $user->getEMailAddress() ?: '',
             'isOwner' => $ownerId !== '' && $userId === $ownerId,
         ];
+    }
+
+    public function buildProjectPayload(Project $project): array
+    {
+        $payload = $project->jsonSerialize();
+        $payload['talk_url'] = $this->projectTalkIntegrationService->buildConversationUrl(
+            $project->getTalkConversationToken(),
+        );
+
+        return $payload;
+    }
+
+    /**
+     * @param Project[] $projects
+     * @return array<int, array<string, mixed>>
+     */
+    public function buildProjectPayloads(array $projects): array
+    {
+        return array_map(fn (Project $project): array => $this->buildProjectPayload($project), $projects);
     }
 
     private function resolveOrganizationForCurrentUser(
