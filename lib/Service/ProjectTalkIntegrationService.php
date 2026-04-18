@@ -4,9 +4,15 @@ declare(strict_types=1);
 
 namespace OCA\ProjectCreatorAIO\Service;
 
+use DateTime;
+use OCP\Constants;
+use OCP\Files\File;
+use OCP\Files\IRootFolder;
 use OCP\IUser;
 use OCP\IUserManager;
 use OCP\IServerContainer;
+use OCP\Share\IManager as IShareManager;
+use OCP\Share\IShare;
 use OCP\Talk\IBroker;
 use OCP\Talk\Exceptions\NoBackendException;
 use OCP\IURLGenerator;
@@ -17,6 +23,7 @@ class ProjectTalkIntegrationService
 {
     private const SPREED_MANAGER_CLASS = 'OCA\\Talk\\Manager';
     private const SPREED_PARTICIPANT_SERVICE_CLASS = 'OCA\\Talk\\Service\\ParticipantService';
+    private const SPREED_CHAT_MANAGER_CLASS = 'OCA\\Talk\\Chat\\ChatManager';
     private const TALK_ACTOR_USERS = 'users';
     private const TALK_PARTICIPANT_USER = 3;
 
@@ -25,6 +32,8 @@ class ProjectTalkIntegrationService
         private readonly IServerContainer $serverContainer,
         private readonly IUserManager $userManager,
         private readonly IURLGenerator $urlGenerator,
+        private readonly IRootFolder $rootFolder,
+        private readonly IShareManager $shareManager,
     ) {
     }
 
@@ -112,6 +121,44 @@ class ProjectTalkIntegrationService
         $this->getParticipantService()->addUsers($room, $participants, $addedBy);
     }
 
+    public function shareFileInConversation(string $conversationToken, int $fileId, IUser $actor): void
+    {
+        $conversationToken = trim($conversationToken);
+        if ($conversationToken === '' || $fileId <= 0) {
+            return;
+        }
+
+        $room = $this->getTalkManager()->getRoomByToken($conversationToken);
+        $participant = $this->getParticipantService()->getParticipant($room, $actor->getUID(), false);
+        $file = $this->resolveUserFile($actor, $fileId);
+        $share = $this->createRoomShare($conversationToken, $file, $actor);
+
+        try {
+            $message = json_encode([
+                'message' => 'file_shared',
+                'parameters' => [
+                    'share' => $share->getId(),
+                    'metaData' => [
+                        'mimeType' => $file->getMimeType(),
+                    ],
+                ],
+            ], JSON_THROW_ON_ERROR);
+
+            $this->getChatManager()->addSystemMessage(
+                $room,
+                $participant,
+                self::TALK_ACTOR_USERS,
+                $actor->getUID(),
+                $message,
+                new DateTime(),
+                true,
+            );
+        } catch (Throwable $e) {
+            $this->shareManager->deleteShare($share);
+            throw $e;
+        }
+    }
+
     public function deleteConversation(string $conversationToken): void
     {
         $conversationToken = trim($conversationToken);
@@ -143,6 +190,36 @@ class ProjectTalkIntegrationService
     private function getParticipantService(): object
     {
         return $this->resolveTalkService(self::SPREED_PARTICIPANT_SERVICE_CLASS);
+    }
+
+    private function getChatManager(): object
+    {
+        return $this->resolveTalkService(self::SPREED_CHAT_MANAGER_CLASS);
+    }
+
+    private function resolveUserFile(IUser $actor, int $fileId): File
+    {
+        $userFolder = $this->rootFolder->getUserFolder($actor->getUID());
+        $node = $userFolder->getFirstNodeById($fileId);
+        if (!$node instanceof File) {
+            throw new RuntimeException(sprintf('File %d is not accessible for user "%s".', $fileId, $actor->getUID()));
+        }
+
+        return $node;
+    }
+
+    private function createRoomShare(string $conversationToken, File $file, IUser $actor): IShare
+    {
+        $share = $this->shareManager->newShare();
+        $share->setNodeId($file->getId())
+            ->setShareTime(new DateTime())
+            ->setSharedBy($actor->getUID())
+            ->setNode($file)
+            ->setShareType(IShare::TYPE_ROOM)
+            ->setSharedWith($conversationToken)
+            ->setPermissions(Constants::PERMISSION_READ);
+
+        return $this->shareManager->createShare($share);
     }
 
     private function resolveTalkService(string $serviceClass): object

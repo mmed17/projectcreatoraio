@@ -36,6 +36,7 @@ use OCP\IUserManager;
 use OCP\Files\File;
 use OCA\Deck\Db\ChangeHelper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\ILogger;
 
 class ProjectService
 {
@@ -69,6 +70,7 @@ class ProjectService
         private readonly ProjectActivityService $projectActivityService,
         private readonly ProjectDeckActivityService $projectDeckActivityService,
         private readonly ProjectTalkIntegrationService $projectTalkIntegrationService,
+        private readonly ILogger $logger,
     ) {
     }
 
@@ -160,6 +162,21 @@ class ProjectService
                     $memberIds,
                 );
                 $createdConversationToken = $conversation['token'];
+
+                try {
+                    $this->projectTalkIntegrationService->shareFileInConversation(
+                        $createdConversationToken,
+                        $createdWhiteBoardId,
+                        $owner,
+                    );
+                } catch (Throwable $e) {
+                    $this->logger->warning('Failed to share project whiteboard in Talk conversation', [
+                        'projectName' => $name,
+                        'whiteboardId' => $createdWhiteBoardId,
+                        'conversationToken' => $createdConversationToken,
+                        'exception' => $e,
+                    ]);
+                }
             }
 
             $project = $this->projectMapper->createProject(
