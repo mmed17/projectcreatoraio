@@ -7,6 +7,7 @@ use OCA\ProjectCreatorAIO\BackgroundJob\ProcessPendingFileProcessingJob;
 use OCA\ProjectCreatorAIO\BackgroundJob\PurgeArchivedProjectsJob;
 use OCA\ProjectCreatorAIO\BackgroundJob\SendProjectDigestJob;
 use OCA\ProjectCreatorAIO\BackgroundJob\ShareProjectWhiteboardInTalkJob;
+use OCA\ProjectCreatorAIO\Db\PrivateFolderLinkMapper;
 use OCA\ProjectCreatorAIO\Dashboard\ProjectsWidget;
 use OCA\ProjectCreatorAIO\Listener\FileProcessingWrittenListener;
 use OCA\ProjectCreatorAIO\Listener\WhiteboardWrittenListener;
@@ -46,7 +47,8 @@ class Application extends App implements IBootstrap {
 
         $context->registerService('ProjectMapper', function (IAppContainer $c) {
             return new ProjectMapper(
-                $c->getServer()->getDatabaseConnection()
+                $c->getServer()->getDatabaseConnection(),
+                $c->query(PrivateFolderLinkMapper::class),
             );
         });
 

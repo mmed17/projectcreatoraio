@@ -7,6 +7,7 @@ namespace OCA\ProjectCreatorAIO\Service;
 use DateTime;
 use OCP\Constants;
 use OCP\Files\File;
+use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\IUser;
 use OCP\IUserManager;
@@ -121,7 +122,13 @@ class ProjectTalkIntegrationService
         $this->getParticipantService()->addUsers($room, $participants, $addedBy);
     }
 
-    public function shareFileInConversation(string $conversationToken, int $fileId, IUser $actor): bool
+    public function shareFileInConversation(
+        string $conversationToken,
+        int $fileId,
+        IUser $actor,
+        ?string $projectFolderPath = null,
+        ?string $projectName = null,
+    ): bool
     {
         $conversationToken = trim($conversationToken);
         if ($conversationToken === '' || $fileId <= 0) {
@@ -130,7 +137,7 @@ class ProjectTalkIntegrationService
 
         $room = $this->getTalkManager()->getRoomByToken($conversationToken);
         $participant = $this->getParticipantService()->getParticipant($room, $actor->getUID(), false);
-        $file = $this->resolveUserFile($actor, $fileId);
+        $file = $this->resolveUserFile($actor, $fileId, $projectFolderPath, $projectName);
         if ($this->hasRoomShare($conversationToken, $file, $actor)) {
             return false;
         }
@@ -202,11 +209,30 @@ class ProjectTalkIntegrationService
         return $this->resolveTalkService(self::SPREED_CHAT_MANAGER_CLASS);
     }
 
-    private function resolveUserFile(IUser $actor, int $fileId): File
+    private function resolveUserFile(
+        IUser $actor,
+        int $fileId,
+        ?string $projectFolderPath = null,
+        ?string $projectName = null,
+    ): File
     {
         $userFolder = $this->rootFolder->getUserFolder($actor->getUID());
         $node = $userFolder->getFirstNodeById($fileId);
         if (!$node instanceof File) {
+            $folderPath = trim((string) $projectFolderPath);
+            if ($folderPath !== '') {
+                try {
+                    $folderNode = $userFolder->get($folderPath);
+                    if ($folderNode instanceof Folder) {
+                        $fallbackFile = $this->findWhiteboardInFolder($folderNode, trim((string) $projectName));
+                        if ($fallbackFile instanceof File) {
+                            return $fallbackFile;
+                        }
+                    }
+                } catch (Throwable) {
+                }
+            }
+
             throw new RuntimeException(sprintf('File %d is not accessible for user "%s".', $fileId, $actor->getUID()));
         }
 
@@ -245,6 +271,28 @@ class ProjectTalkIntegrationService
         }
 
         return false;
+    }
+
+    private function findWhiteboardInFolder(Folder $folder, string $projectName): ?File
+    {
+        $preferred = $projectName !== '' ? $projectName . '.whiteboard' : null;
+        foreach ($folder->getDirectoryListing() as $child) {
+            if (!$child instanceof File) {
+                continue;
+            }
+
+            $name = $child->getName();
+            $lower = strtolower($name);
+            if ($preferred !== null && $name === $preferred) {
+                return $child;
+            }
+
+            if (str_ends_with($lower, '.whiteboard') || str_ends_with($lower, '.excalidraw')) {
+                return $child;
+            }
+        }
+
+        return null;
     }
 
     private function resolveTalkService(string $serviceClass): object

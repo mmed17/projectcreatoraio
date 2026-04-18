@@ -65,6 +65,8 @@ class ShareProjectWhiteboardInTalkJob extends QueuedJob
                 $conversationToken,
                 $whiteboardFileId,
                 $actor,
+                $project->getFolderPath(),
+                $project->getName(),
             );
         } catch (\Throwable $e) {
             $this->logger->warning('Failed queued project whiteboard share in Talk conversation', [
