@@ -3,6 +3,8 @@
 namespace OCA\ProjectCreatorAIO\Service;
 
 use DateTime;
+use OCA\ProjectCreatorAIO\AppInfo\Application;
+use OCA\ProjectCreatorAIO\BackgroundJob\ShareProjectWhiteboardInTalkJob;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Db\ProjectNoteMapper;
@@ -35,6 +37,8 @@ use OCP\IDBConnection;
 use OCP\IUserManager;
 use OCP\Files\File;
 use OCA\Deck\Db\ChangeHelper;
+use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\IJobList;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use Psr\Log\LoggerInterface;
 
@@ -70,6 +74,8 @@ class ProjectService
         private readonly ProjectActivityService $projectActivityService,
         private readonly ProjectDeckActivityService $projectDeckActivityService,
         private readonly ProjectTalkIntegrationService $projectTalkIntegrationService,
+        private readonly IJobList $jobList,
+        private readonly ITimeFactory $timeFactory,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -162,21 +168,6 @@ class ProjectService
                     $memberIds,
                 );
                 $createdConversationToken = $conversation['token'];
-
-                try {
-                    $this->projectTalkIntegrationService->shareFileInConversation(
-                        $createdConversationToken,
-                        $createdWhiteBoardId,
-                        $owner,
-                    );
-                } catch (Throwable $e) {
-                    $this->logger->warning('Failed to share project whiteboard in Talk conversation', [
-                        'projectName' => $name,
-                        'whiteboardId' => $createdWhiteBoardId,
-                        'conversationToken' => $createdConversationToken,
-                        'exception' => $e,
-                    ]);
-                }
             }
 
             $project = $this->projectMapper->createProject(
@@ -219,6 +210,13 @@ class ProjectService
 
             $this->projectActivityService->recordProjectCreated(
                 $project,
+                $owner,
+            );
+
+            $this->scheduleWhiteboardTalkShare(
+                $project,
+                $createdConversationToken,
+                $createdWhiteBoardId,
                 $owner,
             );
 
@@ -561,6 +559,42 @@ class ProjectService
     public function buildProjectPayloads(array $projects): array
     {
         return array_map(fn (Project $project): array => $this->buildProjectPayload($project), $projects);
+    }
+
+    private function scheduleWhiteboardTalkShare(
+        Project $project,
+        ?string $conversationToken,
+        int $whiteboardFileId,
+        IUser $actor,
+    ): void {
+        $projectId = (int) ($project->getId() ?? 0);
+        $conversationToken = trim((string) $conversationToken);
+        if ($projectId <= 0 || $conversationToken === '' || $whiteboardFileId <= 0) {
+            return;
+        }
+
+        $argument = [
+            'projectId' => $projectId,
+            'conversationToken' => $conversationToken,
+            'whiteboardFileId' => $whiteboardFileId,
+            'actorUserId' => $actor->getUID(),
+        ];
+
+        try {
+            $this->jobList->scheduleAfter(
+                ShareProjectWhiteboardInTalkJob::class,
+                $this->timeFactory->getTime() + 60,
+                $argument,
+            );
+        } catch (Throwable $e) {
+            $this->logger->warning('Failed to schedule project whiteboard Talk share job', [
+                'app' => Application::APP_ID,
+                'projectId' => $projectId,
+                'whiteboardFileId' => $whiteboardFileId,
+                'conversationToken' => $conversationToken,
+                'exception' => $e,
+            ]);
+        }
     }
 
     private function resolveOrganizationForCurrentUser(

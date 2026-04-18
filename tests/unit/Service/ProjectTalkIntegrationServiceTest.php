@@ -228,6 +228,10 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             ->willReturn($file);
 
         $this->shareManager->expects($this->once())
+            ->method('getSharesBy')
+            ->with('owner', IShare::TYPE_ROOM, $file, false, -1, 0)
+            ->willReturn([]);
+        $this->shareManager->expects($this->once())
             ->method('newShare')
             ->willReturn($share);
         $this->shareManager->expects($this->once())
@@ -269,6 +273,68 @@ class ProjectTalkIntegrationServiceTest extends TestCase
         $this->assertSame('application/octet-stream', $payload['parameters']['metaData']['mimeType']);
     }
 
+    public function testShareFileInConversationSkipsIfShareAlreadyExists(): void
+    {
+        $owner = $this->createConfiguredMock(IUser::class, [
+            'getUID' => 'owner',
+        ]);
+        $room = new \stdClass();
+        $participant = new \stdClass();
+        $manager = new Manager($room);
+        $participantService = new ParticipantService();
+        $participantService->participant = $participant;
+        $chatManager = new ChatManager();
+
+        $folder = $this->createMock(Folder::class);
+        $file = $this->createConfiguredMock(File::class, [
+            'getId' => 42,
+            'getMimeType' => 'application/octet-stream',
+        ]);
+        $existingShare = $this->createMock(IShare::class);
+        $existingShare->method('getSharedWith')->willReturn('room-token');
+
+        $this->rootFolder->expects($this->once())
+            ->method('getUserFolder')
+            ->with('owner')
+            ->willReturn($folder);
+        $folder->expects($this->once())
+            ->method('getFirstNodeById')
+            ->with(42)
+            ->willReturn($file);
+
+        $this->shareManager->expects($this->once())
+            ->method('getSharesBy')
+            ->with('owner', IShare::TYPE_ROOM, $file, false, -1, 0)
+            ->willReturn([$existingShare]);
+        $this->shareManager->expects($this->never())->method('newShare');
+        $this->shareManager->expects($this->never())->method('createShare');
+        $this->shareManager->expects($this->never())->method('deleteShare');
+
+        $this->serverContainer->method('get')
+            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService, $chatManager): object {
+                return match ($serviceClass) {
+                    'OCA\\Talk\\Manager' => $manager,
+                    'OCA\\Talk\\Service\\ParticipantService' => $participantService,
+                    'OCA\\Talk\\Chat\\ChatManager' => $chatManager,
+                    default => throw new \RuntimeException('Unexpected service lookup'),
+                };
+            });
+
+        $service = new ProjectTalkIntegrationService(
+            $this->talkBroker,
+            $this->serverContainer,
+            $this->userManager,
+            $this->urlGenerator,
+            $this->rootFolder,
+            $this->shareManager,
+        );
+
+        $created = $service->shareFileInConversation('room-token', 42, $owner);
+
+        $this->assertFalse($created);
+        $this->assertCount(0, $chatManager->calls);
+    }
+
     public function testShareFileInConversationDeletesShareIfChatMessageFails(): void
     {
         $owner = $this->createConfiguredMock(IUser::class, [
@@ -297,6 +363,9 @@ class ProjectTalkIntegrationServiceTest extends TestCase
         $this->rootFolder->method('getUserFolder')->with('owner')->willReturn($folder);
         $folder->method('getFirstNodeById')->with(42)->willReturn($file);
 
+        $this->shareManager->method('getSharesBy')
+            ->with('owner', IShare::TYPE_ROOM, $file, false, -1, 0)
+            ->willReturn([]);
         $this->shareManager->method('newShare')->willReturn($share);
         $this->shareManager->method('createShare')->with($share)->willReturn($share);
         $this->shareManager->expects($this->once())

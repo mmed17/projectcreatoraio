@@ -6,6 +6,7 @@ use OCA\ProjectCreatorAIO\BackgroundJob\DetectStaleProjectsJob;
 use OCA\ProjectCreatorAIO\BackgroundJob\ProcessPendingFileProcessingJob;
 use OCA\ProjectCreatorAIO\BackgroundJob\PurgeArchivedProjectsJob;
 use OCA\ProjectCreatorAIO\BackgroundJob\SendProjectDigestJob;
+use OCA\ProjectCreatorAIO\BackgroundJob\ShareProjectWhiteboardInTalkJob;
 use OCA\ProjectCreatorAIO\Dashboard\ProjectsWidget;
 use OCA\ProjectCreatorAIO\Listener\FileProcessingWrittenListener;
 use OCA\ProjectCreatorAIO\Listener\WhiteboardWrittenListener;
@@ -92,6 +93,16 @@ class Application extends App implements IBootstrap {
 			return new ProcessPendingFileProcessingJob(
 				$c->getServer()->get(ITimeFactory::class),
 				$c->getServer()->query(\OCA\ProjectCreatorAIO\Service\FileProcessingPipelineService::class),
+			);
+		});
+
+		$context->registerService(ShareProjectWhiteboardInTalkJob::class, function (IAppContainer $c) {
+			return new ShareProjectWhiteboardInTalkJob(
+				$c->getServer()->get(ITimeFactory::class),
+				$c->query('ProjectMapper'),
+				$c->getServer()->get(\OCP\IUserManager::class),
+				$c->query(\OCA\ProjectCreatorAIO\Service\ProjectTalkIntegrationService::class),
+				$c->getServer()->get(LoggerInterface::class),
 			);
 		});
 

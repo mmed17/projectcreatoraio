@@ -121,16 +121,20 @@ class ProjectTalkIntegrationService
         $this->getParticipantService()->addUsers($room, $participants, $addedBy);
     }
 
-    public function shareFileInConversation(string $conversationToken, int $fileId, IUser $actor): void
+    public function shareFileInConversation(string $conversationToken, int $fileId, IUser $actor): bool
     {
         $conversationToken = trim($conversationToken);
         if ($conversationToken === '' || $fileId <= 0) {
-            return;
+            return false;
         }
 
         $room = $this->getTalkManager()->getRoomByToken($conversationToken);
         $participant = $this->getParticipantService()->getParticipant($room, $actor->getUID(), false);
         $file = $this->resolveUserFile($actor, $fileId);
+        if ($this->hasRoomShare($conversationToken, $file, $actor)) {
+            return false;
+        }
+
         $share = $this->createRoomShare($conversationToken, $file, $actor);
 
         try {
@@ -153,6 +157,7 @@ class ProjectTalkIntegrationService
                 new DateTime(),
                 true,
             );
+            return true;
         } catch (Throwable $e) {
             $this->shareManager->deleteShare($share);
             throw $e;
@@ -220,6 +225,26 @@ class ProjectTalkIntegrationService
             ->setPermissions(Constants::PERMISSION_READ);
 
         return $this->shareManager->createShare($share);
+    }
+
+    private function hasRoomShare(string $conversationToken, File $file, IUser $actor): bool
+    {
+        $shares = $this->shareManager->getSharesBy(
+            $actor->getUID(),
+            IShare::TYPE_ROOM,
+            $file,
+            false,
+            -1,
+            0,
+        );
+
+        foreach ($shares as $share) {
+            if ($share->getSharedWith() === $conversationToken) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function resolveTalkService(string $serviceClass): object
