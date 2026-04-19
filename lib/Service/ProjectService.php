@@ -3,6 +3,7 @@
 namespace OCA\ProjectCreatorAIO\Service;
 
 use DateTime;
+use OC\Files\SetupManager;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Db\ProjectNoteMapper;
@@ -209,6 +210,7 @@ class ProjectService
 
             if ($createdConversationToken !== null && $createdConversationToken !== '') {
                 try {
+                    $this->refreshFilesystemMountsForUser($owner);
                     $this->projectTalkIntegrationService->shareFileInConversation(
                         $createdConversationToken,
                         $createdWhiteBoardId,
@@ -761,6 +763,25 @@ class ProjectService
             'private' => $privateFolders,
             'all' => $allCreatedFolders,
         ];
+    }
+
+    private function refreshFilesystemMountsForUser(IUser $user): void
+    {
+        try {
+            /** @var SetupManager $setupManager */
+            $setupManager = \OC::$server->get(SetupManager::class);
+            $setupManager->tearDown();
+            \OC\Files\Filesystem::initMountPoints($user);
+
+            $this->logger->debug('Refreshed filesystem mounts before inline Talk whiteboard share', [
+                'userId' => $user->getUID(),
+            ]);
+        } catch (Throwable $e) {
+            $this->logger->warning('Failed to refresh filesystem mounts before inline Talk whiteboard share', [
+                'userId' => $user->getUID(),
+                'exception' => $e,
+            ]);
+        }
     }
 
     private function getUniqueFolderName(string $projectName, string $suffix, Folder $folder): string

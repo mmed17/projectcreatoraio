@@ -22,7 +22,6 @@ namespace OCA\Talk\Service {
     class ParticipantService
     {
         public array $calls = [];
-        public ?object $participant = null;
 
         public function addUsers(object $room, array $participants, ?IUser $addedBy = null): void
         {
@@ -32,49 +31,12 @@ namespace OCA\Talk\Service {
                 'addedBy' => $addedBy,
             ];
         }
-
-        public function getParticipant(object $room, string $userId, bool $sessionId = false): ?object
-        {
-            return $this->participant;
-        }
-    }
-}
-
-namespace OCA\Talk\Chat {
-    class ChatManager
-    {
-        public array $calls = [];
-        public ?\Throwable $exception = null;
-
-        public function addSystemMessage(
-            object $room,
-            ?object $participant,
-            string $actorType,
-            string $actorId,
-            string $message,
-            \DateTime $creationDateTime,
-            bool $sendNotifications,
-        ): void {
-            if ($this->exception !== null) {
-                throw $this->exception;
-            }
-
-            $this->calls[] = [
-                'room' => $room,
-                'participant' => $participant,
-                'actorType' => $actorType,
-                'actorId' => $actorId,
-                'message' => $message,
-                'sendNotifications' => $sendNotifications,
-            ];
-        }
     }
 }
 
 namespace OCA\ProjectCreatorAIO\Tests\Unit\Service {
 
 use OCA\ProjectCreatorAIO\Service\ProjectTalkIntegrationService;
-use OCA\Talk\Chat\ChatManager;
 use OCA\Talk\Manager;
 use OCA\Talk\Service\ParticipantService;
 use OCP\Files\File;
@@ -205,11 +167,8 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             'getUID' => 'owner',
         ]);
         $room = new \stdClass();
-        $participant = new \stdClass();
         $manager = new Manager($room);
         $participantService = new ParticipantService();
-        $participantService->participant = $participant;
-        $chatManager = new ChatManager();
 
         $folder = $this->createMock(Folder::class);
         $file = $this->createConfiguredMock(File::class, [
@@ -247,11 +206,10 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             ->method('deleteShare');
 
         $this->serverContainer->method('get')
-            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService, $chatManager): object {
+            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService): object {
                 return match ($serviceClass) {
                     'OCA\\Talk\\Manager' => $manager,
                     'OCA\\Talk\\Service\\ParticipantService' => $participantService,
-                    'OCA\\Talk\\Chat\\ChatManager' => $chatManager,
                     default => throw new \RuntimeException('Unexpected service lookup'),
                 };
             });
@@ -267,16 +225,6 @@ class ProjectTalkIntegrationServiceTest extends TestCase
         );
 
         $service->shareFileInConversation('room-token', 42, $owner);
-
-        $this->assertCount(1, $chatManager->calls);
-        $this->assertSame($room, $chatManager->calls[0]['room']);
-        $this->assertSame($participant, $chatManager->calls[0]['participant']);
-        $this->assertSame('users', $chatManager->calls[0]['actorType']);
-        $this->assertSame('owner', $chatManager->calls[0]['actorId']);
-        $payload = json_decode($chatManager->calls[0]['message'], true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame('file_shared', $payload['message']);
-        $this->assertSame(321, $payload['parameters']['share']);
-        $this->assertSame('application/octet-stream', $payload['parameters']['metaData']['mimeType']);
     }
 
     public function testShareFileInConversationSkipsIfShareAlreadyExists(): void
@@ -285,11 +233,8 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             'getUID' => 'owner',
         ]);
         $room = new \stdClass();
-        $participant = new \stdClass();
         $manager = new Manager($room);
         $participantService = new ParticipantService();
-        $participantService->participant = $participant;
-        $chatManager = new ChatManager();
 
         $folder = $this->createMock(Folder::class);
         $file = $this->createConfiguredMock(File::class, [
@@ -317,11 +262,10 @@ class ProjectTalkIntegrationServiceTest extends TestCase
         $this->shareManager->expects($this->never())->method('deleteShare');
 
         $this->serverContainer->method('get')
-            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService, $chatManager): object {
+            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService): object {
                 return match ($serviceClass) {
                     'OCA\\Talk\\Manager' => $manager,
                     'OCA\\Talk\\Service\\ParticipantService' => $participantService,
-                    'OCA\\Talk\\Chat\\ChatManager' => $chatManager,
                     default => throw new \RuntimeException('Unexpected service lookup'),
                 };
             });
@@ -339,21 +283,16 @@ class ProjectTalkIntegrationServiceTest extends TestCase
         $created = $service->shareFileInConversation('room-token', 42, $owner);
 
         $this->assertFalse($created);
-        $this->assertCount(0, $chatManager->calls);
     }
 
-    public function testShareFileInConversationDeletesShareIfChatMessageFails(): void
+    public function testShareFileInConversationPropagatesCreateShareFailure(): void
     {
         $owner = $this->createConfiguredMock(IUser::class, [
             'getUID' => 'owner',
         ]);
         $room = new \stdClass();
-        $participant = new \stdClass();
         $manager = new Manager($room);
         $participantService = new ParticipantService();
-        $participantService->participant = $participant;
-        $chatManager = new ChatManager();
-        $chatManager->exception = new \RuntimeException('boom');
 
         $folder = $this->createMock(Folder::class);
         $file = $this->createConfiguredMock(File::class, [
@@ -374,17 +313,15 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             ->with('owner', IShare::TYPE_ROOM, $file, false, -1, 0)
             ->willReturn([]);
         $this->shareManager->method('newShare')->willReturn($share);
-        $this->shareManager->method('createShare')->with($share)->willReturn($share);
-        $this->shareManager->expects($this->once())
-            ->method('deleteShare')
-            ->with($share);
+        $this->shareManager->method('createShare')
+            ->with($share)
+            ->willThrowException(new \RuntimeException('boom'));
 
         $this->serverContainer->method('get')
-            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService, $chatManager): object {
+            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService): object {
                 return match ($serviceClass) {
                     'OCA\\Talk\\Manager' => $manager,
                     'OCA\\Talk\\Service\\ParticipantService' => $participantService,
-                    'OCA\\Talk\\Chat\\ChatManager' => $chatManager,
                     default => throw new \RuntimeException('Unexpected service lookup'),
                 };
             });
@@ -411,11 +348,8 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             'getUID' => 'owner',
         ]);
         $room = new \stdClass();
-        $participant = new \stdClass();
         $manager = new Manager($room);
         $participantService = new ParticipantService();
-        $participantService->participant = $participant;
-        $chatManager = new ChatManager();
 
         $userFolder = $this->createMock(Folder::class);
         $projectFolder = $this->createMock(Folder::class);
@@ -468,11 +402,10 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             ->willReturn($share);
 
         $this->serverContainer->method('get')
-            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService, $chatManager): object {
+            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService): object {
                 return match ($serviceClass) {
                     'OCA\\Talk\\Manager' => $manager,
                     'OCA\\Talk\\Service\\ParticipantService' => $participantService,
-                    'OCA\\Talk\\Chat\\ChatManager' => $chatManager,
                     default => throw new \RuntimeException('Unexpected service lookup'),
                 };
             });
@@ -490,9 +423,6 @@ class ProjectTalkIntegrationServiceTest extends TestCase
         $created = $service->shareFileInConversation('room-token', 42, $owner, 'Projects/Project X', 'Project X', 99, 901);
 
         $this->assertTrue($created);
-        $this->assertCount(1, $chatManager->calls);
-        $payload = json_decode($chatManager->calls[0]['message'], true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame(654, $payload['parameters']['share']);
     }
 
     public function testShareFileInConversationFallsBackToGlobalFileId(): void
@@ -501,11 +431,8 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             'getUID' => 'owner',
         ]);
         $room = new \stdClass();
-        $participant = new \stdClass();
         $manager = new Manager($room);
         $participantService = new ParticipantService();
-        $participantService->participant = $participant;
-        $chatManager = new ChatManager();
 
         $userFolder = $this->createMock(Folder::class);
         $globalFile = $this->createConfiguredMock(File::class, [
@@ -545,11 +472,10 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             ->willReturn($share);
 
         $this->serverContainer->method('get')
-            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService, $chatManager): object {
+            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService): object {
                 return match ($serviceClass) {
                     'OCA\\Talk\\Manager' => $manager,
                     'OCA\\Talk\\Service\\ParticipantService' => $participantService,
-                    'OCA\\Talk\\Chat\\ChatManager' => $chatManager,
                     default => throw new \RuntimeException('Unexpected service lookup'),
                 };
             });
@@ -567,9 +493,6 @@ class ProjectTalkIntegrationServiceTest extends TestCase
         $created = $service->shareFileInConversation('room-token', 42, $owner, 'Projects/Project X', 'Project X', 99, 901);
 
         $this->assertTrue($created);
-        $this->assertCount(1, $chatManager->calls);
-        $payload = json_decode($chatManager->calls[0]['message'], true, flags: JSON_THROW_ON_ERROR);
-        $this->assertSame(777, $payload['parameters']['share']);
     }
 
     public function testShareFileInConversationFailsWhenNoFileResolutionPathWorks(): void
