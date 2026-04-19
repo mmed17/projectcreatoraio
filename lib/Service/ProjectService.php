@@ -216,6 +216,7 @@ class ProjectService
                         $project->getFolderPath(),
                         $project->getName(),
                         (int) ($project->getId() ?? 0),
+                        (int) ($project->getFolderId() ?? 0),
                     );
                 } catch (Throwable $e) {
                     $this->logger->warning('Failed inline project whiteboard share in Talk conversation', [
@@ -223,6 +224,7 @@ class ProjectService
                         'whiteboardFileId' => $createdWhiteBoardId,
                         'conversationToken' => $createdConversationToken,
                         'actorUserId' => $owner->getUID(),
+                        'projectFolderId' => (int) ($project->getFolderId() ?? 0),
                         'projectFolderPath' => $project->getFolderPath(),
                         'projectName' => $project->getName(),
                         'exception' => $e,

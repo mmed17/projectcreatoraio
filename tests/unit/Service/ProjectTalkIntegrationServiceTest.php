@@ -442,10 +442,15 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             ->method('getFirstNodeById')
             ->with(42)
             ->willReturn(null);
-        $userFolder->expects($this->once())
-            ->method('get')
-            ->with('Projects/Project X')
-            ->willReturn($projectFolder);
+        $this->rootFolder->expects($this->exactly(2))
+            ->method('getById')
+            ->willReturnCallback(static function (int $id) use ($projectFolder): array {
+                return match ($id) {
+                    42 => [],
+                    901 => [$projectFolder],
+                    default => [],
+                };
+            });
         $projectFolder->expects($this->once())
             ->method('getDirectoryListing')
             ->willReturn([$invalidFile, $fallbackFile]);
@@ -482,12 +487,128 @@ class ProjectTalkIntegrationServiceTest extends TestCase
             $this->logger,
         );
 
-        $created = $service->shareFileInConversation('room-token', 42, $owner, 'Projects/Project X', 'Project X', 99);
+        $created = $service->shareFileInConversation('room-token', 42, $owner, 'Projects/Project X', 'Project X', 99, 901);
 
         $this->assertTrue($created);
         $this->assertCount(1, $chatManager->calls);
         $payload = json_decode($chatManager->calls[0]['message'], true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame(654, $payload['parameters']['share']);
+    }
+
+    public function testShareFileInConversationFallsBackToGlobalFileId(): void
+    {
+        $owner = $this->createConfiguredMock(IUser::class, [
+            'getUID' => 'owner',
+        ]);
+        $room = new \stdClass();
+        $participant = new \stdClass();
+        $manager = new Manager($room);
+        $participantService = new ParticipantService();
+        $participantService->participant = $participant;
+        $chatManager = new ChatManager();
+
+        $userFolder = $this->createMock(Folder::class);
+        $globalFile = $this->createConfiguredMock(File::class, [
+            'getId' => 42,
+            'getMimeType' => 'application/octet-stream',
+        ]);
+        $share = $this->createMock(IShare::class);
+
+        foreach (['setNodeId', 'setShareTime', 'setSharedBy', 'setNode', 'setShareType', 'setSharedWith', 'setPermissions'] as $method) {
+            $share->method($method)->willReturnSelf();
+        }
+        $share->method('getId')->willReturn(777);
+
+        $this->rootFolder->expects($this->once())
+            ->method('getUserFolder')
+            ->with('owner')
+            ->willReturn($userFolder);
+        $userFolder->expects($this->once())
+            ->method('getFirstNodeById')
+            ->with(42)
+            ->willReturn(null);
+        $this->rootFolder->expects($this->once())
+            ->method('getById')
+            ->with(42)
+            ->willReturn([$globalFile]);
+
+        $this->shareManager->expects($this->once())
+            ->method('getSharesBy')
+            ->with('owner', IShare::TYPE_ROOM, $globalFile, false, -1, 0)
+            ->willReturn([]);
+        $this->shareManager->expects($this->once())
+            ->method('newShare')
+            ->willReturn($share);
+        $this->shareManager->expects($this->once())
+            ->method('createShare')
+            ->with($share)
+            ->willReturn($share);
+
+        $this->serverContainer->method('get')
+            ->willReturnCallback(static function (string $serviceClass) use ($manager, $participantService, $chatManager): object {
+                return match ($serviceClass) {
+                    'OCA\\Talk\\Manager' => $manager,
+                    'OCA\\Talk\\Service\\ParticipantService' => $participantService,
+                    'OCA\\Talk\\Chat\\ChatManager' => $chatManager,
+                    default => throw new \RuntimeException('Unexpected service lookup'),
+                };
+            });
+
+        $service = new ProjectTalkIntegrationService(
+            $this->talkBroker,
+            $this->serverContainer,
+            $this->userManager,
+            $this->urlGenerator,
+            $this->rootFolder,
+            $this->shareManager,
+            $this->logger,
+        );
+
+        $created = $service->shareFileInConversation('room-token', 42, $owner, 'Projects/Project X', 'Project X', 99, 901);
+
+        $this->assertTrue($created);
+        $this->assertCount(1, $chatManager->calls);
+        $payload = json_decode($chatManager->calls[0]['message'], true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(777, $payload['parameters']['share']);
+    }
+
+    public function testShareFileInConversationFailsWhenNoFileResolutionPathWorks(): void
+    {
+        $owner = $this->createConfiguredMock(IUser::class, [
+            'getUID' => 'owner',
+        ]);
+        $userFolder = $this->createMock(Folder::class);
+
+        $this->rootFolder->expects($this->once())
+            ->method('getUserFolder')
+            ->with('owner')
+            ->willReturn($userFolder);
+        $userFolder->expects($this->once())
+            ->method('getFirstNodeById')
+            ->with(42)
+            ->willReturn(null);
+        $this->rootFolder->expects($this->exactly(2))
+            ->method('getById')
+            ->willReturn([]);
+        $userFolder->expects($this->once())
+            ->method('get')
+            ->with('Projects/Project X')
+            ->willThrowException(new \OCP\Files\NotFoundException());
+
+        $service = new ProjectTalkIntegrationService(
+            $this->talkBroker,
+            $this->serverContainer,
+            $this->userManager,
+            $this->urlGenerator,
+            $this->rootFolder,
+            $this->shareManager,
+            $this->logger,
+        );
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('File 42 is not accessible for user "owner".');
+
+        $service->shareFileInConversation('room-token', 42, $owner, 'Projects/Project X', 'Project X', 99, 901);
     }
 }
 }

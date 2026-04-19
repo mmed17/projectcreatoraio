@@ -762,18 +762,7 @@ class ProjectApiController extends Controller
 		}
 
 		$userFolder = $this->rootFolder->getUserFolder($currentUser->getUID());
-		$file = null;
-		$node = $userFolder->getFirstNodeById($whiteboardId);
-		if ($node instanceof File) {
-			$file = $node;
-		}
-
-		if ($file === null) {
-			$folderNode = $userFolder->get($project->getFolderPath());
-			if ($folderNode instanceof Folder) {
-				$file = $this->findWhiteboardInFolder($folderNode, $project->getName());
-			}
-		}
+		$file = $this->resolveWhiteboardFile($project, $userFolder, $whiteboardId);
 
 		if ($file === null) {
 			throw new OCSNotFoundException('Whiteboard file not found');
@@ -792,6 +781,44 @@ class ProjectApiController extends Controller
 			'mtime' => $file->getMTime(),
 			'path' => '/' . ltrim($relative, '/'),
 		]);
+	}
+
+	private function resolveWhiteboardFile(Project $project, Folder $userFolder, int $whiteboardId): ?File {
+		$node = $userFolder->getFirstNodeById($whiteboardId);
+		if ($node instanceof File) {
+			return $node;
+		}
+
+		foreach ($this->rootFolder->getById($whiteboardId) as $rootNode) {
+			if ($rootNode instanceof File) {
+				return $rootNode;
+			}
+		}
+
+		$folderId = (int) ($project->getFolderId() ?? 0);
+		if ($folderId > 0) {
+			foreach ($this->rootFolder->getById($folderId) as $folderNode) {
+				if ($folderNode instanceof Folder) {
+					$file = $this->findWhiteboardInFolder($folderNode, $project->getName());
+					if ($file instanceof File) {
+						return $file;
+					}
+				}
+			}
+		}
+
+		$folderPath = trim((string) $project->getFolderPath());
+		if ($folderPath !== '') {
+			try {
+				$folderNode = $userFolder->get($folderPath);
+				if ($folderNode instanceof Folder) {
+					return $this->findWhiteboardInFolder($folderNode, $project->getName());
+				}
+			} catch (Throwable) {
+			}
+		}
+
+		return null;
 	}
 
 	private function findWhiteboardInFolder(Folder $folder, string $projectName): ?File {

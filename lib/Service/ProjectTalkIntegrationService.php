@@ -131,6 +131,7 @@ class ProjectTalkIntegrationService
         ?string $projectFolderPath = null,
         ?string $projectName = null,
         ?int $projectId = null,
+        ?int $projectFolderId = null,
     ): bool
     {
         $conversationToken = trim($conversationToken);
@@ -140,6 +141,7 @@ class ProjectTalkIntegrationService
                 'conversationToken' => $conversationToken,
                 'fileId' => $fileId,
                 'actorUserId' => $actor->getUID(),
+                'projectFolderId' => $projectFolderId,
             ]);
             return false;
         }
@@ -149,13 +151,14 @@ class ProjectTalkIntegrationService
             'conversationToken' => $conversationToken,
             'fileId' => $fileId,
             'actorUserId' => $actor->getUID(),
+            'projectFolderId' => $projectFolderId,
             'projectFolderPath' => $projectFolderPath,
             'projectName' => $projectName,
         ]);
 
         $room = $this->getTalkManager()->getRoomByToken($conversationToken);
         $participant = $this->getParticipantService()->getParticipant($room, $actor->getUID(), false);
-        $file = $this->resolveUserFile($actor, $fileId, $projectFolderPath, $projectName, $projectId);
+        $file = $this->resolveUserFile($actor, $fileId, $projectFolderPath, $projectName, $projectId, $projectFolderId);
         if ($this->hasRoomShare($conversationToken, $file, $actor)) {
             $this->logger->debug('Skipping Talk file share because room share already exists', [
                 'projectId' => $projectId,
@@ -163,6 +166,7 @@ class ProjectTalkIntegrationService
                 'fileId' => $fileId,
                 'resolvedFileId' => $file->getId(),
                 'actorUserId' => $actor->getUID(),
+                'projectFolderId' => $projectFolderId,
             ]);
             return false;
         }
@@ -175,6 +179,7 @@ class ProjectTalkIntegrationService
             'resolvedFileId' => $file->getId(),
             'shareId' => $share->getId(),
             'actorUserId' => $actor->getUID(),
+            'projectFolderId' => $projectFolderId,
         ]);
 
         try {
@@ -204,6 +209,7 @@ class ProjectTalkIntegrationService
                 'resolvedFileId' => $file->getId(),
                 'shareId' => $share->getId(),
                 'actorUserId' => $actor->getUID(),
+                'projectFolderId' => $projectFolderId,
             ]);
             return true;
         } catch (Throwable $e) {
@@ -215,6 +221,7 @@ class ProjectTalkIntegrationService
                 'resolvedFileId' => $file->getId(),
                 'shareId' => $share->getId(),
                 'actorUserId' => $actor->getUID(),
+                'projectFolderId' => $projectFolderId,
                 'exception' => $e,
             ]);
             throw $e;
@@ -265,6 +272,7 @@ class ProjectTalkIntegrationService
         ?string $projectFolderPath = null,
         ?string $projectName = null,
         ?int $projectId = null,
+        ?int $projectFolderId = null,
     ): File
     {
         $userFolder = $this->rootFolder->getUserFolder($actor->getUID());
@@ -275,14 +283,61 @@ class ProjectTalkIntegrationService
                 'fileId' => $fileId,
                 'resolvedFileId' => $node->getId(),
                 'actorUserId' => $actor->getUID(),
+                'projectFolderId' => $projectFolderId,
             ]);
             return $node;
         }
 
-        $this->logger->debug('Direct project whiteboard lookup by file id failed, trying folder fallback', [
+        $this->logger->debug('Direct project whiteboard lookup by user-scoped file id failed, trying global file id fallback', [
             'projectId' => $projectId,
             'fileId' => $fileId,
             'actorUserId' => $actor->getUID(),
+            'projectFolderId' => $projectFolderId,
+            'projectFolderPath' => $projectFolderPath,
+            'projectName' => $projectName,
+        ]);
+
+        $globalFile = $this->resolveGlobalFileById($fileId);
+        if ($globalFile instanceof File) {
+            $this->logger->debug('Resolved project whiteboard by global file id fallback', [
+                'projectId' => $projectId,
+                'fileId' => $fileId,
+                'resolvedFileId' => $globalFile->getId(),
+                'actorUserId' => $actor->getUID(),
+                'projectFolderId' => $projectFolderId,
+            ]);
+            return $globalFile;
+        }
+
+        $this->logger->debug('Global file id fallback failed, trying shared folder id fallback', [
+            'projectId' => $projectId,
+            'fileId' => $fileId,
+            'actorUserId' => $actor->getUID(),
+            'projectFolderId' => $projectFolderId,
+            'projectFolderPath' => $projectFolderPath,
+            'projectName' => $projectName,
+        ]);
+
+        if (($projectFolderId ?? 0) > 0) {
+            $projectFolder = $this->resolveGlobalFolderById((int) $projectFolderId);
+            if ($projectFolder instanceof Folder) {
+                $fallbackFile = $this->findWhiteboardInFolder(
+                    $projectFolder,
+                    trim((string) $projectName),
+                    $projectId,
+                    $actor->getUID(),
+                );
+                if ($fallbackFile instanceof File) {
+                    return $fallbackFile;
+                }
+            }
+        }
+
+        $this->logger->debug('Shared folder id fallback failed, trying user path fallback for compatibility', [
+            'projectId' => $projectId,
+            'fileId' => $fileId,
+            'actorUserId' => $actor->getUID(),
+            'projectFolderId' => $projectFolderId,
             'projectFolderPath' => $projectFolderPath,
             'projectName' => $projectName,
         ]);
@@ -307,6 +362,7 @@ class ProjectTalkIntegrationService
                     'projectId' => $projectId,
                     'fileId' => $fileId,
                     'actorUserId' => $actor->getUID(),
+                    'projectFolderId' => $projectFolderId,
                     'projectFolderPath' => $folderPath,
                     'projectName' => $projectName,
                     'exception' => $e,
@@ -318,10 +374,33 @@ class ProjectTalkIntegrationService
             'projectId' => $projectId,
             'fileId' => $fileId,
             'actorUserId' => $actor->getUID(),
+            'projectFolderId' => $projectFolderId,
             'projectFolderPath' => $folderPath,
             'projectName' => $projectName,
         ]);
         throw new RuntimeException(sprintf('File %d is not accessible for user "%s".', $fileId, $actor->getUID()));
+    }
+
+    private function resolveGlobalFileById(int $fileId): ?File
+    {
+        foreach ($this->rootFolder->getById($fileId) as $node) {
+            if ($node instanceof File) {
+                return $node;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveGlobalFolderById(int $folderId): ?Folder
+    {
+        foreach ($this->rootFolder->getById($folderId) as $node) {
+            if ($node instanceof Folder) {
+                return $node;
+            }
+        }
+
+        return null;
     }
 
     private function createRoomShare(string $conversationToken, File $file, IUser $actor): IShare
