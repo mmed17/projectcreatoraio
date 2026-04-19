@@ -644,9 +644,24 @@ class ProjectService
             throw new Exception("Failed to create project group '$projectGroupName'.");
         }
 
-        // Batch insert users directly to database (bypasses slow event dispatching)
-        $gid = $createdGroup->getGID();
-        $this->batchAddUsersToGroup($members, $gid);
+        $this->logger->debug('Adding project members to project group through Nextcloud group API', [
+            'projectGroupGid' => $createdGroup->getGID(),
+            'memberIds' => array_values(array_unique(array_map('strval', $members))),
+        ]);
+
+        foreach (array_values(array_unique(array_map('strval', $members))) as $userId) {
+            $user = $this->userManager->get($userId);
+            if ($user === null) {
+                continue;
+            }
+
+            $createdGroup->addUser($user);
+        }
+
+        $this->logger->debug('Finished adding project members to project group', [
+            'projectGroupGid' => $createdGroup->getGID(),
+            'memberIds' => array_values(array_unique(array_map('strval', $members))),
+        ]);
 
         return $createdGroup;
     }
@@ -659,39 +674,6 @@ class ProjectService
             $groupId = $prefix . bin2hex(random_bytes(8));
             if (!$this->groupManager->groupExists($groupId)) {
                 return $groupId;
-            }
-        }
-    }
-
-    /**
-     * Batch add users to a group using direct database insertion.
-     * This bypasses event dispatching for performance (useful for bulk operations).
-     */
-    private function batchAddUsersToGroup(array $userIds, string $gid): void
-    {
-        foreach ($userIds as $uid) {
-            // Verify user exists
-            if ($this->userManager->get($uid) === null) {
-                continue;
-            }
-
-            // Direct insert - check if already in group first
-            $qb = $this->db->getQueryBuilder();
-            $qb->select('uid')
-                ->from('group_user')
-                ->where($qb->expr()->eq('uid', $qb->createNamedParameter($uid)))
-                ->andWhere($qb->expr()->eq('gid', $qb->createNamedParameter($gid)));
-
-            $result = $qb->executeQuery();
-            $exists = $result->fetch();
-            $result->closeCursor();
-
-            if (!$exists) {
-                $insert = $this->db->getQueryBuilder();
-                $insert->insert('group_user')
-                    ->setValue('uid', $insert->createNamedParameter($uid))
-                    ->setValue('gid', $insert->createNamedParameter($gid))
-                    ->executeStatement();
             }
         }
     }
