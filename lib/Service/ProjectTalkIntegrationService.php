@@ -17,6 +17,7 @@ use OCP\Share\IShare;
 use OCP\Talk\IBroker;
 use OCP\Talk\Exceptions\NoBackendException;
 use OCP\IURLGenerator;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Throwable;
 
@@ -35,6 +36,7 @@ class ProjectTalkIntegrationService
         private readonly IURLGenerator $urlGenerator,
         private readonly IRootFolder $rootFolder,
         private readonly IShareManager $shareManager,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -128,21 +130,52 @@ class ProjectTalkIntegrationService
         IUser $actor,
         ?string $projectFolderPath = null,
         ?string $projectName = null,
+        ?int $projectId = null,
     ): bool
     {
         $conversationToken = trim($conversationToken);
         if ($conversationToken === '' || $fileId <= 0) {
+            $this->logger->debug('Skipping Talk file share because payload is incomplete', [
+                'projectId' => $projectId,
+                'conversationToken' => $conversationToken,
+                'fileId' => $fileId,
+                'actorUserId' => $actor->getUID(),
+            ]);
             return false;
         }
 
+        $this->logger->debug('Starting Talk file share for project whiteboard', [
+            'projectId' => $projectId,
+            'conversationToken' => $conversationToken,
+            'fileId' => $fileId,
+            'actorUserId' => $actor->getUID(),
+            'projectFolderPath' => $projectFolderPath,
+            'projectName' => $projectName,
+        ]);
+
         $room = $this->getTalkManager()->getRoomByToken($conversationToken);
         $participant = $this->getParticipantService()->getParticipant($room, $actor->getUID(), false);
-        $file = $this->resolveUserFile($actor, $fileId, $projectFolderPath, $projectName);
+        $file = $this->resolveUserFile($actor, $fileId, $projectFolderPath, $projectName, $projectId);
         if ($this->hasRoomShare($conversationToken, $file, $actor)) {
+            $this->logger->debug('Skipping Talk file share because room share already exists', [
+                'projectId' => $projectId,
+                'conversationToken' => $conversationToken,
+                'fileId' => $fileId,
+                'resolvedFileId' => $file->getId(),
+                'actorUserId' => $actor->getUID(),
+            ]);
             return false;
         }
 
         $share = $this->createRoomShare($conversationToken, $file, $actor);
+        $this->logger->debug('Created Talk room share for project whiteboard', [
+            'projectId' => $projectId,
+            'conversationToken' => $conversationToken,
+            'fileId' => $fileId,
+            'resolvedFileId' => $file->getId(),
+            'shareId' => $share->getId(),
+            'actorUserId' => $actor->getUID(),
+        ]);
 
         try {
             $message = json_encode([
@@ -164,9 +197,26 @@ class ProjectTalkIntegrationService
                 new DateTime(),
                 true,
             );
+            $this->logger->debug('Posted Talk system message for project whiteboard share', [
+                'projectId' => $projectId,
+                'conversationToken' => $conversationToken,
+                'fileId' => $fileId,
+                'resolvedFileId' => $file->getId(),
+                'shareId' => $share->getId(),
+                'actorUserId' => $actor->getUID(),
+            ]);
             return true;
         } catch (Throwable $e) {
             $this->shareManager->deleteShare($share);
+            $this->logger->warning('Failed to post Talk system message for project whiteboard share', [
+                'projectId' => $projectId,
+                'conversationToken' => $conversationToken,
+                'fileId' => $fileId,
+                'resolvedFileId' => $file->getId(),
+                'shareId' => $share->getId(),
+                'actorUserId' => $actor->getUID(),
+                'exception' => $e,
+            ]);
             throw $e;
         }
     }
@@ -214,29 +264,64 @@ class ProjectTalkIntegrationService
         int $fileId,
         ?string $projectFolderPath = null,
         ?string $projectName = null,
+        ?int $projectId = null,
     ): File
     {
         $userFolder = $this->rootFolder->getUserFolder($actor->getUID());
         $node = $userFolder->getFirstNodeById($fileId);
-        if (!$node instanceof File) {
-            $folderPath = trim((string) $projectFolderPath);
-            if ($folderPath !== '') {
-                try {
-                    $folderNode = $userFolder->get($folderPath);
-                    if ($folderNode instanceof Folder) {
-                        $fallbackFile = $this->findWhiteboardInFolder($folderNode, trim((string) $projectName));
-                        if ($fallbackFile instanceof File) {
-                            return $fallbackFile;
-                        }
-                    }
-                } catch (Throwable) {
-                }
-            }
-
-            throw new RuntimeException(sprintf('File %d is not accessible for user "%s".', $fileId, $actor->getUID()));
+        if ($node instanceof File) {
+            $this->logger->debug('Resolved project whiteboard directly by file id', [
+                'projectId' => $projectId,
+                'fileId' => $fileId,
+                'resolvedFileId' => $node->getId(),
+                'actorUserId' => $actor->getUID(),
+            ]);
+            return $node;
         }
 
-        return $node;
+        $this->logger->debug('Direct project whiteboard lookup by file id failed, trying folder fallback', [
+            'projectId' => $projectId,
+            'fileId' => $fileId,
+            'actorUserId' => $actor->getUID(),
+            'projectFolderPath' => $projectFolderPath,
+            'projectName' => $projectName,
+        ]);
+
+        $folderPath = trim((string) $projectFolderPath);
+        if ($folderPath !== '') {
+            try {
+                $folderNode = $userFolder->get($folderPath);
+                if ($folderNode instanceof Folder) {
+                    $fallbackFile = $this->findWhiteboardInFolder(
+                        $folderNode,
+                        trim((string) $projectName),
+                        $projectId,
+                        $actor->getUID(),
+                    );
+                    if ($fallbackFile instanceof File) {
+                        return $fallbackFile;
+                    }
+                }
+            } catch (Throwable $e) {
+                $this->logger->warning('Project whiteboard folder fallback lookup failed', [
+                    'projectId' => $projectId,
+                    'fileId' => $fileId,
+                    'actorUserId' => $actor->getUID(),
+                    'projectFolderPath' => $folderPath,
+                    'projectName' => $projectName,
+                    'exception' => $e,
+                ]);
+            }
+        }
+
+        $this->logger->warning('Project whiteboard could not be resolved for Talk sharing', [
+            'projectId' => $projectId,
+            'fileId' => $fileId,
+            'actorUserId' => $actor->getUID(),
+            'projectFolderPath' => $folderPath,
+            'projectName' => $projectName,
+        ]);
+        throw new RuntimeException(sprintf('File %d is not accessible for user "%s".', $fileId, $actor->getUID()));
     }
 
     private function createRoomShare(string $conversationToken, File $file, IUser $actor): IShare
@@ -273,25 +358,64 @@ class ProjectTalkIntegrationService
         return false;
     }
 
-    private function findWhiteboardInFolder(Folder $folder, string $projectName): ?File
+    private function findWhiteboardInFolder(
+        Folder $folder,
+        string $projectName,
+        ?int $projectId = null,
+        ?string $actorUserId = null,
+    ): ?File
     {
         $preferred = $projectName !== '' ? $projectName . '.whiteboard' : null;
+        $this->logger->debug('Scanning project folder for whiteboard fallback', [
+            'projectId' => $projectId,
+            'projectName' => $projectName,
+            'preferredFileName' => $preferred,
+            'actorUserId' => $actorUserId,
+        ]);
+
         foreach ($folder->getDirectoryListing() as $child) {
             if (!$child instanceof File) {
                 continue;
             }
 
             $name = $child->getName();
+            if (!is_string($name) || $name === '') {
+                $this->logger->debug('Skipping project folder child with invalid file name during whiteboard fallback', [
+                    'projectId' => $projectId,
+                    'actorUserId' => $actorUserId,
+                    'childFileId' => $child->getId(),
+                ]);
+                continue;
+            }
+
             $lower = strtolower($name);
             if ($preferred !== null && $name === $preferred) {
+                $this->logger->debug('Resolved project whiteboard by preferred file name fallback', [
+                    'projectId' => $projectId,
+                    'actorUserId' => $actorUserId,
+                    'resolvedFileId' => $child->getId(),
+                    'resolvedFileName' => $name,
+                ]);
                 return $child;
             }
 
             if (str_ends_with($lower, '.whiteboard') || str_ends_with($lower, '.excalidraw')) {
+                $this->logger->debug('Resolved project whiteboard by extension fallback', [
+                    'projectId' => $projectId,
+                    'actorUserId' => $actorUserId,
+                    'resolvedFileId' => $child->getId(),
+                    'resolvedFileName' => $name,
+                ]);
                 return $child;
             }
         }
 
+        $this->logger->debug('No project whiteboard file was found during folder fallback scan', [
+            'projectId' => $projectId,
+            'projectName' => $projectName,
+            'preferredFileName' => $preferred,
+            'actorUserId' => $actorUserId,
+        ]);
         return null;
     }
 

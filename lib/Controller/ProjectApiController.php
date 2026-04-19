@@ -799,6 +799,9 @@ class ProjectApiController extends Controller
 		foreach ($folder->getDirectoryListing() as $child) {
 			if ($child instanceof File) {
 				$name = $child->getName();
+				if (!is_string($name) || $name === '') {
+					continue;
+				}
 				$lower = strtolower($name);
 				if ($preferred !== null && $name === $preferred) {
 					return $child;
