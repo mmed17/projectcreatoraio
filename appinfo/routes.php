@@ -90,6 +90,11 @@ return [
             "verb" => "GET",
         ],
         [
+            "name" => "project_api#getByTalkConversationToken",
+            "url" => "/api/v1/projects/talk/{token}",
+            "verb" => "GET",
+        ],
+        [
             "name" => "project_api#getProjectFiles",
             "url" => "/api/v1/projects/{projectId}/files",
             "verb" => "GET",

@@ -857,6 +857,19 @@ class ProjectApiController extends Controller
 
     #[NoCSRFRequired]
     #[NoAdminRequired]
+    public function getByTalkConversationToken(string $token): DataResponse
+    {
+        $project = $this->projectMapper->findByTalkConversationToken($token);
+        if ($project === null) {
+            throw new OCSNotFoundException("Project not found for conversation $token");
+        }
+
+        $this->assertCanAccessProject($project);
+        return new DataResponse($project);
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
     public function listByUser(string $userId): DataResponse
     {
         $currentUser = $this->userSession->getUser();

@@ -269,6 +269,22 @@ class ProjectMapper extends QBMapper
         }
     }
 
+    public function findByTalkConversationToken(string $talkConversationToken): ?Project
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')
+            ->from(self::TABLE_NAME)
+            ->where(
+                $qb->expr()->eq('talk_conversation_token', $qb->createNamedParameter($talkConversationToken))
+            );
+
+        try {
+            return $this->findEntity($qb);
+        } catch (DoesNotExistException $e) {
+            return null;
+        }
+    }
+
     public function findByWhiteBoardId(int $whiteBoardId)
     {
         $qb = $this->db->getQueryBuilder();

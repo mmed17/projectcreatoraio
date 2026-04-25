@@ -98,6 +98,28 @@ export class ProjectsService {
     }
 
     /**
+     *
+     * @param {string} token
+     * @returns {Promise<any|null>}
+     */
+    async getByTalkConversationToken(token) {
+        try {
+            const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/talk/${encodeURIComponent(token)}`)
+            const response = await axios.get(url, {
+                headers: {
+                    'OCS-APIRequest': 'true',
+                    'Content-Type': 'application/json'
+                }
+            })
+
+            return response.data ?? null
+        } catch (e) {
+            console.error('Failed to fetch project by talk conversation token:', e)
+            return null
+        }
+    }
+
+    /**
      * Delete a project.
      *
      * @param {number} projectId
