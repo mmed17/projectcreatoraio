@@ -708,6 +708,20 @@ class ProjectApiController extends Controller
 
     #[NoCSRFRequired]
     #[NoAdminRequired]
+    public function listMine(): DataResponse
+    {
+        $currentUser = $this->userSession->getUser();
+        if ($currentUser === null) {
+            throw new OCSForbiddenException('Authentication required');
+        }
+
+        $projects = $this->projectMapper->findByUserId($currentUser->getUID());
+
+        return new DataResponse($this->projectService->buildProjectPayloads($projects));
+    }
+
+    #[NoCSRFRequired]
+    #[NoAdminRequired]
     public function context(): DataResponse
     {
         $currentUser = $this->userSession->getUser();
