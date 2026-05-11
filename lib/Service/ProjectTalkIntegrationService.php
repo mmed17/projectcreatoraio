@@ -58,7 +58,7 @@ class ProjectTalkIntegrationService
             $conversation = $this->talkBroker->createConversation(
                 trim($projectName) . ' - Chat',
                 [$owner],
-                $this->talkBroker->newConversationOptions(),
+                $this->talkBroker->newConversationOptions()->setPublic(),
             );
         } catch (NoBackendException $e) {
             throw new RuntimeException('Talk is not available.', 0, $e);
