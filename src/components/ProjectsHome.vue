@@ -804,6 +804,13 @@
 								:show-label="true"
 								input-label="Project name"
 								placeholder="e.g., Riverside Renovation" />
+							<NcTextField
+								v-model="projectProfileDraft.description"
+								label="Description"
+								:show-label="true"
+								input-label="Description"
+								type="textarea"
+								placeholder="Brief description of the project..." />
 						</div>
 					</div>
 
@@ -1049,6 +1056,7 @@ export default {
 			showProjectProfileModal: false,
 			projectProfileDraft: {
 				name: '',
+				description: '',
 				client_name: '',
 				client_role: '',
 				client_phone: '',
@@ -1244,6 +1252,7 @@ export default {
 			const selected = this.selectedProject || {}
 			return {
 				name: selected.name || '',
+				description: selected.description || '',
 				client_name: selected.client_name || '',
 				client_role: selected.client_role || '',
 				client_phone: selected.client_phone || '',
@@ -1342,6 +1351,7 @@ export default {
 			}
 			if (this.canEditProjectTitle) {
 				payload.name = this.projectProfileDraft.name
+				payload.description = this.projectProfileDraft.description
 			}
 			try {
 				const updated = await projectsService.update(projectId, payload)
