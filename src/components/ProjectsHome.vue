@@ -256,11 +256,11 @@
 							<NcButton
 								v-if="selectedProject.talk_url"
 								type="secondary"
+								aria-label="Open chat"
 								@click="openChat(selectedProject)">
 								<template #icon>
-									<OpenInNew :size="14" />
+									<Chat :size="16" />
 								</template>
-								Open chat
 							</NcButton>
 							<label v-if="canEditProjectStatus" class="projects-home__status-editor" for="projects-status-editor">
 								<span class="projects-home__status-editor-label">Status</span>
@@ -282,12 +282,12 @@
 								v-if="canDeleteSelectedProject"
 								type="tertiary"
 								:disabled="projectDeleting"
+								aria-label="Delete project"
 								class="projects-home__delete-button"
 								@click="deleteSelectedProject">
 								<template #icon>
 									<Delete :size="16" />
 								</template>
-								{{ projectDeleting ? 'Deleting...' : 'Delete project' }}
 							</NcButton>
 						</div>
 					</div>
@@ -941,6 +941,7 @@ import AccountMultiple from 'vue-material-design-icons/AccountMultiple.vue'
 import AccountOff from 'vue-material-design-icons/AccountOff.vue'
 import AlertCircle from 'vue-material-design-icons/AlertCircle.vue'
 import ChartGantt from 'vue-material-design-icons/ChartGantt.vue'
+import Chat from 'vue-material-design-icons/Chat.vue'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
 import Draw from 'vue-material-design-icons/Draw.vue'
 import Download from 'vue-material-design-icons/Download.vue'
@@ -997,6 +998,7 @@ export default {
 		AccountOff,
 		AlertCircle,
 		ChartGantt,
+		Chat,
 		ChevronLeft,
 		DeckAnalytics,
 		DeckBoard,
