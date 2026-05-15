@@ -504,6 +504,29 @@ export class ProjectsService {
 	}
 
 	/**
+	 *
+	 * @param {number} projectId
+	 * @param {number} limit
+	 * @param {number} offset
+	 * @returns {Promise<{events:Array,hasMore:boolean}>}
+	 */
+	async getWhiteboardActivity(projectId, limit = 20, offset = 0) {
+		try {
+			const url = generateUrl(`/apps/projectcreatoraio/api/v1/projects/${projectId}/whiteboard/activity`, { limit, offset })
+			const response = await axios.get(url, {
+				headers: {
+					'OCS-APIRequest': 'true',
+					'Content-Type': 'application/json',
+				},
+			})
+			return response.data ?? { events: [], hasMore: false }
+		} catch (e) {
+			console.error('Failed to fetch whiteboard activity:', e)
+			return { events: [], hasMore: false }
+		}
+	}
+
+	/**
 	 * Update a project (partial fields).
 	 *
 	 * @param {number} projectId

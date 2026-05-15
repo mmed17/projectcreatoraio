@@ -57,6 +57,26 @@ class ProjectActivityEventMapper extends QBMapper {
 		return $this->findEntities($qb);
 	}
 
+	/**
+	 * @return ProjectActivityEvent[]
+	 */
+	public function findForProject(int $projectId, ?string $eventType = null, int $limit = 20, int $offset = 0): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('project_id', $qb->createNamedParameter($projectId, IQueryBuilder::PARAM_INT)))
+			->orderBy('occurred_at', 'DESC')
+			->addOrderBy('id', 'DESC')
+			->setMaxResults($limit)
+			->setFirstResult($offset);
+
+		if ($eventType !== null && $eventType !== '') {
+			$qb->andWhere($qb->expr()->eq('event_type', $qb->createNamedParameter($eventType, IQueryBuilder::PARAM_STR)));
+		}
+
+		return $this->findEntities($qb);
+	}
+
 	public function deleteByProject(int $projectId): void {
 		$qb = $this->db->getQueryBuilder();
 		$qb->delete($this->getTableName())

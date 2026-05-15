@@ -797,6 +797,31 @@ class ProjectApiController extends Controller
 		]);
 	}
 
+	#[NoCSRFRequired]
+	#[NoAdminRequired]
+	public function getWhiteboardActivity(int $projectId, int $limit = 20, int $offset = 0): DataResponse {
+		$project = $this->projectMapper->find($projectId);
+		if ($project === null) {
+			throw new OCSNotFoundException("Project with ID $projectId not found");
+		}
+
+		$this->assertCanAccessProject($project);
+
+		$limit = max(1, min(100, $limit));
+		$offset = max(0, $offset);
+
+		$events = $this->projectActivityService->getWhiteboardActivity($projectId, $limit + 1, $offset);
+		$hasMore = count($events) > $limit;
+		if ($hasMore) {
+			$events = array_slice($events, 0, $limit);
+		}
+
+		return new DataResponse([
+			'events' => array_map(fn ($e) => $e->jsonSerialize(), $events),
+			'hasMore' => $hasMore,
+		]);
+	}
+
 	private function resolveWhiteboardFile(Project $project, Folder $userFolder, int $whiteboardId): ?File {
 		$node = $userFolder->getFirstNodeById($whiteboardId);
 		if ($node instanceof File) {

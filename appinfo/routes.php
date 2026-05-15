@@ -165,6 +165,11 @@ return [
             "verb" => "GET",
         ],
         [
+            "name" => "project_api#getWhiteboardActivity",
+            "url" => "/api/v1/projects/{projectId}/whiteboard/activity",
+            "verb" => "GET",
+        ],
+        [
             "name" => "project_api#update",
             "url" => "/api/v1/projects/{id}",
             "verb" => "PUT",

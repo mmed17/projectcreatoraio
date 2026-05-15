@@ -63,6 +63,10 @@
 				</button>
 			</div>
 		</div>
+
+		<WhiteboardActivity
+			v-if="normalizedProjectId"
+			:project-id="normalizedProjectId" />
 	</div>
 </template>
 
@@ -76,6 +80,7 @@ import Refresh from 'vue-material-design-icons/Refresh.vue'
 
 import { generateRemoteUrl, generateUrl } from '@nextcloud/router'
 import { ProjectsService } from '../../Services/projects'
+import WhiteboardActivity from './WhiteboardActivity.vue'
 
 const projectsService = ProjectsService.getInstance()
 
@@ -87,6 +92,7 @@ export default {
 		EyeOutline,
 		OpenInNew,
 		Refresh,
+		WhiteboardActivity,
 	},
 	props: {
 		projectId: {

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\ProjectCreatorAIO\Service;
 
 use OCA\ProjectCreatorAIO\Db\Project;
+use OCA\ProjectCreatorAIO\Db\ProjectActivityEvent;
 use OCA\ProjectCreatorAIO\Db\ProjectActivityEventMapper;
 use OCA\ProjectCreatorAIO\Db\ProjectNote;
 use OCA\ProjectCreatorAIO\Db\TimelineItem;
@@ -41,8 +42,18 @@ class ProjectActivityService {
 		]);
 	}
 
-	public function recordWhiteboardUpdated(Project $project, IUser $actor): void {
-		$this->recordProjectEvent($project, self::EVENT_WHITEBOARD_UPDATED, $actor);
+	/**
+	 * @param array<string, mixed> $extraPayload
+	 */
+	public function recordWhiteboardUpdated(Project $project, IUser $actor, array $extraPayload = []): void {
+		$this->recordProjectEvent($project, self::EVENT_WHITEBOARD_UPDATED, $actor, $extraPayload);
+	}
+
+	/**
+	 * @return ProjectActivityEvent[]
+	 */
+	public function getWhiteboardActivity(int $projectId, int $limit = 20, int $offset = 0): array {
+		return $this->eventMapper->findForProject($projectId, self::EVENT_WHITEBOARD_UPDATED, $limit, $offset);
 	}
 
 	public function recordProjectNotesUpdated(Project $project, IUser $actor, bool $publicUpdated, bool $privateUpdated): void {

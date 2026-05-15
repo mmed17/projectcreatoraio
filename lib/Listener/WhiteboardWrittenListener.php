@@ -49,6 +49,9 @@ class WhiteboardWrittenListener implements IEventListener {
 		}
 
 		$this->projectNotificationService->notifyWhiteboardUpdated($project, $actor);
-		$this->projectActivityService->recordWhiteboardUpdated($project, $actor);
+		$this->projectActivityService->recordWhiteboardUpdated($project, $actor, [
+			'fileSize' => $node->getSize(),
+			'mtime' => $node->getMTime(),
+		]);
 	}
 }
