@@ -377,31 +377,23 @@
 					<div v-if="activeTab === 'overview'" class="projects-home__tab-section projects-home__tab-section--full">
 						<div class="projects-home__overview">
 							<!-- Location & Client Section -->
-							<section class="projects-home__overview-section">
+							<section class="projects-home__overview-section projects-home__overview-section--editable">
 								<div class="projects-home__tab-section-header">
 									<h3 class="projects-home__section-title">
 										<MapMarker :size="20" />
 										<Account :size="20" />
 										Location & Client
 									</h3>
-									<div v-if="canEditSelectedProjectDetails" class="projects-home__header-actions">
-										<NcButton
-											type="tertiary"
-											@click="startProjectProfileEdit('location')">
-											<template #icon>
-												<Pencil :size="16" />
-											</template>
-											Edit Location
-										</NcButton>
-										<NcButton
-											type="tertiary"
-											@click="startProjectProfileEdit('client')">
-											<template #icon>
-												<Pencil :size="16" />
-											</template>
-											Edit Client
-										</NcButton>
-									</div>
+									<NcButton
+										v-if="canEditSelectedProjectDetails"
+										type="tertiary-no-background"
+										class="projects-home__section-edit-btn"
+										aria-label="Edit location and client info"
+										@click="startProjectProfileEdit('location')">
+										<template #icon>
+											<Pencil :size="16" />
+										</template>
+									</NcButton>
 								</div>
 								<div class="projects-home__unified-sheet">
 									<div class="projects-home__sheet-col">
@@ -2636,11 +2628,22 @@ export default {
 }
 
 /* Unified Location & Client Sheet */
-.projects-home__header-actions {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	flex-wrap: wrap;
+.projects-home__overview-section--editable {
+	position: relative;
+	transition: border-color 0.2s ease;
+}
+
+.projects-home__overview-section--editable:hover {
+	border-color: var(--color-primary-element);
+}
+
+.projects-home__section-edit-btn {
+	opacity: 0.5;
+	transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+.projects-home__overview-section--editable:hover .projects-home__section-edit-btn {
+	opacity: 1;
 }
 
 .projects-home__unified-sheet {
