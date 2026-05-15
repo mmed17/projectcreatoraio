@@ -376,30 +376,36 @@
 					<!-- Overview Tab - Combined: Project Address, Client Information, Notes, Timeline & Deck -->
 					<div v-if="activeTab === 'overview'" class="projects-home__tab-section projects-home__tab-section--full">
 						<div class="projects-home__overview">
-							<!-- Project Address Section -->
+							<!-- Location & Client Section -->
 							<section class="projects-home__overview-section">
 								<div class="projects-home__tab-section-header">
 									<h3 class="projects-home__section-title">
 										<MapMarker :size="20" />
-										Project Location
+										<Account :size="20" />
+										Location & Client
 									</h3>
-									<NcButton
-										v-if="canEditSelectedProjectDetails"
-										type="tertiary"
-										@click="startProjectProfileEdit('location')">
-										<template #icon>
-											<Pencil :size="16" />
-										</template>
-										Edit
-									</NcButton>
+									<div v-if="canEditSelectedProjectDetails" class="projects-home__header-actions">
+										<NcButton
+											type="tertiary"
+											@click="startProjectProfileEdit('location')">
+											<template #icon>
+												<Pencil :size="16" />
+											</template>
+											Edit Location
+										</NcButton>
+										<NcButton
+											type="tertiary"
+											@click="startProjectProfileEdit('client')">
+											<template #icon>
+												<Pencil :size="16" />
+											</template>
+											Edit Client
+										</NcButton>
+									</div>
 								</div>
-								<div class="projects-home__detail-grid projects-home__detail-grid--single">
-									<article class="projects-home__card">
-										<div class="projects-home__card-header">
-											<h4 class="projects-home__card-subtitle">
-												Address Details
-											</h4>
-										</div>
+								<div class="projects-home__unified-sheet">
+									<div class="projects-home__sheet-col">
+										<h4 class="projects-home__card-subtitle">Address</h4>
 										<div class="projects-home__kv-list">
 											<div class="projects-home__kv">
 												<span class="projects-home__label">Street</span>
@@ -418,40 +424,10 @@
 												<span class="projects-home__value">{{ selectedProject.client_address || '-' }}</span>
 											</div>
 										</div>
-										<p v-if="projectProfileError" class="projects-home__inline-error projects-home__inline-error--left">
-											{{ projectProfileError }}
-										</p>
-										<p v-if="projectProfileMessage" class="projects-home__inline-success">
-											{{ projectProfileMessage }}
-										</p>
-									</article>
-								</div>
-							</section>
-
-							<!-- Client Information Section -->
-							<section class="projects-home__overview-section">
-								<div class="projects-home__tab-section-header">
-									<h3 class="projects-home__section-title">
-										<Account :size="20" />
-										Client Information
-									</h3>
-									<NcButton
-										v-if="canEditSelectedProjectDetails"
-										type="tertiary"
-										@click="startProjectProfileEdit('client')">
-										<template #icon>
-											<Pencil :size="16" />
-										</template>
-										Edit
-									</NcButton>
-								</div>
-								<div class="projects-home__detail-grid">
-									<article class="projects-home__card">
-										<div class="projects-home__card-header">
-											<h4 class="projects-home__card-subtitle">
-												Contact Information
-											</h4>
-										</div>
+									</div>
+									<div class="projects-home__sheet-divider"></div>
+									<div class="projects-home__sheet-col">
+										<h4 class="projects-home__card-subtitle">Client Contact</h4>
 										<div class="projects-home__kv-list">
 											<div class="projects-home__kv">
 												<span class="projects-home__label">Client Name</span>
@@ -461,15 +437,6 @@
 												<span class="projects-home__label">Role / Title</span>
 												<span class="projects-home__value">{{ selectedProject.client_role || '-' }}</span>
 											</div>
-										</div>
-									</article>
-									<article class="projects-home__card">
-										<div class="projects-home__card-header">
-											<h4 class="projects-home__card-subtitle">
-												Contact Methods
-											</h4>
-										</div>
-										<div class="projects-home__kv-list">
 											<div class="projects-home__kv">
 												<span class="projects-home__label">Phone</span>
 												<span class="projects-home__value">{{ selectedProject.client_phone || '-' }}</span>
@@ -479,8 +446,14 @@
 												<span class="projects-home__value">{{ selectedProject.client_email || '-' }}</span>
 											</div>
 										</div>
-									</article>
+									</div>
 								</div>
+								<p v-if="projectProfileError" class="projects-home__inline-error projects-home__inline-error--left">
+									{{ projectProfileError }}
+								</p>
+								<p v-if="projectProfileMessage" class="projects-home__inline-success">
+									{{ projectProfileMessage }}
+								</p>
 							</section>
 
 							<!-- Notes Section -->
@@ -2652,6 +2625,36 @@ export default {
 	color: var(--color-success, #1e7f2d);
 }
 
+/* Unified Location & Client Sheet */
+.projects-home__header-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.projects-home__unified-sheet {
+	display: grid;
+	grid-template-columns: 1fr auto 1fr;
+	gap: 0;
+	background: var(--color-main-background);
+	border: 1px solid var(--color-border-dark);
+	border-radius: 10px;
+	overflow: hidden;
+}
+
+.projects-home__sheet-col {
+	padding: 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.projects-home__sheet-divider {
+	width: 1px;
+	background: var(--color-border-dark);
+}
+
 /* Profile Modal */
 .projects-home__profile-modal {
 	display: flex;
@@ -2834,6 +2837,15 @@ export default {
 
 	.projects-home__detail-grid {
 		grid-template-columns: 1fr;
+	}
+
+	.projects-home__unified-sheet {
+		grid-template-columns: 1fr;
+	}
+
+	.projects-home__sheet-divider {
+		width: 100%;
+		height: 1px;
 	}
 
 	.projects-home__tab-toolbar {
