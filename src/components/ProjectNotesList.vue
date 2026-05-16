@@ -260,7 +260,7 @@ export default {
 				.replace(/[#*_`[\]()]/g, '') // Strip Markdown symbols
 				.replace(/\s+/g, ' ') // Normalize whitespace
 				.trim()
-			return plainText.length > 180 ? plainText.slice(0, 180) + '...' : plainText
+			return plainText.length > 350 ? plainText.slice(0, 350) + '...' : plainText
 		},
 		openCreateModal() {
 			this.showCreateModal = true
@@ -516,7 +516,7 @@ export default {
 	bottom: 0;
 	left: 0;
 	right: 0;
-	height: 30px;
+	height: 40px;
 	background: linear-gradient(transparent, var(--color-main-background));
 }
 
