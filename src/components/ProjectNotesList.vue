@@ -18,8 +18,20 @@
 					<Lock :size="18" />
 					<span>Private</span>
 				</button>
+				<button
+					type="button"
+					class="project-notes-list__tab"
+					:class="{ 'project-notes-list__tab--active': activeTab === 'cards' }"
+					@click="switchTab('cards')">
+					<CardTextOutline :size="18" />
+					<span>Cards</span>
+				</button>
 			</div>
-			<NcButton type="secondary" :disabled="!canCreateNote" @click="openCreateModal">
+			<NcButton
+				v-if="activeTab !== 'cards'"
+				type="secondary"
+				:disabled="!canCreateNote"
+				@click="openCreateModal">
 				<template #icon>
 					<Plus :size="20" />
 				</template>
@@ -37,12 +49,10 @@
 				<FileDocumentOutline :size="64" />
 			</div>
 			<p class="project-notes-list__empty-title">
-				{{ activeTab === 'private' && !canCreateNote ? 'Private notes are not available' : `No ${activeTab} notes yet` }}
+				{{ emptyTitle }}
 			</p>
 			<p class="project-notes-list__empty-subtitle">
-				{{ activeTab === 'private' && !canCreateNote
-					? 'Private notes are not available for this project'
-					: 'Create your first note to start documenting this project' }}
+				{{ emptySubtitle }}
 			</p>
 		</div>
 
@@ -51,7 +61,7 @@
 				v-for="note in notes"
 				:key="note.id"
 				class="project-notes-list__note-card"
-				@click="openEditModal(note)">
+				@click="note.visibility === 'card' ? openCardDetail(note) : openEditModal(note)">
 				<div class="project-notes-list__note-header">
 					<div class="project-notes-list__note-title-group">
 						<h4 class="project-notes-list__note-title">
@@ -61,7 +71,7 @@
 							{{ formatDate(note.updatedAt) }}
 						</span>
 					</div>
-					<div class="project-notes-list__note-actions">
+					<div v-if="note.visibility !== 'card'" class="project-notes-list__note-actions">
 						<button
 							type="button"
 							class="project-notes-list__action-btn"
@@ -81,12 +91,14 @@
 						<div class="project-notes-list__author-avatar" :title="note.userId">
 							{{ note.userId ? note.userId.charAt(0).toUpperCase() : '?' }}
 						</div>
-						<span class="project-notes-list__author-name">{{ note.userId }}</span>
+						<span class="project-notes-list__author-name">{{ note.visibility === 'card' ? `Card #${note.cardId}` : note.userId }}</span>
 					</div>
 					<div class="project-notes-list__note-type" :class="`project-notes-list__note-type--${note.visibility}`">
-						<Earth v-if="note.visibility === 'public'" :size="14" />
+						<CardTextOutline v-if="note.visibility === 'card'" :size="14" />
+						<Earth v-else-if="note.visibility === 'public'" :size="14" />
 						<Lock v-else :size="14" />
-						<span>{{ note.visibility }}</span>
+						<span v-if="note.visibility === 'card'">{{ note.cardNoteCount }} note{{ note.cardNoteCount !== 1 ? 's' : '' }}</span>
+						<span v-else>{{ note.visibility }}</span>
 					</div>
 				</div>
 			</div>
@@ -131,6 +143,11 @@
 			:visibility="editingNote.visibility"
 			@close="closeEditModal"
 			@updated="onNoteUpdated" />
+
+		<CardDetailModal
+			:show="showCardDetail"
+			:card="viewingCard"
+			@close="closeCardDetail" />
 	</div>
 </template>
 
@@ -144,7 +161,9 @@ import Delete from 'vue-material-design-icons/Delete.vue'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
 import ChevronRight from 'vue-material-design-icons/ChevronRight.vue'
 import FileDocumentOutline from 'vue-material-design-icons/FileDocumentOutline.vue'
+import CardTextOutline from 'vue-material-design-icons/CardTextOutline.vue'
 import CreateNoteModal from './CreateNoteModal.vue'
+import CardDetailModal from './CardDetailModal.vue'
 import { ProjectsService } from '../Services/projects.js'
 
 const projectsService = ProjectsService.getInstance()
@@ -161,7 +180,9 @@ export default {
 		ChevronLeft,
 		ChevronRight,
 		FileDocumentOutline,
+		CardTextOutline,
 		CreateNoteModal,
+		CardDetailModal,
 	},
 	props: {
 		projectId: {
@@ -181,6 +202,8 @@ export default {
 			showCreateModal: false,
 			showEditModal: false,
 			editingNote: null,
+			showCardDetail: false,
+			viewingCard: null,
 		}
 	},
 	computed: {
@@ -188,10 +211,31 @@ export default {
 			return Math.ceil(this.totalCount / this.perPage) || 1
 		},
 		canCreateNote() {
+			if (this.activeTab === 'cards') {
+				return false
+			}
 			if (this.activeTab === 'public') {
 				return true
 			}
 			return this.privateAvailable
+		},
+		emptyTitle() {
+			if (this.activeTab === 'private' && !this.canCreateNote) {
+				return 'Private notes are not available'
+			}
+			if (this.activeTab === 'cards') {
+				return 'No cards found'
+			}
+			return `No ${this.activeTab} notes yet`
+		},
+		emptySubtitle() {
+			if (this.activeTab === 'private' && !this.canCreateNote) {
+				return 'Private notes are not available for this project'
+			}
+			if (this.activeTab === 'cards') {
+				return 'This project does not have any visible cards in its deck board yet'
+			}
+			return 'Create your first note to start documenting this project'
 		},
 	},
 	watch: {
@@ -299,6 +343,14 @@ export default {
 				this.$set(this.notes, index, updatedNote)
 			}
 			this.closeEditModal()
+		},
+		openCardDetail(note) {
+			this.viewingCard = note
+			this.showCardDetail = true
+		},
+		closeCardDetail() {
+			this.viewingCard = null
+			this.showCardDetail = false
 		},
 		async confirmDelete(note) {
 			if (!window.confirm(`Are you sure you want to delete "${note.title}"?`)) {
@@ -571,6 +623,11 @@ export default {
 .project-notes-list__note-type--private {
 	color: var(--color-warning);
 	background: var(--color-warning-light);
+}
+
+.project-notes-list__note-type--card {
+	color: var(--color-primary-element);
+	background: var(--color-primary-element-light);
 }
 
 .project-notes-list__note-actions {

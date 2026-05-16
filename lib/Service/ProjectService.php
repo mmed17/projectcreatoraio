@@ -9,6 +9,8 @@ use OCA\ProjectCreatorAIO\Db\ProjectMapper;
 use OCA\ProjectCreatorAIO\Db\ProjectNoteMapper;
 use OCP\Files\IRootFolder;
 use OCP\Files\NotFoundException;
+use OCA\Deck\Db\CardMapper;
+use OCA\Deck\Db\NoteMapper as DeckNoteMapper;
 use OCA\Deck\Service\BoardService;
 use OCP\Share\IManager as IShareManager;
 use OCP\Share\IShare;
@@ -71,6 +73,8 @@ class ProjectService
         private readonly ProjectActivityService $projectActivityService,
         private readonly ProjectDeckActivityService $projectDeckActivityService,
         private readonly ProjectTalkIntegrationService $projectTalkIntegrationService,
+        private readonly CardMapper $cardMapper,
+        private readonly DeckNoteMapper $deckNoteMapper,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -1033,6 +1037,66 @@ class ProjectService
             'total' => $total,
             'private_available' => $hasPrivateFolder,
         ];
+    }
+
+    public function getCardNotesList(int $projectId, string $userId, int $page = 1, int $limit = 12): array
+    {
+        $project = $this->projectMapper->find($projectId);
+        if ($project === null) {
+            throw new OCSException("Project with ID $projectId not found", 404);
+        }
+
+        $boardId = $project->getBoardId();
+        if ($boardId === null || $boardId === '') {
+            return [
+                'notes' => [],
+                'total' => 0,
+                'private_available' => $this->hasPrivateFolderForUser($projectId, $userId),
+            ];
+        }
+
+        $offset = ($page - 1) * $limit;
+        $cards = $this->cardMapper->findAllByBoardId((int) $boardId, $limit, $offset);
+        $total = $this->cardMapper->countByBoardId((int) $boardId);
+
+        $cardIds = array_map(fn($card) => (int) $card->getId(), $cards);
+        $privateNotes = $this->deckNoteMapper->findByCardsForUser($userId, $cardIds);
+
+        $notesByCardId = [];
+        foreach ($privateNotes as $note) {
+            $notesByCardId[$note->getCardId()][] = $note->jsonSerialize();
+        }
+
+        return [
+            'notes' => array_map(function ($card) use ($projectId, $notesByCardId) {
+                $cardId = (int) $card->getId();
+                $cardNotes = $notesByCardId[$cardId] ?? [];
+
+                return [
+                    'id' => 'card_' . $cardId,
+                    'cardId' => $cardId,
+                    'projectId' => $projectId,
+                    'userId' => $card->getOwner() ?? '',
+                    'title' => $card->getTitle() ?? '',
+                    'content' => $card->getDescription() ?? '',
+                    'visibility' => 'card',
+                    'createdAt' => $this->formatDeckTimestamp($card->getCreatedAt()),
+                    'updatedAt' => $this->formatDeckTimestamp($card->getLastModified()),
+                    'cardNotes' => $cardNotes,
+                    'cardNoteCount' => count($cardNotes),
+                ];
+            }, $cards),
+            'total' => $total,
+            'private_available' => $this->hasPrivateFolderForUser($projectId, $userId),
+        ];
+    }
+
+    private function formatDeckTimestamp(?int $timestamp): ?string
+    {
+        if ($timestamp === null || $timestamp <= 0) {
+            return null;
+        }
+        return (new \DateTime())->setTimestamp($timestamp)->format(\DateTime::ATOM);
     }
 
     private function resolvePrivateFolderForCurrentUser(Folder $userFolder, int $projectId, string $userId): ?Folder

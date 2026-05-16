@@ -209,11 +209,15 @@ class ProjectApiController extends Controller
             throw new OCSForbiddenException('Authentication required');
         }
 
-        $visibility = in_array($visibility, ['public', 'private']) ? $visibility : 'public';
+        $visibility = in_array($visibility, ['public', 'private', 'cards'], true) ? $visibility : 'public';
         $limit = max(1, min(100, $limit));
         $page = max(1, $page);
 
-        $result = $this->projectService->getProjectNotesList($projectId, $currentUser->getUID(), $visibility, $page, $limit);
+        if ($visibility === 'cards') {
+            $result = $this->projectService->getCardNotesList($projectId, $currentUser->getUID(), $page, $limit);
+        } else {
+            $result = $this->projectService->getProjectNotesList($projectId, $currentUser->getUID(), $visibility, $page, $limit);
+        }
 
         return new DataResponse([
             'notes' => $result['notes'],
