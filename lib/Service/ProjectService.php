@@ -1005,30 +1005,32 @@ class ProjectService
     }
 
     /**
-     * Get list of all notes for a project
-     * Returns public notes and private notes owned by the user
-     * 
-     * @return array{public: array, private: array, private_available: bool}
+     * Get paginated list of notes for a project by visibility
+     *
+     * @return array{notes: array, total: int, private_available: bool}
      */
-    public function getProjectNotesList(int $projectId, string $userId): array
+    public function getProjectNotesList(int $projectId, string $userId, string $visibility = 'public', int $page = 1, int $limit = 12): array
     {
         $project = $this->projectMapper->find($projectId);
         if ($project === null) {
             throw new OCSException("Project with ID $projectId not found", 404);
         }
 
-        // Get all public notes
-        $publicNotes = $this->noteMapper->findPublicByProject($projectId);
+        $offset = ($page - 1) * $limit;
 
-        // Get private notes for this user
-        $privateNotes = $this->noteMapper->findPrivateByProjectAndUser($projectId, $userId);
+        if ($visibility === 'private') {
+            $notes = $this->noteMapper->findPrivateByProjectAndUser($projectId, $userId, $limit, $offset);
+            $total = $this->noteMapper->countPrivateByProjectAndUser($projectId, $userId);
+        } else {
+            $notes = $this->noteMapper->findPublicByProject($projectId, $limit, $offset);
+            $total = $this->noteMapper->countPublicByProject($projectId);
+        }
 
-        // Check if user has private folder available
         $hasPrivateFolder = $this->hasPrivateFolderForUser($projectId, $userId);
 
         return [
-            'public' => array_map(fn($note) => $note->jsonSerialize(), $publicNotes),
-            'private' => array_map(fn($note) => $note->jsonSerialize(), $privateNotes),
+            'notes' => array_map(fn($note) => $note->jsonSerialize(), $notes),
+            'total' => $total,
             'private_available' => $hasPrivateFolder,
         ];
     }

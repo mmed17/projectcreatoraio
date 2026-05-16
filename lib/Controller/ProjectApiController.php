@@ -195,7 +195,7 @@ class ProjectApiController extends Controller
 
     #[NoCSRFRequired]
     #[NoAdminRequired]
-    public function listNotes(int $projectId): DataResponse
+    public function listNotes(int $projectId, string $visibility = 'public', int $page = 1, int $limit = 12): DataResponse
     {
         $project = $this->projectMapper->find($projectId);
         if ($project === null) {
@@ -209,12 +209,18 @@ class ProjectApiController extends Controller
             throw new OCSForbiddenException('Authentication required');
         }
 
-        $notes = $this->projectService->getProjectNotesList($projectId, $currentUser->getUID());
+        $visibility = in_array($visibility, ['public', 'private']) ? $visibility : 'public';
+        $limit = max(1, min(100, $limit));
+        $page = max(1, $page);
+
+        $result = $this->projectService->getProjectNotesList($projectId, $currentUser->getUID(), $visibility, $page, $limit);
 
         return new DataResponse([
-            'notes' => $notes,
-            'canCreatePublic' => true,
-            'canCreatePrivate' => $notes['private_available'] ?? true,
+            'notes' => $result['notes'],
+            'total' => $result['total'],
+            'page' => $page,
+            'limit' => $limit,
+            'private_available' => $result['private_available'],
         ]);
     }
 

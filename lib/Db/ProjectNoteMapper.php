@@ -65,7 +65,7 @@ class ProjectNoteMapper extends QBMapper
     /**
      * Get public notes for a project
      */
-    public function findPublicByProject(int $projectId): array {
+    public function findPublicByProject(int $projectId, ?int $limit = null, ?int $offset = null): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')
             ->from($this->getTableName())
@@ -73,13 +73,20 @@ class ProjectNoteMapper extends QBMapper
             ->andWhere($qb->expr()->eq('visibility', $qb->createNamedParameter('public')))
             ->orderBy('created_at', 'DESC');
 
+        if ($limit !== null) {
+            $qb->setMaxResults($limit);
+        }
+        if ($offset !== null) {
+            $qb->setFirstResult($offset);
+        }
+
         return $this->findEntities($qb);
     }
 
     /**
      * Get private notes for a project and user
      */
-    public function findPrivateByProjectAndUser(int $projectId, string $userId): array {
+    public function findPrivateByProjectAndUser(int $projectId, string $userId, ?int $limit = null, ?int $offset = null): array {
         $qb = $this->db->getQueryBuilder();
         $qb->select('*')
             ->from($this->getTableName())
@@ -88,7 +95,49 @@ class ProjectNoteMapper extends QBMapper
             ->andWhere($qb->expr()->eq('visibility', $qb->createNamedParameter('private')))
             ->orderBy('created_at', 'DESC');
 
+        if ($limit !== null) {
+            $qb->setMaxResults($limit);
+        }
+        if ($offset !== null) {
+            $qb->setFirstResult($offset);
+        }
+
         return $this->findEntities($qb);
+    }
+
+    /**
+     * Count public notes for a project
+     */
+    public function countPublicByProject(int $projectId): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->selectAlias($qb->createFunction('COUNT(*)'), 'count')
+            ->from($this->getTableName())
+            ->where($qb->expr()->eq('project_id', $qb->createNamedParameter($projectId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('visibility', $qb->createNamedParameter('public')));
+
+        $result = $qb->executeQuery();
+        $row = $result->fetch();
+        $result->closeCursor();
+
+        return (int) ($row['count'] ?? 0);
+    }
+
+    /**
+     * Count private notes for a project and user
+     */
+    public function countPrivateByProjectAndUser(int $projectId, string $userId): int {
+        $qb = $this->db->getQueryBuilder();
+        $qb->selectAlias($qb->createFunction('COUNT(*)'), 'count')
+            ->from($this->getTableName())
+            ->where($qb->expr()->eq('project_id', $qb->createNamedParameter($projectId, IQueryBuilder::PARAM_INT)))
+            ->andWhere($qb->expr()->eq('user_id', $qb->createNamedParameter($userId)))
+            ->andWhere($qb->expr()->eq('visibility', $qb->createNamedParameter('private')));
+
+        $result = $qb->executeQuery();
+        $row = $result->fetch();
+        $result->closeCursor();
+
+        return (int) ($row['count'] ?? 0);
     }
 
     /**

@@ -1,39 +1,23 @@
 <template>
 	<div class="project-notes-list">
 		<div class="project-notes-list__header">
-			<div class="project-notes-list__tabs-search">
-				<div class="project-notes-list__tabs">
-					<button
-						type="button"
-						class="project-notes-list__tab"
-						:class="{ 'project-notes-list__tab--active': activeTab === 'public' }"
-						@click="activeTab = 'public'">
-						<Earth :size="18" />
-						<span>Public</span>
-						<span v-if="publicNotes.length > 0" class="project-notes-list__tab-badge">
-							{{ publicNotes.length }}
-						</span>
-					</button>
-					<button
-						type="button"
-						class="project-notes-list__tab"
-						:class="{ 'project-notes-list__tab--active': activeTab === 'private' }"
-						@click="activeTab = 'private'">
-						<Lock :size="18" />
-						<span>Private</span>
-						<span v-if="privateNotes.length > 0" class="project-notes-list__tab-badge">
-							{{ privateNotes.length }}
-						</span>
-					</button>
-				</div>
-				<NcTextField
-					v-model="searchQuery"
-					placeholder="Search notes..."
-					class="project-notes-list__search">
-					<template #icon>
-						<Magnify :size="20" />
-					</template>
-				</NcTextField>
+			<div class="project-notes-list__tabs">
+				<button
+					type="button"
+					class="project-notes-list__tab"
+					:class="{ 'project-notes-list__tab--active': activeTab === 'public' }"
+					@click="switchTab('public')">
+					<Earth :size="18" />
+					<span>Public</span>
+				</button>
+				<button
+					type="button"
+					class="project-notes-list__tab"
+					:class="{ 'project-notes-list__tab--active': activeTab === 'private' }"
+					@click="switchTab('private')">
+					<Lock :size="18" />
+					<span>Private</span>
+				</button>
 			</div>
 			<NcButton type="secondary" :disabled="!canCreateNote" @click="openCreateModal">
 				<template #icon>
@@ -48,33 +32,23 @@
 			<span>Loading your notes...</span>
 		</div>
 
-		<div v-else-if="filteredNotes.length === 0" class="project-notes-list__empty">
+		<div v-else-if="notes.length === 0" class="project-notes-list__empty">
 			<div class="project-notes-list__empty-icon-wrapper">
 				<FileDocumentOutline :size="64" />
-				<Magnify v-if="searchQuery" :size="28" class="project-notes-list__empty-search-overlay" />
 			</div>
 			<p class="project-notes-list__empty-title">
-				{{ searchQuery ? 'No matches found' : `No ${activeTab} notes yet` }}
+				{{ activeTab === 'private' && !canCreateNote ? 'Private notes are not available' : `No ${activeTab} notes yet` }}
 			</p>
 			<p class="project-notes-list__empty-subtitle">
-				{{ searchQuery
-					? `We couldn't find any notes matching "${searchQuery}"`
-					: (activeTab === 'private' && !canCreateNote
-						? 'Private notes are not available for this project'
-						: 'Create your first note to start documenting this project')
-				}}
+				{{ activeTab === 'private' && !canCreateNote
+					? 'Private notes are not available for this project'
+					: 'Create your first note to start documenting this project' }}
 			</p>
-			<NcButton
-				v-if="searchQuery"
-				type="tertiary"
-				@click="searchQuery = ''">
-				Clear search
-			</NcButton>
 		</div>
 
 		<div v-else class="project-notes-list__grid">
 			<div
-				v-for="note in filteredNotes"
+				v-for="note in notes"
 				:key="note.id"
 				class="project-notes-list__note-card"
 				@click="openEditModal(note)">
@@ -118,6 +92,30 @@
 			</div>
 		</div>
 
+		<div v-if="totalPages > 1" class="project-notes-list__pagination">
+			<NcButton
+				type="secondary"
+				:disabled="currentPage <= 1"
+				@click="previousPage">
+				<template #icon>
+					<ChevronLeft :size="20" />
+				</template>
+				Previous
+			</NcButton>
+			<span class="project-notes-list__pagination-info">
+				Page {{ currentPage }} of {{ totalPages }}
+			</span>
+			<NcButton
+				type="secondary"
+				:disabled="currentPage >= totalPages"
+				@click="nextPage">
+				Next
+				<template #icon>
+					<ChevronRight :size="20" />
+				</template>
+			</NcButton>
+		</div>
+
 		<CreateNoteModal
 			:show="showCreateModal"
 			:project-id="projectId"
@@ -139,12 +137,12 @@
 <script>
 import NcButton from '@nextcloud/vue/components/NcButton'
 import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
-import NcTextField from '@nextcloud/vue/components/NcTextField'
 import Earth from 'vue-material-design-icons/Earth.vue'
 import Lock from 'vue-material-design-icons/Lock.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
 import Delete from 'vue-material-design-icons/Delete.vue'
-import Magnify from 'vue-material-design-icons/Magnify.vue'
+import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
+import ChevronRight from 'vue-material-design-icons/ChevronRight.vue'
 import FileDocumentOutline from 'vue-material-design-icons/FileDocumentOutline.vue'
 import CreateNoteModal from './CreateNoteModal.vue'
 import { ProjectsService } from '../Services/projects.js'
@@ -156,12 +154,12 @@ export default {
 	components: {
 		NcButton,
 		NcLoadingIcon,
-		NcTextField,
 		Earth,
 		Lock,
 		Plus,
 		Delete,
-		Magnify,
+		ChevronLeft,
+		ChevronRight,
 		FileDocumentOutline,
 		CreateNoteModal,
 	},
@@ -175,9 +173,10 @@ export default {
 		return {
 			loading: true,
 			activeTab: 'public',
-			searchQuery: '',
-			publicNotes: [],
-			privateNotes: [],
+			notes: [],
+			totalCount: 0,
+			currentPage: 1,
+			perPage: 12,
 			privateAvailable: false,
 			showCreateModal: false,
 			showEditModal: false,
@@ -185,16 +184,8 @@ export default {
 		}
 	},
 	computed: {
-		filteredNotes() {
-			const notes = this.activeTab === 'public' ? this.publicNotes : this.privateNotes
-			if (!this.searchQuery.trim()) {
-				return notes
-			}
-			const query = this.searchQuery.toLowerCase()
-			return notes.filter(note =>
-				note.title.toLowerCase().includes(query)
-				|| note.content.toLowerCase().includes(query),
-			)
+		totalPages() {
+			return Math.ceil(this.totalCount / this.perPage) || 1
 		},
 		canCreateNote() {
 			if (this.activeTab === 'public') {
@@ -208,25 +199,48 @@ export default {
 			immediate: true,
 			handler(newId) {
 				if (newId) {
-					this.loadNotes()
+					this.loadNotes(1)
 				}
 			},
 		},
+		activeTab() {
+			this.loadNotes(1)
+		},
 	},
 	methods: {
-		async loadNotes() {
+		async loadNotes(page) {
 			this.loading = true
+			this.currentPage = page
 			try {
-				const result = await projectsService.listNotes(this.projectId)
+				const result = await projectsService.listNotes(this.projectId, {
+					visibility: this.activeTab,
+					page,
+					limit: this.perPage,
+				})
 				if (result) {
-					this.publicNotes = result.notes?.public || []
-					this.privateNotes = result.notes?.private || []
-					this.privateAvailable = result.canCreatePrivate || result.notes?.private_available || false
+					this.notes = result.notes || []
+					this.totalCount = result.total || 0
+					this.privateAvailable = result.private_available || false
 				}
 			} catch (error) {
 				console.error('Failed to load notes:', error)
 			} finally {
 				this.loading = false
+			}
+		},
+		switchTab(tab) {
+			if (this.activeTab !== tab) {
+				this.activeTab = tab
+			}
+		},
+		previousPage() {
+			if (this.currentPage > 1) {
+				this.loadNotes(this.currentPage - 1)
+			}
+		},
+		nextPage() {
+			if (this.currentPage < this.totalPages) {
+				this.loadNotes(this.currentPage + 1)
 			}
 		},
 		formatDate(dateString) {
@@ -254,11 +268,10 @@ export default {
 		},
 		getPreview(content) {
 			if (!content) return 'No content'
-			// Strip HTML tags and markdown symbols
 			const plainText = content
-				.replace(/<[^>]*>?/gm, ' ') // Strip HTML
-				.replace(/[#*_`[\]()]/g, '') // Strip Markdown symbols
-				.replace(/\s+/g, ' ') // Normalize whitespace
+				.replace(/<[^>]*>?/gm, ' ')
+				.replace(/[#*_`[\]()]/g, '')
+				.replace(/\s+/g, ' ')
 				.trim()
 			return plainText.length > 350 ? plainText.slice(0, 350) + '...' : plainText
 		},
@@ -268,13 +281,9 @@ export default {
 		closeCreateModal() {
 			this.showCreateModal = false
 		},
-		onNoteCreated(note) {
-			if (note.visibility === 'public') {
-				this.publicNotes.unshift(note)
-			} else {
-				this.privateNotes.unshift(note)
-			}
+		onNoteCreated() {
 			this.closeCreateModal()
+			this.loadNotes(1)
 		},
 		openEditModal(note) {
 			this.editingNote = note
@@ -285,10 +294,9 @@ export default {
 			this.showEditModal = false
 		},
 		onNoteUpdated(updatedNote) {
-			const noteArray = updatedNote.visibility === 'public' ? this.publicNotes : this.privateNotes
-			const index = noteArray.findIndex(n => n.id === updatedNote.id)
+			const index = this.notes.findIndex(n => n.id === updatedNote.id)
 			if (index !== -1) {
-				this.$set(noteArray, index, updatedNote)
+				this.$set(this.notes, index, updatedNote)
 			}
 			this.closeEditModal()
 		},
@@ -299,11 +307,8 @@ export default {
 
 			try {
 				await projectsService.deleteNote(this.projectId, note.id)
-				if (note.visibility === 'public') {
-					this.publicNotes = this.publicNotes.filter(n => n.id !== note.id)
-				} else {
-					this.privateNotes = this.privateNotes.filter(n => n.id !== note.id)
-				}
+				const wasLastOnPage = this.notes.length === 1 && this.currentPage > 1
+				this.loadNotes(wasLastOnPage ? this.currentPage - 1 : this.currentPage)
 			} catch (error) {
 				console.error('Failed to delete note:', error)
 				alert('Failed to delete note. Please try again.')
@@ -326,14 +331,6 @@ export default {
 	justify-content: space-between;
 	align-items: center;
 	gap: 32px;
-}
-
-.project-notes-list__tabs-search {
-	display: flex;
-	align-items: center;
-	gap: 20px;
-	flex: 1;
-	min-width: 0;
 }
 
 .project-notes-list__tabs {
@@ -385,13 +382,6 @@ export default {
 	border-radius: 999px;
 }
 
-.project-notes-list__search {
-	flex: 1;
-	max-width: 360px;
-	min-width: 180px;
-	margin: 0 !important;
-}
-
 .project-notes-list__loading {
 	display: flex;
 	flex-direction: column;
@@ -418,15 +408,6 @@ export default {
 	color: var(--color-text-maxcontrast);
 	opacity: 0.5;
 	margin-bottom: 8px;
-}
-
-.project-notes-list__empty-search-overlay {
-	position: absolute;
-	bottom: -4px;
-	right: -4px;
-	background: var(--color-background-hover);
-	border-radius: 50%;
-	padding: 4px;
 }
 
 .project-notes-list__empty-title {
@@ -624,20 +605,25 @@ export default {
 	box-shadow: 0 4px 10px var(--color-error-light);
 }
 
+.project-notes-list__pagination {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	padding: 24px 0 12px;
+}
+
+.project-notes-list__pagination-info {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--color-text-maxcontrast);
+}
+
 @media (max-width: 1000px) {
 	.project-notes-list__header {
 		flex-direction: column;
 		align-items: stretch;
 		gap: 20px;
-	}
-
-	.project-notes-list__tabs-search {
-		flex-direction: column;
-		align-items: stretch;
-	}
-
-	.project-notes-list__search {
-		max-width: none;
 	}
 
 	.project-notes-list__tabs {
