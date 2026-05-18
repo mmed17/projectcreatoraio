@@ -369,6 +369,14 @@
 							{{ projectMembers.length }}
 						</span>
 					</button>
+					<button
+						type="button"
+						class="projects-home__tab"
+						:class="{ 'projects-home__tab--active': activeTab === 'activity' }"
+						@click="setActiveTab('activity')">
+						<History :size="16" class="projects-home__tab-icon" />
+						<span class="projects-home__tab-label">Activity</span>
+					</button>
 				</nav>
 
 				<!-- Tab Content -->
@@ -716,6 +724,9 @@
 							</li>
 						</ul>
 					</div>
+					<div v-else-if="activeTab === 'activity'" class="projects-home__tab-section">
+						<ProjectActivity :project-id="normalizedProjectId" />
+					</div>
 				</div>
 			</div>
 
@@ -919,6 +930,7 @@ import Draw from 'vue-material-design-icons/Draw.vue'
 import Download from 'vue-material-design-icons/Download.vue'
 import Delete from 'vue-material-design-icons/Delete.vue'
 import FilterRemove from 'vue-material-design-icons/FilterRemove.vue'
+import History from 'vue-material-design-icons/History.vue'
 import FolderOpen from 'vue-material-design-icons/FolderOpen.vue'
 import FolderOutline from 'vue-material-design-icons/FolderOutline.vue'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
@@ -958,6 +970,7 @@ import ProjectCreator from './ProjectCreator.vue'
 import ProjectNotesList from './ProjectNotesList.vue'
 import ProjectCardVisibilityTab from './ProjectCardVisibilityTab.vue'
 import OcrDocumentTypesModal from './OcrDocumentTypesModal.vue'
+import ProjectActivity from './ProjectActivity/ProjectActivity.vue'
 
 const projectsService = ProjectsService.getInstance()
 const webdavClient = createClient(generateRemoteUrl('dav'))
@@ -1003,6 +1016,8 @@ export default {
 		ProjectNotesList,
 		ProjectCardVisibilityTab,
 		OcrDocumentTypesModal,
+		ProjectActivity,
+		History,
 		ViewDashboard,
 	},
 	data() {

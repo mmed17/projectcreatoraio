@@ -285,6 +285,22 @@ class ProjectMapper extends QBMapper
         }
     }
 
+    public function findByFolderId(int $folderId): ?Project
+    {
+        $qb = $this->db->getQueryBuilder();
+        $qb->select('*')
+            ->from(self::TABLE_NAME)
+            ->where(
+                $qb->expr()->eq('folder_id', $qb->createNamedParameter($folderId, IQueryBuilder::PARAM_INT))
+            );
+
+        try {
+            return $this->findEntity($qb);
+        } catch (DoesNotExistException $e) {
+            return null;
+        }
+    }
+
     public function findByWhiteBoardId(int $whiteBoardId)
     {
         $qb = $this->db->getQueryBuilder();

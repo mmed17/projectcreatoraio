@@ -16,6 +16,7 @@ class ProjectActivityEvent extends Entity implements JsonSerializable {
 	protected ?string $actorUid = null;
 	protected ?string $actorDisplayName = null;
 	protected ?string $eventType = null;
+	protected ?string $source = null;
 	protected ?string $payloadJson = null;
 	protected ?DateTime $occurredAt = null;
 
@@ -24,6 +25,7 @@ class ProjectActivityEvent extends Entity implements JsonSerializable {
 		$this->addType('actorUid', Types::STRING);
 		$this->addType('actorDisplayName', Types::STRING);
 		$this->addType('eventType', Types::STRING);
+		$this->addType('source', Types::STRING);
 		$this->addType('payloadJson', Types::TEXT);
 		$this->addType('occurredAt', Types::DATETIME);
 	}
@@ -53,6 +55,7 @@ class ProjectActivityEvent extends Entity implements JsonSerializable {
 			'actorUid' => $this->actorUid,
 			'actorDisplayName' => $this->actorDisplayName,
 			'eventType' => $this->eventType,
+			'source' => $this->source,
 			'payload' => $this->getPayloadArray(),
 			'occurredAt' => $this->occurredAt?->format('Y-m-d H:i:s'),
 		];

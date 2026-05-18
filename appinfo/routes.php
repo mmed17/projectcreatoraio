@@ -170,6 +170,11 @@ return [
             "verb" => "GET",
         ],
         [
+            "name" => "project_api#getActivity",
+            "url" => "/api/v1/projects/{projectId}/activity",
+            "verb" => "GET",
+        ],
+        [
             "name" => "project_api#update",
             "url" => "/api/v1/projects/{id}",
             "verb" => "PUT",

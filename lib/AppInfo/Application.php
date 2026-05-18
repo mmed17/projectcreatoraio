@@ -8,7 +8,26 @@ use OCA\ProjectCreatorAIO\BackgroundJob\PurgeArchivedProjectsJob;
 use OCA\ProjectCreatorAIO\BackgroundJob\SendProjectDigestJob;
 use OCA\ProjectCreatorAIO\Db\PrivateFolderLinkMapper;
 use OCA\ProjectCreatorAIO\Dashboard\ProjectsWidget;
+use OCA\Deck\Db\StackMapper;
+use OCA\Deck\Event\AclCreatedEvent;
+use OCA\Deck\Event\AclDeletedEvent;
+use OCA\Deck\Event\AclUpdatedEvent;
+use OCA\Deck\Event\BoardCreatedEvent;
+use OCA\Deck\Event\BoardDeletedEvent;
+use OCA\Deck\Event\BoardUpdatedEvent;
+use OCA\Deck\Event\CardCreatedEvent;
+use OCA\Deck\Event\CardDeletedEvent;
+use OCA\Deck\Event\CardUpdatedEvent;
+use OCA\Deck\Service\BoardService;
+use OCA\Deck\Service\CardService;
+use OCA\Deck\Service\CardPolicyService;
+use OCA\Deck\Service\LabelService;
+use OCA\Deck\Service\StackService;
+use OCA\ProjectCreatorAIO\Db\ProjectMapper;
+use OCA\ProjectCreatorAIO\Listener\DeckEventListener;
+use OCA\ProjectCreatorAIO\Listener\FileEventListener;
 use OCA\ProjectCreatorAIO\Listener\FileProcessingWrittenListener;
+use OCA\ProjectCreatorAIO\Listener\TalkEventListener;
 use OCA\ProjectCreatorAIO\Listener\WhiteboardWrittenListener;
 use OCA\ProjectCreatorAIO\Notification\Notifier;
 use OCA\ProjectCreatorAIO\Service\DeckDefaultCardsService;
@@ -16,6 +35,15 @@ use OCA\ProjectCreatorAIO\Service\ProjectDeckActivityService;
 use OCA\ProjectCreatorAIO\Service\ProjectDigestService;
 use OCA\ProjectCreatorAIO\Service\ProjectRetentionService;
 use OCA\ProjectCreatorAIO\Service\TimelinePlanningService;
+use OCA\Talk\Events\AttendeeRemovedEvent;
+use OCA\Talk\Events\AttendeesAddedEvent;
+use OCA\Talk\Events\CallEndedEvent;
+use OCA\Talk\Events\CallStartedEvent;
+use OCA\Talk\Events\ChatMessageSentEvent;
+use OCA\Talk\Events\ReactionAddedEvent;
+use OCA\Talk\Events\ReactionRemovedEvent;
+use OCA\Talk\Events\RoomModifiedEvent;
+use OCA\Talk\Events\UserJoinedRoomEvent;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IBootContext;
@@ -23,12 +51,10 @@ use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\AppFramework\IAppContainer;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\IJobList;
-use OCA\ProjectCreatorAIO\Db\ProjectMapper;
-use OCA\Deck\Service\BoardService;
-use OCA\Deck\Service\CardService;
-use OCA\Deck\Service\CardPolicyService;
-use OCA\Deck\Service\LabelService;
-use OCA\Deck\Service\StackService;
+use OCP\Files\Events\Node\NodeCopiedEvent;
+use OCP\Files\Events\Node\NodeCreatedEvent;
+use OCP\Files\Events\Node\NodeDeletedEvent;
+use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use Psr\Log\LoggerInterface;
 
@@ -43,6 +69,35 @@ class Application extends App implements IBootstrap {
 		$context->registerNotifierService(Notifier::class);
 		$context->registerEventListener(NodeWrittenEvent::class, WhiteboardWrittenListener::class);
 		$context->registerEventListener(NodeWrittenEvent::class, FileProcessingWrittenListener::class);
+
+		// Deck event listeners
+		$context->registerEventListener(BoardCreatedEvent::class, DeckEventListener::class);
+		$context->registerEventListener(BoardUpdatedEvent::class, DeckEventListener::class);
+		$context->registerEventListener(BoardDeletedEvent::class, DeckEventListener::class);
+		$context->registerEventListener(CardCreatedEvent::class, DeckEventListener::class);
+		$context->registerEventListener(CardUpdatedEvent::class, DeckEventListener::class);
+		$context->registerEventListener(CardDeletedEvent::class, DeckEventListener::class);
+		$context->registerEventListener(AclCreatedEvent::class, DeckEventListener::class);
+		$context->registerEventListener(AclUpdatedEvent::class, DeckEventListener::class);
+		$context->registerEventListener(AclDeletedEvent::class, DeckEventListener::class);
+
+		// Files event listeners
+		$context->registerEventListener(NodeCreatedEvent::class, FileEventListener::class);
+		$context->registerEventListener(NodeWrittenEvent::class, FileEventListener::class);
+		$context->registerEventListener(NodeDeletedEvent::class, FileEventListener::class);
+		$context->registerEventListener(NodeRenamedEvent::class, FileEventListener::class);
+		$context->registerEventListener(NodeCopiedEvent::class, FileEventListener::class);
+
+		// Talk event listeners
+		$context->registerEventListener(ChatMessageSentEvent::class, TalkEventListener::class);
+		$context->registerEventListener(AttendeesAddedEvent::class, TalkEventListener::class);
+		$context->registerEventListener(AttendeeRemovedEvent::class, TalkEventListener::class);
+		$context->registerEventListener(CallStartedEvent::class, TalkEventListener::class);
+		$context->registerEventListener(CallEndedEvent::class, TalkEventListener::class);
+		$context->registerEventListener(RoomModifiedEvent::class, TalkEventListener::class);
+		$context->registerEventListener(ReactionAddedEvent::class, TalkEventListener::class);
+		$context->registerEventListener(ReactionRemovedEvent::class, TalkEventListener::class);
+		$context->registerEventListener(UserJoinedRoomEvent::class, TalkEventListener::class);
 
         $context->registerService('ProjectMapper', function (IAppContainer $c) {
             return new ProjectMapper(

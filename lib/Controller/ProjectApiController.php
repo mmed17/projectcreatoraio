@@ -6,6 +6,7 @@ use OCA\ProjectCreatorAIO\Service\ProjectActivityService;
 use OCA\ProjectCreatorAIO\Service\ProjectRetentionService;
 use OCA\ProjectCreatorAIO\Db\Project;
 use OCA\ProjectCreatorAIO\Db\ProjectNote;
+use OCA\ProjectCreatorAIO\ProjectStatus;
 use OCA\Organization\Db\UserMapper as OrganizationUserMapper;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Controller;
@@ -809,6 +810,31 @@ class ProjectApiController extends Controller
 
 	#[NoCSRFRequired]
 	#[NoAdminRequired]
+	public function getActivity(int $projectId, int $limit = 20, int $offset = 0, ?string $source = null): DataResponse {
+		$project = $this->projectMapper->find($projectId);
+		if ($project === null) {
+			throw new OCSNotFoundException("Project with ID $projectId not found");
+		}
+
+		$this->assertCanAccessProject($project);
+
+		$limit = max(1, min(100, $limit));
+		$offset = max(0, $offset);
+
+		$events = $this->projectActivityService->getProjectActivity($projectId, $limit + 1, $offset, $source);
+		$hasMore = count($events) > $limit;
+		if ($hasMore) {
+			$events = array_slice($events, 0, $limit);
+		}
+
+		return new DataResponse([
+			'events' => array_map(fn ($e) => $e->jsonSerialize(), $events),
+			'hasMore' => $hasMore,
+		]);
+	}
+
+	#[NoCSRFRequired]
+	#[NoAdminRequired]
 	public function getWhiteboardActivity(int $projectId, int $limit = 20, int $offset = 0): DataResponse {
 		$project = $this->projectMapper->find($projectId);
 		if ($project === null) {
@@ -1039,6 +1065,24 @@ class ProjectApiController extends Controller
             }
         }
 
+        $oldValues = [
+            'name' => $existingProject->getName(),
+            'number' => $existingProject->getNumber(),
+            'type' => $existingProject->getType(),
+            'description' => $existingProject->getDescription(),
+            'status' => $existingProject->getStatus(),
+            'client_name' => $existingProject->getClientName(),
+            'client_role' => $existingProject->getClientRole(),
+            'client_phone' => $existingProject->getClientPhone(),
+            'client_email' => $existingProject->getClientEmail(),
+            'client_address' => $existingProject->getClientAddress(),
+            'loc_street' => $existingProject->getLocStreet(),
+            'loc_city' => $existingProject->getLocCity(),
+            'loc_zip' => $existingProject->getLocZip(),
+            'external_ref' => $existingProject->getExternalRef(),
+            'required_preparation_weeks' => $existingProject->getRequiredPreparationWeeks(),
+        ];
+
         $updatedProject = $this->projectService->updateProjectDetails(
             $id,
             $name,
@@ -1057,7 +1101,42 @@ class ProjectApiController extends Controller
             $status,
             $required_preparation_weeks,
         );
-        return new DataResponse($updatedProject);
+
+        $changedFields = [];
+        $newValues = [
+            'name' => $updatedProject->getName(),
+            'number' => $updatedProject->getNumber(),
+            'type' => $updatedProject->getType(),
+            'description' => $updatedProject->getDescription(),
+            'status' => $updatedProject->getStatus(),
+            'client_name' => $updatedProject->getClientName(),
+            'client_role' => $updatedProject->getClientRole(),
+            'client_phone' => $updatedProject->getClientPhone(),
+            'client_email' => $updatedProject->getClientEmail(),
+            'client_address' => $updatedProject->getClientAddress(),
+            'loc_street' => $updatedProject->getLocStreet(),
+            'loc_city' => $updatedProject->getLocCity(),
+            'loc_zip' => $updatedProject->getLocZip(),
+            'external_ref' => $updatedProject->getExternalRef(),
+            'required_preparation_weeks' => $updatedProject->getRequiredPreparationWeeks(),
+        ];
+        foreach ($newValues as $field => $newVal) {
+            if ($oldValues[$field] !== $newVal) {
+                $changedFields[] = $field;
+            }
+        }
+
+        if (!empty($changedFields)) {
+            if (in_array('status', $changedFields, true) && (int) $newValues['status'] === ProjectStatus::ARCHIVED) {
+                $this->projectActivityService->recordProjectArchived($existingProject, $currentUser);
+            } elseif (in_array('status', $changedFields, true) && (int) $oldValues['status'] === ProjectStatus::ARCHIVED) {
+                $this->projectActivityService->recordProjectRestored($existingProject, $currentUser);
+            } else {
+                $this->projectActivityService->recordProjectUpdated($existingProject, $currentUser, $changedFields);
+            }
+        }
+
+        return new DataResponse($updatedProject->jsonSerialize());
     }
 
     #[NoCSRFRequired]

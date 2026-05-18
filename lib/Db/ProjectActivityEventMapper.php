@@ -27,10 +27,12 @@ class ProjectActivityEventMapper extends QBMapper {
 		?string $actorDisplayName,
 		array $payload = [],
 		?DateTimeInterface $occurredAt = null,
+		string $source = 'internal',
 	): ProjectActivityEvent {
 		$event = new ProjectActivityEvent();
 		$event->setProjectId($projectId);
 		$event->setEventType($eventType);
+		$event->setSource($source);
 		$event->setActorUid($actorUid);
 		$event->setActorDisplayName($actorDisplayName);
 		$event->setPayloadArray($payload);
@@ -60,7 +62,7 @@ class ProjectActivityEventMapper extends QBMapper {
 	/**
 	 * @return ProjectActivityEvent[]
 	 */
-	public function findForProject(int $projectId, ?string $eventType = null, int $limit = 20, int $offset = 0): array {
+	public function findForProject(int $projectId, ?string $eventType = null, int $limit = 20, int $offset = 0, ?string $source = null): array {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('*')
 			->from($this->getTableName())
@@ -72,6 +74,10 @@ class ProjectActivityEventMapper extends QBMapper {
 
 		if ($eventType !== null && $eventType !== '') {
 			$qb->andWhere($qb->expr()->eq('event_type', $qb->createNamedParameter($eventType, IQueryBuilder::PARAM_STR)));
+		}
+
+		if ($source !== null && $source !== '') {
+			$qb->andWhere($qb->expr()->eq('source', $qb->createNamedParameter($source, IQueryBuilder::PARAM_STR)));
 		}
 
 		return $this->findEntities($qb);
