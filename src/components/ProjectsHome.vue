@@ -974,6 +974,7 @@ import ProjectActivity from './ProjectActivity/ProjectActivity.vue'
 
 const projectsService = ProjectsService.getInstance()
 const webdavClient = createClient(generateRemoteUrl('dav'))
+const PROJECT_TABS = ['overview', 'whiteboard', 'notes', 'timeline', 'deck', 'cardVisibility', 'files', 'members', 'activity']
 
 export default {
 	name: 'ProjectsHome',
@@ -1198,6 +1199,7 @@ export default {
 	async mounted() {
 		this.updateNarrowState()
 		window.addEventListener('resize', this.updateNarrowState)
+		window.addEventListener('popstate', this.handlePopState)
 
 		await this.loadContext()
 		if (!this.hasProjectAccess) {
@@ -1208,9 +1210,12 @@ export default {
 			this.projectScope = 'my'
 		}
 		await this.loadProjects()
+
+		await this.handleUrlNavigation()
 	},
 	beforeDestroy() {
 		window.removeEventListener('resize', this.updateNarrowState)
+		window.removeEventListener('popstate', this.handlePopState)
 	},
 	methods: {
 		// Sidebar collapse toggle
@@ -1407,20 +1412,18 @@ export default {
 			return getProjectStatusPillClass(status)
 		},
 		setActiveTab(tab) {
-			this.activeTab = tab
+			const normalized = this.normalizeTab(tab)
+			this.activeTab = normalized
 			if (!this.selectedProjectId) {
+				this.syncUrl(null, null, true)
 				return
 			}
 			const projectId = Number(this.selectedProjectId)
 			if (!Number.isFinite(projectId) || projectId <= 0) {
 				return
 			}
-			if (tab === 'members') {
-				this.ensureMembersLoaded(projectId)
-			}
-			if (tab === 'files') {
-				this.ensureFilesLoaded(projectId)
-			}
+			this.applyTabSideEffects(projectId, normalized)
+			this.syncUrl(projectId, normalized, false)
 		},
 		async ensureMembersLoaded(projectId) {
 			if (this.loadedMembersProjectId === projectId && !this.membersError) {
@@ -1492,17 +1495,8 @@ export default {
 
 			try {
 				await projectsService.delete(projectId)
-				this.resetProjectProfileEditor()
-				this.resetMembersState()
-				this.resetFilesState()
-				this.selectedProject = null
-				this.selectedProjectId = null
-				this.activeTab = 'overview'
-				this.loadedMembersProjectId = null
-				this.loadedFilesProjectId = null
-				if (this.isNarrow) {
-					this.mobilePane = 'list'
-				}
+				this.clearSelectedProject()
+				this.syncUrl(null, null, true)
 				await this.loadProjects()
 			} catch (error) {
 				this.projectDeleteError = error?.response?.data?.message || 'Could not delete project.'
@@ -1520,7 +1514,6 @@ export default {
 			}
 		},
 		async loadProjects() {
-			const previousSelectedProjectId = this.selectedProjectId
 			this.loading = true
 			try {
 				const userId = this.context?.userId || null
@@ -1529,28 +1522,15 @@ export default {
 				} else {
 					this.projects = await projectsService.list()
 				}
-				if (previousSelectedProjectId !== null) {
-					const stillExists = this.projects.some((project) => project.id === previousSelectedProjectId)
-					if (!stillExists) {
-						this.resetProjectProfileEditor()
-						this.resetMembersState()
-						this.resetFilesState()
-						this.selectedProject = null
-						this.selectedProjectId = null
-						this.activeTab = 'overview'
-						this.loadedMembersProjectId = null
-						this.loadedFilesProjectId = null
-						if (this.isNarrow) {
-							this.mobilePane = 'list'
-						}
-					}
-				}
 			} finally {
 				this.loading = false
 			}
 		},
-		async selectProject(project) {
-			this.activeTab = 'overview'
+		async selectProject(project, options = {}) {
+			const tab = this.normalizeTab(options.tab || 'overview')
+			const updateUrl = options.updateUrl !== false
+			const fetched = await projectsService.get(project.id)
+			this.activeTab = tab
 			this.statusUpdateError = ''
 			this.projectDeleteError = ''
 			this.memberInviteMessage = ''
@@ -1558,13 +1538,17 @@ export default {
 			this.resetProjectProfileEditor()
 			this.resetMembersState()
 			this.resetFilesState()
-			this.selectedProjectId = project.id
-			this.selectedProject = await projectsService.get(project.id)
+			this.selectedProjectId = fetched.id
+			this.selectedProject = fetched
 			this.projectProfileDraft = this.getProjectProfileDraftFromSelected()
 			this.loadedMembersProjectId = null
 			this.loadedFilesProjectId = null
 			if (this.isNarrow) {
 				this.mobilePane = 'details'
+			}
+			this.applyTabSideEffects(fetched.id, tab)
+			if (updateUrl) {
+				this.syncUrl(fetched.id, tab, false)
 			}
 		},
 		startCreateProject() {
@@ -1583,6 +1567,104 @@ export default {
 			const createdProject = this.projects.find((project) => project.id === createdProjectId)
 			if (createdProject) {
 				await this.selectProject(createdProject)
+			}
+		},
+		getUrlBase() {
+			const path = window.location.pathname.replace(/\/+$/, '')
+			return path.replace(/\/\d+$/, '')
+		},
+		getUrlProjectId() {
+			const match = window.location.pathname.match(/\/(\d+)\/?$/)
+			if (match) {
+				const id = parseInt(match[1], 10)
+				return Number.isFinite(id) && id > 0 ? id : null
+			}
+			return null
+		},
+		normalizeTab(tab) {
+			return PROJECT_TABS.includes(tab) ? tab : 'overview'
+		},
+		applyTabSideEffects(projectId, tab) {
+			if (tab === 'members') {
+				this.ensureMembersLoaded(projectId)
+			}
+			if (tab === 'files') {
+				this.ensureFilesLoaded(projectId)
+			}
+		},
+		clearSelectedProject() {
+			this.resetProjectProfileEditor()
+			this.resetMembersState()
+			this.resetFilesState()
+			this.selectedProject = null
+			this.selectedProjectId = null
+			this.activeTab = 'overview'
+			this.loadedMembersProjectId = null
+			this.loadedFilesProjectId = null
+			if (this.isNarrow) {
+				this.mobilePane = 'list'
+			}
+		},
+		getUrlTab() {
+			const params = new URLSearchParams(window.location.search || '')
+			return this.normalizeTab(params.get('tab'))
+		},
+		syncUrl(projectId, tab, replace = false) {
+			const base = this.getUrlBase()
+			let url = base
+			if (projectId) {
+				url += '/' + projectId
+			}
+			if (tab && tab !== 'overview') {
+				url += '?tab=' + tab
+			}
+			if (replace) {
+				history.replaceState(null, '', url)
+			} else {
+				history.pushState(null, '', url)
+			}
+		},
+		async handlePopState() {
+			const urlProjectId = this.getUrlProjectId()
+			const urlTab = this.getUrlTab()
+
+			if (!urlProjectId) {
+				this.clearSelectedProject()
+				this.syncUrl(null, null, true)
+				return
+			}
+
+			try {
+				const project = this.projects.find(p => Number(p.id) === urlProjectId)
+				if (project) {
+					await this.selectProject(project, { tab: urlTab, updateUrl: false })
+				} else {
+					await this.selectProject({ id: urlProjectId }, { tab: urlTab, updateUrl: false })
+				}
+			} catch (e) {
+				this.clearSelectedProject()
+				this.syncUrl(null, null, true)
+			}
+		},
+		async handleUrlNavigation() {
+			const urlProjectId = this.getUrlProjectId()
+			const urlTab = this.getUrlTab()
+			if (!urlProjectId) {
+				return
+			}
+
+			try {
+				const project = this.projects.find(p => Number(p.id) === urlProjectId)
+				if (project) {
+					await this.selectProject(project, { tab: urlTab, updateUrl: false })
+				} else {
+					await this.selectProject({ id: urlProjectId }, { tab: urlTab, updateUrl: false })
+				}
+
+				this.syncUrl(urlProjectId, urlTab, true)
+			} catch (e) {
+				this.clearSelectedProject()
+				this.syncUrl(null, null, true)
 			}
 		},
 		typeLabel(typeId) {

@@ -220,5 +220,11 @@ return [
             "url" => "/",
             "verb" => "GET",
         ],
+        [
+            "name" => "page#project",
+            "url" => "/{projectId}",
+            "verb" => "GET",
+            "requirements" => ["projectId" => "\d+"],
+        ],
     ]
 ];

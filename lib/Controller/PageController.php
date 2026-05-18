@@ -30,6 +30,12 @@ class PageController extends Controller {
 
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
+	public function project(): TemplateResponse|NotFoundResponse {
+		return $this->index();
+	}
+
+	#[NoAdminRequired]
+	#[NoCSRFRequired]
 	public function index(): TemplateResponse|NotFoundResponse {
 		$currentUser = $this->userSession->getUser();
 		if ($currentUser === null) {
