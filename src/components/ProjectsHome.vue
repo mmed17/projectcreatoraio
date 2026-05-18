@@ -725,7 +725,7 @@
 						</ul>
 					</div>
 					<div v-else-if="activeTab === 'activity'" class="projects-home__tab-section">
-						<ProjectActivity :project-id="normalizedProjectId" />
+						<ProjectActivity :key="String(selectedProject?.id || '')" :project-id="selectedProject?.id || null" />
 					</div>
 				</div>
 			</div>
